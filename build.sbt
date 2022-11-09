@@ -19,6 +19,7 @@ ThisBuild / libraryDependencySchemes += "io.circe" %% "circe-core" % "always"
 
 lazy val root = tlCrossRootProject.aggregate(
   core,
+  scalacache,
 )
 
 lazy val core = crossProject(JVMPlatform, JSPlatform)
@@ -33,3 +34,15 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "io.circe" %% "circe-core" % "0.14.3",
     )
   )
+
+lazy val scalacache = crossProject(JVMPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("scalacache"))
+  .settings(
+    name := "natchez-tagless-scalacache",
+    libraryDependencies ++= Seq(
+      "com.github.cb372" %% "scalacache-core" % "1.0.0-M6",
+      "io.circe" %% "circe-generic" % "0.14.3",
+    )
+  )
+  .dependsOn(core)

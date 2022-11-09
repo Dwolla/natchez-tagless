@@ -24,3 +24,11 @@ pull_request_rules:
       add:
       - core
       remove: []
+- name: Label scalacache PRs
+  conditions:
+  - files~=^scalacache/
+  actions:
+    label:
+      add:
+      - scalacache
+      remove: []
