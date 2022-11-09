@@ -16,6 +16,7 @@ ThisBuild / scalaVersion := Scala213 // the default Scala
 ThisBuild / githubWorkflowScalaVersions := Seq("2.13", "2.12")
 ThisBuild / tlJdkRelease := Some(8)
 ThisBuild / libraryDependencySchemes += "io.circe" %% "circe-core" % "always"
+ThisBuild / tlCiReleaseBranches := Seq("main")
 
 lazy val root = tlCrossRootProject.aggregate(
   core,
