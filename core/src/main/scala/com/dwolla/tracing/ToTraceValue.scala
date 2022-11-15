@@ -14,19 +14,23 @@ trait ToTraceValue[A] { self =>
 }
 
 object ToTraceValue extends LowPriorityToTraceValueInstances {
-  def apply[A : ToTraceValue]: ToTraceValue[A] = implicitly
+  def apply[A: ToTraceValue]: ToTraceValue[A] = implicitly
 
   implicit val unitTraceValue: ToTraceValue[Unit] = _ => "()"
-  implicit def optionalTraceValue[A : ToTraceValue]: ToTraceValue[Option[A]] =
+  implicit def optionalTraceValue[A: ToTraceValue]: ToTraceValue[Option[A]] =
     _.map(ToTraceValue[A].toTraceValue(_)).getOrElse("None")
-  implicit val stringTraceValue: ToTraceValue[String] = TraceValue.stringToTraceValue
-  implicit val booleanTraceValue: ToTraceValue[Boolean] = TraceValue.boolToTraceValue
+  implicit val stringTraceValue: ToTraceValue[String] =
+    TraceValue.stringToTraceValue
+  implicit val booleanTraceValue: ToTraceValue[Boolean] =
+    TraceValue.boolToTraceValue
   implicit val numberTraceValue: ToTraceValue[Int] = TraceValue.intToTraceValue
 }
 
-trait LowPriorityToTraceValueInstances extends LowestPriorityToTraceValueInstances {
+trait LowPriorityToTraceValueInstances
+    extends LowestPriorityToTraceValueInstances {
 
-  implicit def traceValueViaJson[A: Encoder]: ToTraceValue[A] = _.asJson.noSpaces
+  implicit def traceValueViaJson[A: Encoder]: ToTraceValue[A] =
+    _.asJson.noSpaces
 }
 
 trait LowestPriorityToTraceValueInstances {

@@ -20,7 +20,7 @@ ThisBuild / tlCiReleaseBranches := Seq("main")
 
 lazy val root = tlCrossRootProject.aggregate(
   core,
-  scalacache,
+  scalacache
 )
 
 lazy val core = crossProject(JVMPlatform, JSPlatform)
@@ -32,7 +32,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.tpolecat" %% "natchez-core" % "0.1.6",
       "org.typelevel" %% "cats-tagless-core" % "0.14.0",
       "org.typelevel" %% "cats-tagless-macros" % "0.14.0",
-      "io.circe" %% "circe-core" % "0.14.3",
+      "io.circe" %% "circe-core" % "0.14.3"
     )
   )
 
@@ -43,7 +43,7 @@ lazy val scalacache = crossProject(JVMPlatform)
     name := "natchez-tagless-scalacache",
     libraryDependencies ++= Seq(
       "com.github.cb372" %% "scalacache-core" % "1.0.0-M6",
-      "io.circe" %% "circe-generic" % "0.14.3",
+      "io.circe" %% "circe-generic" % "0.14.3"
     )
   )
   .dependsOn(core)
