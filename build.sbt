@@ -22,7 +22,7 @@ ThisBuild / mergifyStewardConfig ~= { _.map(_.copy(
   mergeMinors = true,
 ))}
 
-lazy val root = tlCrossRootProject.aggregate(
+lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
   core,
   scalacache,
 )

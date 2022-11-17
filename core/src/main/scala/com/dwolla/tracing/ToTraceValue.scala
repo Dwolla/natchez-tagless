@@ -6,6 +6,15 @@ import io.circe.Encoder
 import io.circe.syntax._
 import natchez.TraceValue
 
+/**
+ * A typeclass implementation of Natchez's `TraceValue` ADT.
+ *
+ * Natchez provides implicit conversions to `TraceValue`, which
+ * suffices when explicitly adding attributes to spans. This
+ * typeclass encoding exists to support the `Aspect` typeclass from
+ * cats-tagless, which demands a typeclass for which instances exist
+ * for all parameter and return types on the algebra being woven.
+ */
 trait ToTraceValue[A] { self =>
   def toTraceValue(a: A): TraceValue
 

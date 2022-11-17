@@ -1,4 +1,5 @@
 package com.dwolla.tracing
+package syntax
 
 import cats._
 import cats.tagless.aop.Aspect
