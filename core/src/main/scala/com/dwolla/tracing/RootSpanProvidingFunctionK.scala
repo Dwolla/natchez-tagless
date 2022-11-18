@@ -20,7 +20,7 @@ object RootSpanProvidingFunctionK {
  * `Instrument[Alg].instrument`:
  *
  * {{{
- *   import cats.data._, cats.tagless._, cats.tagless.aop._, cats.tagless.syntax.all._
+ *   import cats.data._, cats.effect._, cats.tagless._, cats.tagless.aop._, cats.tagless.syntax.all._
  *
  *   trait Foo[F[_]] {
  *     def foo: F[Unit]
@@ -30,10 +30,12 @@ object RootSpanProvidingFunctionK {
  *     implicit val fooInstrument: Instrument[Foo] = Derive.instrument
  *   }
  *
- *   val myFoo: Foo[F] = ???
+ *   def myFoo: Foo[IO] = new Foo[IO] {
+ *     def foo = IO.println("foo!")
+ *   }
  *
- *   val instrumentedFoo: Foo[Instrumentation[Kleisli[F, Span[F], *], *]] =
- *     myFoo.mapK(Kleisli.liftK[F, Span[F]]).instrument
+ *   val instrumentedFoo: Foo[Instrumentation[Kleisli[IO, natchez.Span[IO], *], *]] =
+ *     myFoo.mapK(Kleisli.liftK[IO, natchez.Span[IO]]).instrument
  * }}}
  *
  * @param entryPoint the Natchez `EntryPoint[F]` that will construct the new root spans

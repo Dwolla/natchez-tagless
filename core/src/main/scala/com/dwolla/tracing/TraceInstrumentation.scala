@@ -19,7 +19,7 @@ object TraceInstrumentation {
  * using `Instrument[Alg].instrument`:
  *
  * {{{
- *   import cats.tagless._, cats.tagless.aop._, cats.tagless.syntax.all._
+ *   import cats.effect._, cats.tagless._, cats.tagless.aop._, cats.tagless.syntax.all._
  *
  *   trait Foo[F[_]] {
  *     def foo: F[Unit]
@@ -29,9 +29,11 @@ object TraceInstrumentation {
  *     implicit val fooInstrument: Instrument[Foo] = Derive.instrument
  *   }
  *
- *   val myFoo: Foo[F] = ???
+ *   def myFoo: Foo[IO] = new Foo[IO] {
+ *     def foo = IO.println("foo!")
+ *   }
  *
- *   val instrumentedFoo: Foo[Instrumentation[F, *]] =
+ *   val instrumentedFoo: Foo[Instrumentation[IO, *]] =
  *     myFoo.instrument
  * }}}
  */

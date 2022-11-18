@@ -27,6 +27,17 @@ lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
   scalacache,
 )
 
+lazy val doctestSettings: Seq[Def.Setting[_]] = Seq(
+  libraryDependencies ++= Seq(
+    "org.scalacheck" %%% "scalacheck" % "1.17.0" % Test,
+    "io.monix" %%% "newtypes-core" % "0.2.3" % Test,
+  ),
+  doctestOnlyCodeBlocksMode := true,
+  Test / scalacOptions ~= {
+    _.filterNot(_.contains("Wunused"))
+  },
+)
+
 lazy val core = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("core"))
@@ -39,6 +50,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "io.circe" %%% "circe-core" % "0.14.3",
     ),
   )
+  .settings(doctestSettings: _*)
 
 lazy val scalacache = crossProject(JVMPlatform)
   .crossType(CrossType.Pure)
@@ -50,4 +62,5 @@ lazy val scalacache = crossProject(JVMPlatform)
       "io.circe" %%% "circe-generic" % "0.14.3",
     ),
   )
+  .settings(doctestSettings: _*)
   .dependsOn(core)

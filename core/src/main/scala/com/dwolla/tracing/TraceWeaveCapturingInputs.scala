@@ -32,6 +32,8 @@ object TraceWeaveCapturingInputs {
  * instance. For example, using `io.monix::newtypes-core`:
  *
  * {{{
+ *   import monix.newtypes._, natchez._
+ *
  *   type Password = Password.Type
  *
  *   object Password extends NewtypeWrapped[String] {
@@ -59,7 +61,7 @@ object TraceWeaveCapturingInputs {
  * using `Aspect.Domain[Alg, ToTraceValue].weave`:
  *
  * {{{
- *   import cats.tagless._, cats.tagless.aop._, cats.tagless.syntax.all._
+ *   import cats.effect._, cats.tagless._, cats.tagless.aop._, cats.tagless.syntax.all._
  *
  *   trait Foo[F[_]] {
  *     def foo(i: Int): F[Unit]
@@ -69,9 +71,11 @@ object TraceWeaveCapturingInputs {
  *     implicit val fooTracingAspect: Aspect.Domain[Foo, ToTraceValue] = Derive.aspect
  *   }
  *
- *   val myFoo: Foo[F] = ???
+ *   def myFoo: Foo[IO] = new Foo[IO] {
+ *     def foo(i: Int) = IO.println(s"foo!").replicateA_(i)
+ *   }
  *
- *   val wovenFoo: Foo[Weave.Domain[F, ToTraceValue, *]] =
+ *   val wovenFoo: Foo[Aspect.Weave.Domain[IO, ToTraceValue, *]] =
  *     myFoo.weave
  * }}}
  *
@@ -79,13 +83,13 @@ object TraceWeaveCapturingInputs {
  * parameter types in the algebra, or you'll see compile-time errors
  * similar to this:
  *
- * {{{
+ * <pre>
  *   exception during macro expansion:
  *   scala.reflect.macros.TypecheckException: could not find implicit value for evidence parameter of type ToTraceValue[X]
  *       implicit val fooTracingAspect: Aspect.Domain[Foo, ToTraceValue] = Derive.aspect
- *                                                                                         ^
+ *                                                                                ^
  *   one error found
- * }}}
+ * </pre>
  *
  * Ensure there is a `ToTraceValue` for the missing type (in the
  * example above, it would be `X`) in the implicit scope where the
