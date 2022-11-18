@@ -156,7 +156,7 @@ Cats Tagless also defines a typeclass called `Instrument` which transforms an in
 
 (`Instrumentation[F, *]` is a higher kinded type with a single hole—in other words, the same "shape" as `F[_]`. `Instrumentation` itself has two type parameters: `F[_]` and `A`. We can turn it into a higher kinded type with a single hole by filling in one of the two holes. This is also called partial application of the type parameters.)
 
-We could implement an instance of `Instrument` for our `DeepThought` algebra:
+<a name="instrument">We could implement an instance of `Instrument` for our `DeepThought` algebra:</a>
 
 ```scala
 implicit val deepThoughtInstrument: Instrument[DeepThought] = new Instrument[DeepThought] {
@@ -233,13 +233,13 @@ final case class Weave[F[_], Dom[_], Cod[_], A](algebraName: String,
 
 The `domain` value represents the inputs; it is modeled as a list-of-lists since methods can have multiple parameter lists. The `Advice` instances in the list are written in terms of `Eval` to support lazy parameters as well, using `Eval.now` for strict parameters and `Eval.always` for lazy parameters.
 
-The `Dom[_]` type parameter is a typeclass that must exist for every type of input parameter. The specific typeclass is parameterized because what is appropriate will vary depending on how you'll use the woven algebra, but it will typically be something like `cats.Show` to convert things to strings or `io.circe.Encoder` to convert values to JSON.
+The value assigned to the `Dom[_]` type parameter must be a typeclass that has instances for every type of input parameter of the methods of the algebra. The specific typeclass is parameterized because what is appropriate will vary depending on how you'll use the woven algebra, but it will typically be something like `cats.Show` to convert things to strings or `io.circe.Encoder` to convert values to JSON. We will use a typeclass that converts values to a format appropriate for attachment to a span as an attribute.
 
 The `Cod[_]` type parameter is similar to `Dom[_]`, but it must exist for the output type instead of the input types.
 
-This library defines a `ToTraceValue` typeclass which exists to convert things to Natchez's `TraceValue` type. You could also use `cats.Show` for this purpose, but having a separate typeclass specifically for converting to trace attributes lets you customize the behavior for each class. For example, you may want to redact sensitive information, or use a JSON structure that can be parsed by your tracing backend.
+This library defines a `ToTraceValue[_]` typeclass which exists to convert things to Natchez's `TraceValue` type. We define a new typeclass specifically for converting to trace attributes lets you customize the behavior for each class (as compared to something like `cats.Show`, which is a more general-purpose typeclass for converting values to strings). For example, you may want to redact sensitive information, or use a JSON structure that can be parsed by your tracing backend. (If `TraceValue` was a typeclass and fit the "shape" of the `Dom[_]` or `Cod[_]` type parameters, we'd use it directly, but it doesn't fit, so we had to introduce `ToTraceValue[_]` to bridge the two.)
 
-Cats Tagless also defines `Trivial` which is always available but doesn't provide any values, which can be useful if you want to weave capturing only inputs but not outputs (for which you'd fix `Cod[_]` to `Trivial`), or vica-versa.
+Cats Tagless also defines `Trivial[_]`, which is always available, but doesn't provide any values. This is useful if you want to weave capturing only inputs but not outputs (for which you'd fix `Cod[α]` to `Trivial[α]`), or vica-versa.
 
 To use `Weave`, define an implicit `Aspect` instance for each algebra to be woven. Often these can be semi-automatically derived:
 
@@ -269,4 +269,48 @@ Once an `Aspect[DeepThought, ToTraceValue, ToTraceValue]` is available, the `tra
 ```scala
 scala> DeepThought[IO].traceWithInputsAndOutputs
 val res8: DeepThought[[+A]cats.effect.IO[A]] = DeepThought$$anon$1$$anon$3@6ad241cf
+```
+
+The automatic derivation isn't magic—writing out an `Aspect` instance is easy, but tedious, similar to the [`Instrument` example](#instrument) above. Let's define a new trait with methods that have input parameters to demonstrate how it's done:
+
+```scala
+trait Foo[F[_]] {
+  def foo(i: Int, s: => String): F[Boolean]
+}
+
+object Foo {
+  implicit val fooAspect: Aspect[Foo, ToTraceValue, ToTraceValue] = new Aspect[Foo, ToTraceValue, ToTraceValue] {
+    override def weave[F[_]](af: Foo[F]): Foo[Aspect.Weave[F, ToTraceValue, ToTraceValue, *]] =
+      new Foo[Aspect.Weave[F, ToTraceValue, ToTraceValue, *]] {
+        override def foo(i: Int, s: => String): Aspect.Weave[F, ToTraceValue, ToTraceValue, Boolean] =
+          Aspect.Weave(
+            "Foo",                  // the algebra name
+            List(                   // a list of parameter lists
+              List(                 // the first list of parameters
+                Aspect.Advice(
+                  "i",              // the parameter name
+                  Eval.now(i)       // capture the parameter value, eagerly evaluated because i is a by-value parameter
+                ),                  // ToTraceValue[Int] is implicitly passed here
+                Aspect.Advice(
+                  "s",              // the parameter name
+                  Eval.always(s)    // capture the parameter value, lazily evaluated because s is a by-name parameter
+                ),                  // ToTraceValue[String] is implicitly passed here
+              )
+            ),
+            Aspect.Advice(
+              "foo",                // the method name
+              af.foo(i, s)          // call the underlying method
+            )                       // ToTraceValue[Boolean] is implicitly passed here
+          )
+      }
+
+    override def mapK[F[_], G[_]](af: Foo[F])(fk: F ~> G): Foo[G] =
+      new Foo[G] {
+        override def foo(i: Int, s: => String): G[Boolean] = {
+          val value = af.foo(i, s)  // call the underlying method
+          fk(value)                 // convert F[_] to G[_]
+        }
+      }
+  }
+}
 ```
