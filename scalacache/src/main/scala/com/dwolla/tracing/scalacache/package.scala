@@ -11,36 +11,61 @@ import natchez._
 
 import scala.concurrent.duration.Duration
 
+/**
+ * Provides cats-tagless instances for ScalaCache's `Cache` trait.
+ */
 package object scalacache {
+  /**
+   * An `InvariantK[Cache[*[_], K, V]]` instance for arbitrary `K` and
+   * `V` types. This must be `InvariantK` and not e.g. `FunctorK`
+   * because of the `F[V]` parameter on the `cachingF` method.
+   */
   implicit def cacheInvariantK[K, V]: InvariantK[Cache[*[_], K, V]] = Derive.invariantK[Cache[*[_], K, V]]
 
   implicit val flagsEncoder: Codec[Flags] = deriveCodec
 
-  // unfortunately, due to the F[V] parameter in cachingF, this transformation cannot be automatically derived
-  // (see the comment in CacheWeaveFunctionK below)
-  def weaveCache[F[_], K: ToTraceValue, V: ToTraceValue](af: Cache[F, K, V]): Cache[Aspect.Weave[F, ToTraceValue, ToTraceValue, *], K, V] =
-    new Cache[Aspect.Weave[F, ToTraceValue, ToTraceValue, *], K, V] {
-      override def get(key: K)(implicit flags: Flags): Aspect.Weave[F, ToTraceValue, ToTraceValue, Option[V]] =
+  /**
+   * An implementation of `Cache[Aspect.Weave[F, Cod, Dom, *], K, V]`
+   * cannot be auto-derived via `Derive.aspect` because the `cachingF`
+   * method has an `F[V]` parameter. We handle it here by kind of
+   * cheating, and essentially hard-coding a
+   * `F ~> Aspect.Weave[F, Cod, Dom, *]` for it.
+   *
+   * See the comment in `CacheWeaveFunctionK` below.
+   */
+  def weaveCache[F[_], Dom[_], Cod[_], K, V](af: Cache[F, K, V])
+                                            (implicit
+                                             CodK: Cod[K],
+                                             CodV: Cod[V],
+                                             DomV: Dom[V],
+                                             CF: Cod[Flags],
+                                             DOV: Dom[Option[V]],
+                                             COD: Cod[Option[Duration]],
+                                             DU: Dom[Unit],
+                                             CS: Cod[String],
+                                            ): Cache[Aspect.Weave[F, Cod, Dom, *], K, V] =
+    new Cache[Aspect.Weave[F, Cod, Dom, *], K, V] {
+      override def get(key: K)(implicit flags: Flags): Aspect.Weave[F, Cod, Dom, Option[V]] =
         Aspect.Weave("Cache", List(
           List(Aspect.Advice("key", Eval.now(key))),
           List(Aspect.Advice("flags", Eval.now(flags))),
         ), Aspect.Advice("get", af.get(key)))
 
       override def put(key: K)
-                      (value: V, ttl: Option[Duration])(implicit flags: Flags): Aspect.Weave[F, ToTraceValue, ToTraceValue, Unit] =
+                      (value: V, ttl: Option[Duration])(implicit flags: Flags): Aspect.Weave[F, Cod, Dom, Unit] =
         Aspect.Weave("Cache", List(
           List(Aspect.Advice("key", Eval.now(key))),
           List(Aspect.Advice("value", Eval.now(value)), Aspect.Advice("ttl", Eval.now(ttl))),
           List(Aspect.Advice("flags", Eval.now(flags))),
         ), Aspect.Advice("put", af.put(key)(value, ttl)))
 
-      override def remove(key: K): Aspect.Weave[F, ToTraceValue, ToTraceValue, Unit] =
+      override def remove(key: K): Aspect.Weave[F, Cod, Dom, Unit] =
         Aspect.Weave("Cache", List(List(Aspect.Advice("key", Eval.now(key)))), Aspect.Advice("remove", af.remove(key)))
 
-      override def removeAll: Aspect.Weave[F, ToTraceValue, ToTraceValue, Unit] =
+      override def removeAll: Aspect.Weave[F, Cod, Dom, Unit] =
         Aspect.Weave("Cache", List.empty, Aspect.Advice("removeAll", af.removeAll))
 
-      override def caching(key: K)(ttl: Option[Duration])(f: => V)(implicit flags: Flags): Aspect.Weave[F, ToTraceValue, ToTraceValue, V] =
+      override def caching(key: K)(ttl: Option[Duration])(f: => V)(implicit flags: Flags): Aspect.Weave[F, Cod, Dom, V] =
         Aspect.Weave("Cache", List(
           List(Aspect.Advice("key", Eval.now(key))),
           List(Aspect.Advice("ttl", Eval.now(ttl))),
@@ -48,7 +73,7 @@ package object scalacache {
           List(Aspect.Advice("flags", Eval.now(flags))),
         ), Aspect.Advice("caching", af.caching(key)(ttl)(f)))
 
-      override def cachingF(key: K)(ttl: Option[Duration])(f: Aspect.Weave[F, ToTraceValue, ToTraceValue, V])(implicit flags: Flags): Aspect.Weave[F, ToTraceValue, ToTraceValue, V] =
+      override def cachingF(key: K)(ttl: Option[Duration])(f: Aspect.Weave[F, Cod, Dom, V])(implicit flags: Flags): Aspect.Weave[F, Cod, Dom, V] =
         Aspect.Weave("Cache", List(
           List(Aspect.Advice("key", Eval.now(key))),
           List(Aspect.Advice("ttl", Eval.now(ttl))),
@@ -56,7 +81,7 @@ package object scalacache {
           List(Aspect.Advice("flags", Eval.now(flags))),
         ), Aspect.Advice("cachingF", af.cachingF(key)(ttl)(f.codomain.target)))
 
-      override def close: Aspect.Weave[F, ToTraceValue, ToTraceValue, Unit] =
+      override def close: Aspect.Weave[F, Cod, Dom, Unit] =
         Aspect.Weave("Cache", List.empty, Aspect.Advice("close", af.close))
     }
 
@@ -65,7 +90,16 @@ package object scalacache {
 
 package scalacache {
   class CacheOps[F[_], K, V](val cache: Cache[F, K, V]) extends AnyVal {
-    def weave(implicit K: ToTraceValue[K], V: ToTraceValue[V]): Cache[Aspect.Weave[F, ToTraceValue, ToTraceValue, *], K, V] =
+    def weave[Dom[_], Cod[_]](implicit
+                              CodK: Cod[K],
+                              CodV: Cod[V],
+                              DomV: Dom[V],
+                              CF: Cod[Flags],
+                              DOV: Dom[Option[V]],
+                              COD: Cod[Option[Duration]],
+                              DU: Dom[Unit],
+                              CS: Cod[String],
+                             ): Cache[Aspect.Weave[F, Cod, Dom, *], K, V] =
       weaveCache(cache)
 
     def weaveTracing(implicit F: FlatMap[F], T: Trace[F], K: ToTraceValue[K], V: ToTraceValue[V]): Cache[F, K, V] =
