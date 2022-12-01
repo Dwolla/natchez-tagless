@@ -65,11 +65,12 @@ package object scalacache {
       override def removeAll: Aspect.Weave[F, Dom, Cod, Unit] =
         Aspect.Weave("Cache", List.empty, Aspect.Advice("removeAll", af.removeAll))
 
+      @deprecated("prefer cachingF", "0.2")
       override def caching(key: K)(ttl: Option[Duration])(f: => V)(implicit flags: Flags): Aspect.Weave[F, Dom, Cod, V] =
         Aspect.Weave("Cache", List(
           List(Aspect.Advice("key", Eval.now(key))),
           List(Aspect.Advice("ttl", Eval.now(ttl))),
-          List(Aspect.Advice("f", Eval.always(f))),
+          List(Aspect.Advice("f", Eval.now("as-yet unevaluated lazy V"))),
           List(Aspect.Advice("flags", Eval.now(flags))),
         ), Aspect.Advice("caching", af.caching(key)(ttl)(f)))
 
@@ -77,7 +78,7 @@ package object scalacache {
         Aspect.Weave("Cache", List(
           List(Aspect.Advice("key", Eval.now(key))),
           List(Aspect.Advice("ttl", Eval.now(ttl))),
-          List(Aspect.Advice("f", Eval.now("unevaluated F[V]"))),
+          List(Aspect.Advice("f", Eval.now("as-yet unevaluated F[V]"))),
           List(Aspect.Advice("flags", Eval.now(flags))),
         ), Aspect.Advice("cachingF", af.cachingF(key)(ttl)(f.codomain.target)))
 
