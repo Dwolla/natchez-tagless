@@ -6,6 +6,7 @@ import cats.tagless._
 import cats.tagless.aop._
 import com.dwolla.tracing._
 import io.circe.Codec
+import io.circe.syntax._
 import io.circe.generic.semiauto._
 import natchez._
 
@@ -23,6 +24,8 @@ package object scalacache {
   implicit def cacheInvariantK[K, V]: InvariantK[Cache[*[_], K, V]] = Derive.invariantK[Cache[*[_], K, V]]
 
   implicit val flagsEncoder: Codec[Flags] = deriveCodec
+
+  implicit val flagsTraceableValue: TraceableValue[Flags] = _.asJson.noSpaces
 
   /**
    * An implementation of `Cache[Aspect.Weave[F, Cod, Dom, *], K, V]`
@@ -86,6 +89,17 @@ package object scalacache {
     }
 
   implicit def toCacheOps[F[_], K, V](cache: Cache[F, K, V]): CacheOps[F, K, V] = new CacheOps(cache)
+
+  private[scalacache] implicit def optionTraceableValue[V : TraceableValue]: TraceableValue[Option[V]] = {
+    case Some(v) => v
+    case None => "None"
+  }
+
+  private[scalacache] implicit val durationTraceableValue: TraceableValue[Duration] =
+    TraceableValue[String].contramap(_.toString)
+
+  private[scalacache] implicit val unitTraceableValue: TraceableValue[Unit] =
+    TraceableValue[String].contramap(_ => "()")
 }
 
 package scalacache {
@@ -102,13 +116,13 @@ package scalacache {
                              ): Cache[Aspect.Weave[F, Cod, Dom, *], K, V] =
       weaveCache(cache)
 
-    def weaveTracing(implicit F: FlatMap[F], T: Trace[F], K: ToTraceValue[K], V: ToTraceValue[V]): Cache[F, K, V] =
+    def weaveTracing(implicit F: FlatMap[F], T: Trace[F], K: TraceableValue[K], V: TraceableValue[V]): Cache[F, K, V] =
       InvariantK[Cache[*[_], K, V]].imapK(cache.weave)(new TraceWeaveCapturingInputsAndOutputs)(new CacheWeaveFunctionK[F])
   }
 
-  private class CacheWeaveFunctionK[F[_]] extends (F ~> Aspect.Weave[F, ToTraceValue, ToTraceValue, *]) {
-    override def apply[A](fa: F[A]): Aspect.Weave[F, ToTraceValue, ToTraceValue, A] = {
-      implicit val faToTraceValue: ToTraceValue[A] = _ => "unevaluated F[A] effect"
+  private class CacheWeaveFunctionK[F[_]] extends (F ~> Aspect.Weave[F, TraceableValue, TraceableValue, *]) {
+    override def apply[A](fa: F[A]): Aspect.Weave[F, TraceableValue, TraceableValue, A] = {
+      implicit val faTraceableValue: TraceableValue[A] = _ => "unevaluated F[A] effect"
 
       // This seems like it's kind of cheating; it takes advantage of the fact that F[_]
       // only appears in a contravariant position in the cachingF method. We don't capture

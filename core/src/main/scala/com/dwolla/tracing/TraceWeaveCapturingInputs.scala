@@ -4,10 +4,10 @@ import cats._
 import cats.syntax.all._
 import cats.tagless.aop.Aspect.Weave
 import com.dwolla.tracing.syntax._
-import natchez.Trace
+import natchez.{Trace, TraceableValue}
 
 object TraceWeaveCapturingInputs {
-  def apply[F[_] : Apply : Trace, Cod[_]]: Weave[F, ToTraceValue, Cod, *] ~> F =
+  def apply[F[_] : Apply : Trace, Cod[_]]: Weave[F, TraceableValue, Cod, *] ~> F =
     new TraceWeaveCapturingInputs[F, Cod]
 }
 
@@ -96,8 +96,8 @@ object TraceWeaveCapturingInputs {
  * `Aspect` is being derived, and then try again. You may have to
  * iterate several times before all the necessary types are defined.
  */
-class TraceWeaveCapturingInputs[F[_] : Apply : Trace, Cod[_]] extends (Weave[F, ToTraceValue, Cod, *] ~> F) {
-  override def apply[A](fa: Weave[F, ToTraceValue, Cod, A]): F[A] =
+class TraceWeaveCapturingInputs[F[_] : Apply : Trace, Cod[_]] extends (Weave[F, TraceableValue, Cod, *] ~> F) {
+  override def apply[A](fa: Weave[F, TraceableValue, Cod, A]): F[A] =
     Trace[F].span(s"${fa.algebraName}.${fa.codomain.name}") {
       Trace[F].put(fa.asTraceParams: _*) *> fa.codomain.target
     }

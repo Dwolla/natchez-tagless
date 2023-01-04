@@ -3,14 +3,14 @@ package syntax
 
 import cats.effect.{Trace => _}
 import cats.tagless.aop.Aspect.Weave
-import natchez.TraceValue
+import natchez.{TraceValue, TraceableValue}
 
 trait ToTraceParamsOps {
-  implicit def toTraceParamsOps[F[_], Cod[_], A](fa: Weave[F, ToTraceValue, Cod, A]): TraceParamsOps[F, Cod, A] =
+  implicit def toTraceParamsOps[F[_], Cod[_], A](fa: Weave[F, TraceableValue, Cod, A]): TraceParamsOps[F, Cod, A] =
     new TraceParamsOps(fa)
 }
 
-class TraceParamsOps[F[_], Cod[_], A](val fa: Weave[F, ToTraceValue, Cod, A]) extends AnyVal {
+class TraceParamsOps[F[_], Cod[_], A](val fa: Weave[F, TraceableValue, Cod, A]) extends AnyVal {
   def asTraceParams: List[(String, TraceValue)] =
     fa.domain.flatMap { l =>
       l.map { advice =>
