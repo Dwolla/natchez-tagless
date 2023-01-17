@@ -8,6 +8,7 @@ import com.dwolla.tracing._
 import io.circe.Codec
 import io.circe.generic.semiauto._
 import natchez._
+import LowPriorityTraceableValueInstances._
 
 import scala.concurrent.duration.Duration
 
@@ -103,13 +104,13 @@ package scalacache {
                              ): Cache[Aspect.Weave[F, Dom, Cod, *], K, V] =
       weaveCache(cache)
 
-    def weaveTracing(implicit F: FlatMap[F], T: Trace[F], K: ToTraceValue[K], V: ToTraceValue[V]): Cache[F, K, V] =
+    def weaveTracing(implicit F: FlatMap[F], T: Trace[F], K: TraceableValue[K], V: TraceableValue[V]): Cache[F, K, V] =
       InvariantK[Cache[*[_], K, V]].imapK(cache.weave)(new TraceWeaveCapturingInputsAndOutputs)(new CacheWeaveFunctionK[F])
   }
 
-  private class CacheWeaveFunctionK[F[_]] extends (F ~> Aspect.Weave[F, ToTraceValue, ToTraceValue, *]) {
-    override def apply[A](fa: F[A]): Aspect.Weave[F, ToTraceValue, ToTraceValue, A] = {
-      implicit val faToTraceValue: ToTraceValue[A] = _ => "unevaluated F[A] effect"
+  private class CacheWeaveFunctionK[F[_]] extends (F ~> Aspect.Weave[F, TraceableValue, TraceableValue, *]) {
+    override def apply[A](fa: F[A]): Aspect.Weave[F, TraceableValue, TraceableValue, A] = {
+      implicit val faTraceableValue: TraceableValue[A] = _ => "unevaluated F[A] effect"
 
       // This seems like it's kind of cheating; it takes advantage of the fact that F[_]
       // only appears in a contravariant position in the cachingF method. We don't capture
