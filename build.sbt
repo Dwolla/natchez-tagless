@@ -21,6 +21,7 @@ ThisBuild / mergifyStewardConfig ~= { _.map(_.copy(
   author = "dwolla-oss-scala-steward[bot]",
   mergeMinors = true,
 ))}
+ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
 
 lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
   core,
@@ -39,15 +40,26 @@ lazy val doctestSettings: Seq[Def.Setting[_]] = Seq(
 )
 
 lazy val core = crossProject(JVMPlatform, JSPlatform)
-  .crossType(CrossType.Pure)
+  .crossType(CrossType.Full)
   .in(file("core"))
   .settings(
     name := "natchez-tagless",
     libraryDependencies ++= Seq(
       "org.tpolecat" %%% "natchez-core" % "0.3.0",
+      "org.tpolecat" %%% "natchez-mtl" % "0.3.0",
+      "org.tpolecat" %%% "natchez-testkit" % "0.3.0-19-fa6154a-SNAPSHOT" % Test,
       "org.typelevel" %%% "cats-tagless-core" % "0.14.0",
+      "org.typelevel" %%% "cats-mtl" % "1.3.0",
       "io.circe" %%% "circe-core" % "0.14.3",
       "org.typelevel" %%% "cats-tagless-macros" % "0.14.0" % Test,
+      "org.typelevel" %% "munit-cats-effect" % "2.0.0-M3" % Test,
+      "org.typelevel" %% "scalacheck-effect" % "2.0.0-M2" % Test,
+      "org.typelevel" %% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
+    ),
+  )
+  .jvmSettings(
+    libraryDependencies ++= Seq(
+      "com.dwolla" %% "dwolla-otel-natchez" % "0.2.0-2-9808d74-SNAPSHOT" % Test,
     ),
   )
   .settings(doctestSettings: _*)

@@ -6,3 +6,4 @@ package object syntax
     with ToInstrumentableAndTraceableInKleisliOps
     with ToInstrumentableAndTraceableOps
     with ToTraceParamsOps
+    with ToEntryPointRootScopeOps
