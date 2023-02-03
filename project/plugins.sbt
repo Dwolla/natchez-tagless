@@ -1,4 +1,4 @@
-addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.12.0")
+addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.13.0")
 addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject" % "1.2.0")
 addSbtPlugin("org.typelevel" % "sbt-typelevel-ci-release" % "0.4.18")
 addSbtPlugin("org.typelevel" % "sbt-typelevel-settings" % "0.4.18")
