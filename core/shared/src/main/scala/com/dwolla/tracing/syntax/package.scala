@@ -7,3 +7,4 @@ package object syntax
     with ToInstrumentableAndTraceableOps
     with ToTraceParamsOps
     with ToEntryPointRootScopeOps
+    with ToTraceResourceLifecycleOps
