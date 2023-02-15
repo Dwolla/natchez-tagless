@@ -45,9 +45,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "natchez-tagless",
     libraryDependencies ++= Seq(
-      "org.tpolecat" %%% "natchez-core" % "0.3.0",
-      "org.tpolecat" %%% "natchez-mtl" % "0.3.0",
-      "org.tpolecat" %%% "natchez-testkit" % "0.3.0-19-fa6154a-SNAPSHOT" % Test,
+      "org.tpolecat" %%% "natchez-core" % "0.3.1",
+      "org.tpolecat" %%% "natchez-mtl" % "0.3.1",
+      "org.tpolecat" %%% "natchez-testkit" % "0.3.1" % Test,
       "org.typelevel" %%% "cats-tagless-core" % "0.14.0",
       "org.typelevel" %%% "cats-mtl" % "1.3.0",
       "io.circe" %%% "circe-core" % "0.14.4",
