@@ -8,6 +8,7 @@ import cats.effect.{IO, Resource, Trace => _, _}
 import cats.syntax.all._
 import com.dwolla.tracing.instances._
 import natchez.{EntryPoint, Span, Trace}
+import natchez.mtl.localSpanForKleisli
 
 object TraceInitializationExample extends IOApp.Simple {
   private def entryPoint[F[_] : Sync : Env]: Resource[F, EntryPoint[F]] =
