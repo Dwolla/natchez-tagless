@@ -10,7 +10,7 @@ ThisBuild / developers := List(
 )
 ThisBuild / tlSonatypeUseLegacyHost := true
 
-val Scala213 = "2.13.10"
+val Scala213 = "2.13.11"
 ThisBuild / crossScalaVersions := Seq(Scala213, "2.12.17")
 ThisBuild / scalaVersion := Scala213 // the default Scala
 ThisBuild / githubWorkflowScalaVersions := Seq("2.13", "2.12")
@@ -45,9 +45,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "natchez-tagless",
     libraryDependencies ++= Seq(
-      "org.tpolecat" %%% "natchez-core" % "0.3.1",
-      "org.tpolecat" %%% "natchez-mtl" % "0.3.1",
-      "org.tpolecat" %%% "natchez-testkit" % "0.3.1" % Test,
+      "org.tpolecat" %%% "natchez-core" % "0.3.2",
+      "org.tpolecat" %%% "natchez-mtl" % "0.3.2",
+      "org.tpolecat" %%% "natchez-testkit" % "0.3.2" % Test,
       "org.typelevel" %%% "cats-tagless-core" % "0.14.0",
       "org.typelevel" %%% "cats-mtl" % "1.3.1",
       "io.circe" %%% "circe-core" % "0.14.5",
