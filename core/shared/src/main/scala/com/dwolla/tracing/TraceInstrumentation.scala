@@ -19,14 +19,28 @@ object TraceInstrumentation {
  * using `Instrument[Alg].instrument`:
  *
  * {{{
- *   import cats.effect._, cats.tagless._, cats.tagless.aop._, cats.tagless.syntax.all._
+ *   import cats.effect._, cats.tagless.aop._, cats.tagless.syntax.all._, cats._
  *
  *   trait Foo[F[_]] {
  *     def foo: F[Unit]
  *   }
  *
  *   object Foo {
- *     implicit val fooInstrument: Instrument[Foo] = Derive.instrument
+ *     implicit val fooInstrument: Instrument[Foo] = { // Derive.instrument
+ *       // TODO reintroduce derived instance when cats-tagless-macros supports Scala 3
+ *       new Instrument[Foo] {
+ *         override def instrument[F[_]](af: Foo[F]): Foo[Instrumentation[F, *]] =
+ *           new Foo[Instrumentation[F, *]] {
+ *             override def foo: Instrumentation[F, Unit] =
+ *               Instrumentation(af.foo, "Foo", "foo")
+ *           }
+ *
+ *         override def mapK[F[_], G[_]](af: Foo[F])(fk: F ~> G): Foo[G] =
+ *           new Foo[G] {
+ *             override def foo: G[Unit] = fk(af.foo)
+ *           }
+ *       }
+ *     }
  *   }
  *
  *   def myFoo: Foo[IO] = new Foo[IO] {

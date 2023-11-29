@@ -55,7 +55,7 @@ object TraceWeaveCapturingInputsAndOutputs {
  * using `Aspect[Alg, TraceableValue, TraceableValue].weave`:
  *
  * {{{
- *   import cats.effect._, cats.tagless._, cats.tagless.aop._, cats.tagless.syntax.all._
+ *   import cats.effect._, cats.tagless.aop._, cats.tagless.syntax.all._, cats._
  *
  *   trait Foo[F[_]] {
  *     def foo(i: Int): F[Unit]
@@ -63,7 +63,25 @@ object TraceWeaveCapturingInputsAndOutputs {
  *
  *   object Foo {
  *     import LowPriorityTraceableValueInstances._
- *     implicit val fooTracingAspect: Aspect[Foo, TraceableValue, TraceableValue] = Derive.aspect
+ *     implicit val fooTracingAspect: Aspect[Foo, TraceableValue, TraceableValue] = { // Derive.aspect
+ *       // TODO reintroduce derived instance when cats-tagless-macros supports Scala 3
+ *       new Aspect[Foo, TraceableValue, TraceableValue] {
+ *         override def weave[F[_]](af: Foo[F]): Foo[Aspect.Weave[F, TraceableValue, TraceableValue, *]] =
+ *           new Foo[Aspect.Weave[F, TraceableValue, TraceableValue, *]] {
+ *             override def foo(i: Int): Aspect.Weave[F, TraceableValue, TraceableValue, Unit] =
+ *               Aspect.Weave[F, TraceableValue, TraceableValue, Unit](
+ *                 "Foo",
+ *                 List(List(Aspect.Advice.byValue[TraceableValue, Int]("i", i))),
+ *                 Aspect.Advice[F, TraceableValue, Unit]("foo", af.foo(i))
+ *               )
+ *           }
+ *
+ *         override def mapK[F[_], G[_]](af: Foo[F])(fk: F ~> G): Foo[G] =
+ *           new Foo[G] {
+ *             override def foo(i: Int): G[Unit] = fk(af.foo(i))
+ *           }
+ *       }
+ *     }
  *   }
  *
  *   def myFoo: Foo[IO] = new Foo[IO] {
