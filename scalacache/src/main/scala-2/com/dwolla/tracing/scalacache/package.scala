@@ -1,14 +1,14 @@
 package com.dwolla.tagless
 
-import _root_.scalacache._
-import cats._
-import cats.tagless._
-import cats.tagless.aop._
-import com.dwolla.tracing._
+import _root_.scalacache.*
+import cats.*
+import cats.tagless.*
+import cats.tagless.aop.*
+import com.dwolla.tracing.*
 import io.circe.Codec
-import io.circe.generic.semiauto._
-import natchez._
-import LowPriorityTraceableValueInstances._
+import io.circe.generic.semiauto.*
+import natchez.*
+import LowPriorityTraceableValueInstances.*
 
 import scala.concurrent.duration.Duration
 
@@ -21,34 +21,7 @@ package object scalacache {
    * `V` types. This must be `InvariantK` and not e.g. `FunctorK`
    * because of the `F[V]` parameter on the `cachingF` method.
    */
-  implicit def cacheInvariantK[K, V]: InvariantK[Cache[*[_], K, V]] =
-    new InvariantK[Cache[*[_], K, V]] {
-      override def imapK[F[_], G[_]](af: Cache[F, K, V])
-                                    (fk: F ~> G)
-                                    (gk: G ~> F): Cache[G, K, V] =
-        new Cache[G, K, V] {
-          override def get(key: K)(implicit flags: Flags): G[Option[V]] =
-            fk(af.get(key))
-
-          override def put(key: K)(value: V, ttl: Option[Duration])(implicit flags: Flags): G[Unit] =
-            fk(af.put(key)(value, ttl))
-
-          override def remove(key: K): G[Unit] =
-            fk(af.remove(key))
-
-          override def removeAll: G[Unit] =
-            fk(af.removeAll)
-
-          override def caching(key: K)(ttl: Option[Duration])(f: => V)(implicit flags: Flags): G[V] =
-            fk(af.caching(key)(ttl)(f))
-
-          override def cachingF(key: K)(ttl: Option[Duration])(f: G[V])(implicit flags: Flags): G[V] =
-            fk(af.cachingF(key)(ttl)(gk(f)))
-
-          override def close: G[Unit] =
-            fk(af.close)
-        }
-    }
+  implicit def cacheInvariantK[K, V]: InvariantK[Cache[*[_], K, V]] = Derive.invariantK
 
   implicit val flagsEncoder: Codec[Flags] = deriveCodec
 

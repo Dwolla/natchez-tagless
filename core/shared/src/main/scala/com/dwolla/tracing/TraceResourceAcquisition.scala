@@ -88,15 +88,13 @@ object TraceResourceAcquisition {
         .runInRoot(name, options) {
           resource
             .allocated
-            .nested
-            .map { fa =>
-              entryPoint
+            .map { case (a, finalizer) =>
+              a -> entryPoint
                 .root(s"$name.finalize")
                 .use {
-                  Local[F, Span[F]].scope(fa)
+                  Local[F, Span[F]].scope(finalizer)
                 }
             }
-            .value
         }
     }
 }

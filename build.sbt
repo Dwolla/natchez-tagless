@@ -1,5 +1,4 @@
-// https://typelevel.org/sbt-typelevel/faq.html#what-is-a-base-version-anyway
-ThisBuild / tlBaseVersion := "0.2" // your current series x.y
+ThisBuild / tlBaseVersion := "0.2"
 
 ThisBuild / organization := "com.dwolla"
 ThisBuild / organizationName := "Dwolla"
@@ -11,9 +10,10 @@ ThisBuild / developers := List(
 ThisBuild / tlSonatypeUseLegacyHost := true
 
 val Scala213 = "2.13.12"
-ThisBuild / crossScalaVersions := Seq(Scala213, "2.12.18")
+ThisBuild / crossScalaVersions := Seq(Scala213, "2.12.18", "3.3.1")
 ThisBuild / scalaVersion := Scala213 // the default Scala
-ThisBuild / githubWorkflowScalaVersions := Seq("2.13", "2.12")
+ThisBuild / githubWorkflowScalaVersions := Seq("2.13", "2.12", "3")
+ThisBuild / tlVersionIntroduced := Map("3" -> "0.2.4")
 ThisBuild / tlJdkRelease := Some(8)
 ThisBuild / libraryDependencySchemes += "io.circe" %% "circe-core" % "always"
 ThisBuild / tlCiReleaseBranches := Seq("main")
@@ -28,7 +28,7 @@ lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
   scalacache,
 )
 
-lazy val doctestSettings: Seq[Def.Setting[_]] = Seq(
+lazy val doctestSettings: Seq[Def.Setting[?]] = Seq(
   libraryDependencies ++= Seq(
     "org.scalacheck" %%% "scalacheck" % "1.17.0" % Test,
     "io.monix" %%% "newtypes-core" % "0.2.3" % Test,
@@ -58,10 +58,10 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   )
   .jvmSettings(
     libraryDependencies ++= Seq(
-      "com.dwolla" %% "dwolla-otel-natchez" % "0.2.1" % Test,
+      "com.dwolla" %% "dwolla-otel-natchez" % "0.2.2" % Test,
     ),
   )
-  .settings(doctestSettings: _*)
+  .settings(doctestSettings *)
 
 lazy val scalacache = crossProject(JVMPlatform)
   .crossType(CrossType.Pure)
@@ -72,6 +72,10 @@ lazy val scalacache = crossProject(JVMPlatform)
       "com.github.cb372" %%% "scalacache-core" % "1.0.0-M6",
       "io.circe" %%% "circe-generic" % "0.14.6",
     ),
+    libraryDependencies ++= {
+      if (scalaBinaryVersion.value.startsWith("2")) Seq("org.typelevel" %%% "cats-tagless-macros" % "0.15.0")
+      else Seq.empty
+    },
   )
-  .settings(doctestSettings: _*)
+  .settings(doctestSettings *)
   .dependsOn(core)

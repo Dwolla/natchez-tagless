@@ -1,13 +1,13 @@
 package com.dwolla.tracing
 
-import cats._
-import cats.data._
-import cats.effect.{IO, MonadCancelThrow, Trace => _, _}
+import cats.*
+import cats.data.*
+import cats.effect.{IO, MonadCancelThrow, Trace as _, *}
 import cats.mtl.Local
-import cats.syntax.all._
+import cats.syntax.all.*
 import munit.CatsEffectSuite
 import natchez.InMemory.{Lineage, NatchezCommand}
-import natchez._
+import natchez.*
 
 trait InMemorySuite extends CatsEffectSuite {
   trait TraceTest {
@@ -23,7 +23,7 @@ trait InMemorySuite extends CatsEffectSuite {
     test(s"$name - IOLocal")(testTraceIoLocal(implicit L => tt.program[IO], tt.expectedHistory))
   }
 
-  implicit def localSpan[F[_]](implicit F: MonadCancel[F, _]): Local[Kleisli[F, Span[F], *], Span[Kleisli[F, Span[F], *]]] =
+  implicit def localSpan[F[_]](implicit F: MonadCancel[F, ?]): Local[Kleisli[F, Span[F], *], Span[Kleisli[F, Span[F], *]]] =
     new Local[Kleisli[F, Span[F], *], Span[Kleisli[F, Span[F], *]]] {
       override def local[A](fa: Kleisli[F, Span[F], A])
                            (f: Span[Kleisli[F, Span[F], *]] => Span[Kleisli[F, Span[F], *]]): Kleisli[F, Span[F], A] =
@@ -42,7 +42,7 @@ trait InMemorySuite extends CatsEffectSuite {
   def testTraceKleisli[F[_] : Async](traceProgram: EntryPoint[Kleisli[F, Span[F], *]] => Kleisli[F, Span[F], Unit],
                                      expectedHistory: List[(Lineage, NatchezCommand)]
                                     ): Kleisli[F, Span[F], Unit] =
-    testTrace[Kleisli[F, Span[F], *]](
+    testTrace(
       traceProgram,
       expectedHistory
     )
@@ -54,12 +54,12 @@ trait InMemorySuite extends CatsEffectSuite {
       .map(localViaIoLocal(_))
       .map(traceProgram)
       .flatMap {
-        testTrace[IO](_, expectedHistory)
+        testTrace(_, expectedHistory)
       }
 
-  def testTrace[F[_] : Concurrent](traceProgram: EntryPoint[F] => F[_],
-                                   expectedHistory: List[(Lineage, NatchezCommand)]
-                                  ): F[Unit] =
+  def testTrace[F[_] : Concurrent, A](traceProgram: EntryPoint[F] => F[A],
+                                      expectedHistory: List[(Lineage, NatchezCommand)]
+                                     ): F[Unit] =
     InMemory.EntryPoint.create[F].flatMap { ep =>
       traceProgram(ep) *> ep.ref.get.map(_.toList).map {
         assertEquals(_, expectedHistory)

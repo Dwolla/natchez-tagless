@@ -32,9 +32,9 @@ class TraceResourceLifecycleOps[F[_], A](val resource: Resource[F, A]) extends A
     Resource {
       Trace[F].spanR(name)
         .use(_(resource.allocated))
-        .nested
-        .map(f => Trace[F].spanR(s"$name.finalize").use(_(f)))
-        .value
+        .map { case (a, finalizer) =>
+          a -> Trace[F].spanR(s"$name.finalize").use(_(finalizer))
+        }
     }
 
   /**
