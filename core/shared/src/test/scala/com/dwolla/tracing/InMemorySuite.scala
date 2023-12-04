@@ -23,6 +23,13 @@ trait InMemorySuite extends CatsEffectSuite {
     test(s"$name - IOLocal")(testTraceIoLocal(implicit L => tt.program[IO], tt.expectedHistory))
   }
 
+  def testWithLocalSpan[A](name: String)(body: Local[IO, Span[IO]] => IO[A]): Unit =
+    test(name) {
+      IOLocal(Span.noop[IO])
+        .map(localViaIoLocal(_))
+        .flatMap(body)
+    }
+
   implicit def localSpan[F[_]](implicit F: MonadCancel[F, ?]): Local[Kleisli[F, Span[F], *], Span[Kleisli[F, Span[F], *]]] =
     new Local[Kleisli[F, Span[F], *], Span[Kleisli[F, Span[F], *]]] {
       override def local[A](fa: Kleisli[F, Span[F], A])
@@ -67,7 +74,7 @@ trait InMemorySuite extends CatsEffectSuite {
     }
 
   // from https://github.com/armanbilge/oxidized/blob/412be9cd0a60b901fd5f9157ea48bda8632c5527/core/src/main/scala/oxidized/instances/io.scala#L34-L43
-  private def localViaIoLocal[E](implicit ioLocal: IOLocal[E]): Local[IO, E] =
+  protected def localViaIoLocal[E](implicit ioLocal: IOLocal[E]): Local[IO, E] =
     new Local[IO, E] {
       override def local[A](fa: IO[A])(f: E => E): IO[A] =
         ioLocal.get.flatMap { initial =>

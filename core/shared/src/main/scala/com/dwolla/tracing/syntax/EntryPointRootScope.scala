@@ -1,8 +1,10 @@
 package com.dwolla.tracing.syntax
 
-import cats.effect.MonadCancelThrow
-import cats.mtl._
-import natchez._
+import cats.effect.kernel.Poll
+import cats.syntax.all.*
+import cats.effect.{MonadCancelThrow, Resource}
+import cats.mtl.*
+import natchez.*
 
 trait ToEntryPointRootScopeOps {
   implicit def toEntryPointRootScopeOps[F[_]](entryPoint: EntryPoint[F]): EntryPointRootScopeOps[F] =
@@ -19,10 +21,9 @@ class EntryPointRootScopeOps[F[_]](val entryPoint: EntryPoint[F]) extends AnyVal
   def runInRoot[A](name: String, options: Span.Options)
                   (fa: F[A])
                   (implicit F: MonadCancelThrow[F],
-                   L: Local[F, Span[F]]): F[A] =
-    entryPoint
-      .root(name, options)
-      .use(Local[F, Span[F]].scope(fa))
+                   L: Local[F, Span[F]],
+                  ): F[A] =
+    safeSpan(fa)(_.root(name, options))
 
   def runInContinuation[A](name: String, kernel: Kernel)
                           (fa: F[A])
@@ -34,9 +35,7 @@ class EntryPointRootScopeOps[F[_]](val entryPoint: EntryPoint[F]) extends AnyVal
                           (fa: F[A])
                           (implicit F: MonadCancelThrow[F],
                            L: Local[F, Span[F]]): F[A] =
-    entryPoint
-      .continue(name, kernel, options)
-      .use(Local[F, Span[F]].scope(fa))
+    safeSpan(fa)(_.continue(name, kernel, options))
 
   def runInContinuationOrElseRoot[A](name: String, kernel: Kernel)
                            (fa: F[A])
@@ -45,10 +44,24 @@ class EntryPointRootScopeOps[F[_]](val entryPoint: EntryPoint[F]) extends AnyVal
     runInContinuationOrElseRoot(name, kernel, Span.Options.Defaults)(fa)
 
   def runInContinuationOrElseRoot[A](name: String, kernel: Kernel, options: Span.Options)
-                           (fa: F[A])
-                           (implicit F: MonadCancelThrow[F],
-                            L: Local[F, Span[F]]): F[A] =
-    entryPoint
-      .continueOrElseRoot(name, kernel, options)
+                                    (fa: F[A])
+                                    (implicit F: MonadCancelThrow[F],
+                                     L: Local[F, Span[F]]): F[A] =
+    safeSpan(fa)(_.continueOrElseRoot(name, kernel, options))
+
+  private def safeSpan[A](fa: F[A])
+                         (f: EntryPoint[F] => Resource[F, Span[F]])
+                         (implicit F: MonadCancelThrow[F],
+                          L: Local[F, Span[F]]): F[A] =
+    Resource.applyFull { (poll: Poll[F]) =>
+      poll {
+        f(entryPoint)
+          .handleError(_ => Span.noop[F])
+          .allocatedCase
+      }.map {
+        case (a, release) =>
+          (a, release.andThen(_.handleError(_ => ())))
+      }
+    }
       .use(Local[F, Span[F]].scope(fa))
 }
