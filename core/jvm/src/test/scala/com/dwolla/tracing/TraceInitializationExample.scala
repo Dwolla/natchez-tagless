@@ -1,16 +1,20 @@
 package com.dwolla.tracing
 
-import cats._
-import cats.data._
-import cats.effect.std._
-import cats.effect.syntax.all._
-import cats.effect.{IO, Resource, Trace => _, _}
-import cats.syntax.all._
-import com.dwolla.tracing.instances._
+import cats.*
+import cats.data.*
+import cats.effect.std.*
+import cats.effect.syntax.all.*
+import cats.effect.{IO, Resource, Trace as _, *}
+import cats.syntax.all.*
+import com.dwolla.tracing.instances.*
 import natchez.{EntryPoint, Span, Trace}
 import natchez.mtl.localSpanForKleisli
+import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.noop.NoOpLogger
 
 object TraceInitializationExample extends IOApp.Simple {
+  private implicit def logger[F[_] : Applicative]: Logger[F] = NoOpLogger[F]
+
   private def entryPoint[F[_] : Sync : Env]: Resource[F, EntryPoint[F]] =
     OpenTelemetryAtDwolla[F]("TraceInitializationSpec", DwollaEnvironment.Local)
 

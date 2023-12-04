@@ -2,9 +2,10 @@ package com.dwolla.tracing.syntax
 
 import cats.effect.{MonadCancelThrow, Resource}
 import cats.mtl.Local
-import cats.syntax.all._
+import cats.syntax.all.*
 import com.dwolla.tracing.TraceResourceAcquisition
 import natchez.{EntryPoint, Span, Trace}
+import org.typelevel.log4cats.noop.NoOpLogger
 
 trait ToTraceResourceLifecycleOps {
   implicit def toTraceResourceLifecycleOps[F[_], A](resource: Resource[F, A]): TraceResourceLifecycleOps[F, A] =
@@ -42,10 +43,15 @@ class TraceResourceLifecycleOps[F[_], A](val resource: Resource[F, A]) extends A
    * and finalization phases of the passed `Resource[F, A]` are traced in
    * separate root spans.
    *
+   * Unfortunately on Scala 2.12, because of the way extention methods are
+   * encoded, it is not possible to add an implicit Logger[F] to warn if
+   * errors occurred when tracing.
+   *
    * @param name       the base of the span name to use for acquisition (the finalization span will append ".finalize" to this value to form its span name)
    * @param entryPoint an `EntryPoint[F]` capable of creating new root spans
    * @param F          a `MonadCancelThrow[F]` instance for the given effect type
-   * @param L          a `Local[F, Span[F]]` instance for the given effect type
+   * @param L1         an implicit `Local[F, Span[F]]` instance for the given effect type
+   * @param L2         an implicit `Logger[F]` instance for the given effect type
    * @return the input `Resource[F, A]` with its acquisition and release phases wrapped in Natchez root spans
    */
   def traceResourceLifecycleInRootSpans(name: String,
@@ -53,5 +59,5 @@ class TraceResourceLifecycleOps[F[_], A](val resource: Resource[F, A]) extends A
                                        (implicit
                                         F: MonadCancelThrow[F],
                                         L: Local[F, Span[F]]): Resource[F, A] =
-    TraceResourceAcquisition(entryPoint, name, resource)
+    TraceResourceAcquisition(entryPoint, name, resource)(implicitly, implicitly, NoOpLogger[F])
 }

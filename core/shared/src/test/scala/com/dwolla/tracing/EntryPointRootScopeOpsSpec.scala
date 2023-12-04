@@ -12,7 +12,6 @@ import natchez.InMemory.{Lineage, NatchezCommand}
 import natchez.mtl.*
 
 class EntryPointRootScopeOpsSpec extends InMemorySuite {
-
   traceTest("EntryPointRootScopeOps", new TraceTest {
     override def program[F[_] : MonadCancelThrow](entryPoint: EntryPoint[F])
                                                  (implicit L: Local[F, Span[F]]): F[Unit] =

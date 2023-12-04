@@ -1,11 +1,13 @@
 package com.dwolla.tracing
 
-import cats.effect.{Trace => _, _}
+import cats.effect.{Trace as _, *}
 import cats.mtl.Local
-import cats.syntax.all._
-import com.dwolla.tracing.syntax._
-import natchez._
-import natchez.mtl._
+import cats.syntax.all.*
+import com.dwolla.tracing.syntax.*
+import natchez.*
+import natchez.mtl.*
+import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.noop.NoOpLogger
 
 object TraceResourceAcquisition {
   /**
@@ -17,14 +19,16 @@ object TraceResourceAcquisition {
    * @param entryPoint a Natchez `EntryPoint[F]` used to create the new root spans
    * @param name       the name of the root span. a good default might be `"app initialization"`
    * @param resource   function that returns a resource to be traced using the ambient `Trace[F]` passed to the function
-   * @param L          an implicit `Local[F, Span[F]]` instance for the given effect type
+   * @param L1          an implicit `Local[F, Span[F]]` instance for the given effect type
+   * @param L2          an implicit `Logger[F]` instance for the given effect type
    * @tparam F the effect type in which to run
    * @tparam A inner type of the `Resource[F, A]`
    * @return `Resource[F, A]` that is the same as the one returned by the `resource` function, but with tracing introduced
    */
   def apply[F[_] : MonadCancelThrow, A](entryPoint: EntryPoint[F], name: String)
                                        (resource: Trace[F] => Resource[F, A])
-                                       (implicit L: Local[F, Span[F]]): Resource[F, A] =
+                                       (implicit L1: Local[F, Span[F]],
+                                        L2: Logger[F]): Resource[F, A] =
     TraceResourceAcquisition(entryPoint, name, Span.Options.Defaults)(resource)
 
   /**
@@ -37,14 +41,16 @@ object TraceResourceAcquisition {
    * @param name       the name of the root span. a good default might be `"app initialization"`
    * @param resource   function that returns a resource to be traced using the ambient `Trace[F]` passed to the function
    * @param options    options to set on the newly created root span
-   * @param L          an implicit `Local[F, Span[F]]` instance for the given effect type
+   * @param L1         an implicit `Local[F, Span[F]]` instance for the given effect type
+   * @param L2         an implicit `Logger[F]` instance for the given effect type
    * @tparam F the effect type in which to run
    * @tparam A inner type of the `Resource[F, A]`
    * @return `Resource[F, A]` that is the same as the one returned by the `resource` function, but with tracing introduced
    */
   def apply[F[_] : MonadCancelThrow, A](entryPoint: EntryPoint[F], name: String, options: Span.Options)
                                        (resource: Trace[F] => Resource[F, A])
-                                       (implicit L: Local[F, Span[F]]): Resource[F, A] =
+                                       (implicit L1: Local[F, Span[F]],
+                                        L2: Logger[F]): Resource[F, A] =
     TraceResourceAcquisition(entryPoint, name, options, resource(natchezMtlTraceForLocal))
 
   /**
@@ -55,13 +61,16 @@ object TraceResourceAcquisition {
    * @param entryPoint a Natchez `EntryPoint[F]` used to create the new root spans
    * @param name       the name of the root span. a good default might be `"app initialization"`
    * @param resource   a resource that was traced using the `Local[F, Span[F]]` passed implicitly as `L`
-   * @param L          an implicit `Local[F, Span[F]]` instance for the given effect type
+   * @param L1         an implicit `Local[F, Span[F]]` instance for the given effect type
+   * @param L2         an implicit `Logger[F]` instance for the given effect type
    * @tparam F the effect type in which to run
    * @tparam A inner type of the `Resource[F, A]`
    * @return `Resource[F, A]` that is the same as the one returned by the `resource` function, but with tracing introduced
    */
   def apply[F[_] : MonadCancelThrow, A](entryPoint: EntryPoint[F], name: String, resource: Resource[F, A])
-                                       (implicit L: Local[F, Span[F]]): Resource[F, A] =
+                                       (implicit L1: Local[F, Span[F]],
+                                        L2: Logger[F],
+                                       ): Resource[F, A] =
     TraceResourceAcquisition(entryPoint, name, Span.Options.Defaults, resource)
 
   /**
@@ -73,7 +82,8 @@ object TraceResourceAcquisition {
    * @param name       the name of the root span. a good default might be `"app initialization"`
    * @param resource   a resource that was traced using the `Local[F, Span[F]]` passed implicitly as `L`
    * @param options    options to set on the newly created root span
-   * @param L          an implicit `Local[F, Span[F]]` instance for the given effect type
+   * @param L1         an implicit `Local[F, Span[F]]` instance for the given effect type
+   * @param L2         an implicit `Logger[F]` instance for the given effect type
    * @tparam F the effect type in which to run
    * @tparam A inner type of the `Resource[F, A]`
    * @return `Resource[F, A]` that is the same as the one returned by the `resource` function, but with tracing introduced
@@ -82,7 +92,8 @@ object TraceResourceAcquisition {
                                         name: String,
                                         options: Span.Options,
                                         resource: Resource[F, A])
-                                       (implicit L: Local[F, Span[F]]): Resource[F, A] =
+                                       (implicit L1: Local[F, Span[F]],
+                                        L2: Logger[F]): Resource[F, A] =
     Resource {
       entryPoint
         .runInRoot(name, options) {
@@ -97,4 +108,39 @@ object TraceResourceAcquisition {
             }
         }
     }
+
+  @deprecated("use variant accepting Logger[F]", "0.2.5")
+  def apply[F[_], A](entryPoint: EntryPoint[F],
+                     name: String,
+                     options: Span.Options,
+                     resource: Resource[F, A],
+                     F: MonadCancelThrow[F],
+                     L: Local[F, Span[F]]): Resource[F, A] =
+    apply(entryPoint, name, options, resource)(F, L, NoOpLogger(F))
+
+  @deprecated("use variant accepting Logger[F]", "0.2.5")
+  def apply[F[_], A](entryPoint: EntryPoint[F],
+                     name: String,
+                     resource: Resource[F, A],
+                     F: MonadCancelThrow[F],
+                     L: Local[F, Span[F]]): Resource[F, A] =
+    apply(entryPoint, name, Span.Options.Defaults, resource)(F, L, NoOpLogger(F))
+
+  @deprecated("use variant accepting Logger[F]", "0.2.5")
+  def apply[F[_], A](entryPoint: EntryPoint[F],
+                     name: String,
+                     options: Span.Options,
+                     resource: Trace[F] => Resource[F, A],
+                     F: MonadCancelThrow[F],
+                     L: Local[F, Span[F]]): Resource[F, A] =
+    apply(entryPoint, name, options, resource(natchezMtlTraceForLocal(L, F)))(F, L, NoOpLogger(F))
+
+  @deprecated("use variant accepting Logger[F]", "0.2.5")
+  def apply[F[_], A](entryPoint: EntryPoint[F],
+                     name: String,
+                     resource: Trace[F] => Resource[F, A],
+                     F: MonadCancelThrow[F],
+                     L: Local[F, Span[F]]): Resource[F, A] =
+    apply(entryPoint, name, Span.Options.Defaults, resource, F, L)
+
 }

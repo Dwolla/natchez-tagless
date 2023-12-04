@@ -8,8 +8,12 @@ import cats.syntax.all.*
 import munit.CatsEffectSuite
 import natchez.InMemory.{Lineage, NatchezCommand}
 import natchez.*
+import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.noop.NoOpLogger
 
 trait InMemorySuite extends CatsEffectSuite {
+  protected implicit def logger[F[_] : Applicative]: Logger[F] = NoOpLogger[F]
+
   trait TraceTest {
     def program[F[_] : MonadCancelThrow](entryPoint: EntryPoint[F])
                                         (implicit L: Local[F, Span[F]]): F[Unit]
