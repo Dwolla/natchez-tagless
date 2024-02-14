@@ -10,7 +10,7 @@ ThisBuild / developers := List(
 ThisBuild / tlSonatypeUseLegacyHost := true
 
 val Scala213 = "2.13.12"
-ThisBuild / crossScalaVersions := Seq(Scala213, "2.12.18", "3.3.1")
+ThisBuild / crossScalaVersions := Seq(Scala213, "2.12.18", "3.4.0")
 ThisBuild / scalaVersion := Scala213 // the default Scala
 ThisBuild / githubWorkflowScalaVersions := Seq("2.13", "2.12", "3")
 ThisBuild / tlVersionIntroduced := Map("3" -> "0.2.4")
