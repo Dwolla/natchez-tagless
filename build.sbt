@@ -47,7 +47,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.tpolecat" %%% "natchez-core" % "0.3.5",
       "org.tpolecat" %%% "natchez-mtl" % "0.3.5",
-      "org.typelevel" %%% "cats-tagless-core" % "0.15.0",
+      "org.typelevel" %%% "cats-tagless-core" % "0.16.0",
       "org.typelevel" %%% "cats-mtl" % "1.4.0",
       "org.typelevel" %%% "log4cats-noop" % "2.6.0",
       "io.circe" %%% "circe-core" % "0.14.6",
@@ -74,7 +74,7 @@ lazy val scalacache = crossProject(JVMPlatform)
       "io.circe" %%% "circe-generic" % "0.14.6",
     ),
     libraryDependencies ++= {
-      if (scalaBinaryVersion.value.startsWith("2")) Seq("org.typelevel" %%% "cats-tagless-macros" % "0.15.0")
+      if (scalaBinaryVersion.value.startsWith("2")) Seq("org.typelevel" %%% "cats-tagless-macros" % "0.16.0")
       else Seq.empty
     },
   )
