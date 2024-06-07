@@ -49,7 +49,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.tpolecat" %%% "natchez-mtl" % "0.3.5",
       "org.typelevel" %%% "cats-tagless-core" % "0.15.0",
       "org.typelevel" %%% "cats-mtl" % "1.4.0",
-      "org.typelevel" %%% "log4cats-noop" % "2.6.0",
+      "org.typelevel" %%% "log4cats-noop" % "2.7.0",
       "io.circe" %%% "circe-core" % "0.14.6",
       "org.tpolecat" %%% "natchez-testkit" % "0.3.5" % Test,
       "org.typelevel" %% "munit-cats-effect" % "2.0.0-M4" % Test,
