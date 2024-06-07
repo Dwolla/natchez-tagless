@@ -30,7 +30,7 @@ lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
 
 lazy val doctestSettings: Seq[Def.Setting[?]] = Seq(
   libraryDependencies ++= Seq(
-    "org.scalacheck" %%% "scalacheck" % "1.17.1" % Test,
+    "org.scalacheck" %%% "scalacheck" % "1.18.0" % Test,
     "io.monix" %%% "newtypes-core" % "0.2.3" % Test,
   ),
   doctestOnlyCodeBlocksMode := true,
