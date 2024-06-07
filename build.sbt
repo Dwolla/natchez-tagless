@@ -17,10 +17,10 @@ ThisBuild / tlVersionIntroduced := Map("3" -> "0.2.4")
 ThisBuild / tlJdkRelease := Some(8)
 ThisBuild / libraryDependencySchemes += "io.circe" %% "circe-core" % "always"
 ThisBuild / tlCiReleaseBranches := Seq("main")
-ThisBuild / mergifyStewardConfig ~= { _.map(_.copy(
-  author = "dwolla-oss-scala-steward[bot]",
-  mergeMinors = true,
-))}
+ThisBuild / mergifyStewardConfig ~= { _.map {
+  _.withAuthor("dwolla-oss-scala-steward[bot]")
+    .withMergeMinors(true)
+}}
 ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
 
 lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
