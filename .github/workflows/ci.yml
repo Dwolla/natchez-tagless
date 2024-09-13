@@ -239,5 +239,5 @@ jobs:
       - name: Submit Dependencies
         uses: scalacenter/sbt-dependency-submission@v2
         with:
-          modules-ignore: natchez-tagless-rootnative_2.13 natchez-tagless-rootnative_2.12 natchez-tagless-rootnative_3 natchez-tagless-rootjvm_2.13 natchez-tagless-rootjvm_2.12 natchez-tagless-rootjvm_3 natchez-tagless-rootjs_2.13 natchez-tagless-rootjs_2.12 natchez-tagless-rootjs_3
+          modules-ignore: natchez-tagless-rootnative_2.13 natchez-tagless-rootnative_2.12 natchez-tagless-rootnative_3 natchez-tagless-rootjvm_2.13 natchez-tagless-rootjvm_2.12 natchez-tagless-rootjvm_3 natchez-tagless-rootjs_2.13 natchez-tagless-rootjs_2.12 natchez-tagless-rootjs_3 buildinfofortests_sjs1_2.13 buildinfofortests_sjs1_2.12 buildinfofortests_sjs1_3 buildinfofortests_2.13 buildinfofortests_2.12 buildinfofortests_3
           configs-ignore: test scala-tool scala-doc-tool test-internal

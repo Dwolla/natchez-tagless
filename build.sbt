@@ -59,10 +59,11 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   )
   .jvmSettings(
     libraryDependencies ++= Seq(
-      "com.dwolla" %% "dwolla-otel-natchez" % "0.2.2" % Test,
+      "com.dwolla" %% "dwolla-otel-natchez" % "0.2.3" % Test,
     ),
   )
   .settings(doctestSettings *)
+  .dependsOn(buildInfoForTests % Test)
 
 lazy val scalacache = crossProject(JVMPlatform)
   .crossType(CrossType.Pure)
@@ -80,3 +81,13 @@ lazy val scalacache = crossProject(JVMPlatform)
   )
   .settings(doctestSettings *)
   .dependsOn(core)
+
+// sbt-buildinfo can't be enabled only for the test scope, so this is the workaround to use it only in tests
+lazy val buildInfoForTests = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Full)
+  .in(file("buildInfoForTests"))
+  .settings(
+    buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion),
+    buildInfoPackage := "com.dwolla.buildinfo",
+  )
+  .enablePlugins(NoPublishPlugin, BuildInfoPlugin)

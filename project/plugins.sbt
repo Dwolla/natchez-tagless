@@ -4,5 +4,6 @@ addSbtPlugin("org.typelevel" % "sbt-typelevel-ci-release" % "0.7.3")
 addSbtPlugin("org.typelevel" % "sbt-typelevel-settings" % "0.7.3")
 addSbtPlugin("org.typelevel" % "sbt-typelevel-mergify" % "0.7.3")
 addSbtPlugin("com.github.tkawachi" % "sbt-doctest" % "0.10.0")
+addSbtPlugin("com.eed3si9n" % "sbt-buildinfo" % "0.12.0")
 
 libraryDependencySchemes += "com.lihaoyi" %% "geny" % VersionScheme.Always
