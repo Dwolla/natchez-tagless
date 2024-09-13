@@ -7,7 +7,7 @@ ThisBuild / licenses := Seq(License.MIT)
 ThisBuild / developers := List(
   tlGitHubDev("bpholt", "Brian Holt")
 )
-ThisBuild / tlSonatypeUseLegacyHost := true
+ThisBuild / sonatypeCredentialHost := xerial.sbt.Sonatype.sonatypeLegacy
 
 val Scala213 = "2.13.14"
 ThisBuild / crossScalaVersions := Seq(Scala213, "2.12.20", "3.3.3")
