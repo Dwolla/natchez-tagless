@@ -237,7 +237,7 @@ The value assigned to the `Dom[_]` type parameter must be a typeclass that has i
 
 The `Cod[_]` type parameter is similar to `Dom[_]`, but it must exist for the output type instead of the input types.
 
-This library defines a `ToTraceValue[_]` typeclass which exists to convert things to Natchez's `TraceValue` type. We define a new typeclass specifically for converting to trace attributes lets you customize the behavior for each class (as compared to something like `cats.Show`, which is a more general-purpose typeclass for converting values to strings). For example, you may want to redact sensitive information, or use a JSON structure that can be parsed by your tracing backend. (If `TraceValue` was a typeclass and fit the "shape" of the `Dom[_]` or `Cod[_]` type parameters, we'd use it directly, but it doesn't fit, so we had to introduce `ToTraceValue[_]` to bridge the two.)
+Natchez defines a `TraceableValue[_]` typeclass which exists to convert things to its `TraceValue` type. We define a new typeclass specifically for converting to trace attributes lets you customize the behavior for each class (as compared to something like `cats.Show`, which is a more general-purpose typeclass for converting values to strings). For example, you may want to redact sensitive information, or use a JSON structure that can be parsed by your tracing backend.
 
 Cats Tagless also defines `Trivial[_]`, which is always available, but doesn't provide any values. This is useful if you want to weave capturing only inputs but not outputs (for which you'd fix `Cod[α]` to `Trivial[α]`), or vica-versa.
 
@@ -245,26 +245,26 @@ To use `Weave`, define an implicit `Aspect` instance for each algebra to be wove
 
 ```scala
 object DeepThought {
-  implicit val deepThoughtAspect: Aspect[DeepThought, ToTraceValue, ToTraceValue] = Derive.aspect[DeepThought, ToTraceValue, ToTraceValue]
-  
+  implicit val deepThoughtAspect: Aspect[DeepThought, TraceableValue, TraceableValue] = Derive.aspect[DeepThought, TraceableValue, TraceableValue]
+
   def apply[F[_] : Applicative]: DeepThought[F] = new DeepThought[F] {
     def answer: F[Int] = 42.pure[F]
   }
 }
 ```
 
-Instances of `ToTraceValue` will need to exist for every input type. If you see errors like 
+Instances of `TraceableValue` will need to exist for every input type. If you see errors like
 
 ```
 On line 5: error: exception during macro expansion:
-       scala.reflect.macros.TypecheckException: could not find implicit value for parameter G: com.dwolla.tracing.ToTraceValue[Foo]
+       scala.reflect.macros.TypecheckException: could not find implicit value for parameter G: com.dwolla.tracing.TraceableValue[Foo]
         at scala.reflect.macros.contexts.Typers.$anonfun$typecheck$3(Typers.scala:44)
 …
 ```
 
-then implement `ToTraceValue` for the type describe in the error (in this case, `Foo`). You may have to do this several times until instances are available for all the input types.
+then implement `TraceableValue` for the type describe in the error (in this case, `Foo`). You may have to do this several times until instances are available for all the input types.
 
-Once an `Aspect[DeepThought, ToTraceValue, ToTraceValue]` is available, the `traceWithInputs` and `traceWithInputsAndOutputs` extension methods should also be available:
+Once an `Aspect[DeepThought, TraceableValue, TraceableValue]` is available, the `traceWithInputs` and `traceWithInputsAndOutputs` extension methods should also be available:
 
 ```scala
 scala> DeepThought[IO].traceWithInputsAndOutputs
@@ -279,10 +279,10 @@ trait Foo[F[_]] {
 }
 
 object Foo {
-  implicit val fooAspect: Aspect[Foo, ToTraceValue, ToTraceValue] = new Aspect[Foo, ToTraceValue, ToTraceValue] {
-    override def weave[F[_]](af: Foo[F]): Foo[Aspect.Weave[F, ToTraceValue, ToTraceValue, *]] =
-      new Foo[Aspect.Weave[F, ToTraceValue, ToTraceValue, *]] {
-        override def foo(i: Int, s: => String): Aspect.Weave[F, ToTraceValue, ToTraceValue, Boolean] =
+  implicit val fooAspect: Aspect[Foo, TraceableValue, TraceableValue] = new Aspect[Foo, TraceableValue, TraceableValue] {
+    override def weave[F[_]](af: Foo[F]): Foo[Aspect.Weave[F, TraceableValue, TraceableValue, *]] =
+      new Foo[Aspect.Weave[F, TraceableValue, TraceableValue, *]] {
+        override def foo(i: Int, s: => String): Aspect.Weave[F, TraceableValue, TraceableValue, Boolean] =
           Aspect.Weave(
             "Foo",                  // the algebra name
             List(                   // a list of parameter lists
@@ -290,17 +290,17 @@ object Foo {
                 Aspect.Advice(
                   "i",              // the parameter name
                   Eval.now(i)       // capture the parameter value, eagerly evaluated because i is a by-value parameter
-                ),                  // ToTraceValue[Int] is implicitly passed here
+                ),                  // TraceableValue[Int] is implicitly passed here
                 Aspect.Advice(
                   "s",              // the parameter name
                   Eval.always(s)    // capture the parameter value, lazily evaluated because s is a by-name parameter
-                ),                  // ToTraceValue[String] is implicitly passed here
+                ),                  // TraceableValue[String] is implicitly passed here
               )
             ),
             Aspect.Advice(
               "foo",                // the method name
               af.foo(i, s)          // call the underlying method
-            )                       // ToTraceValue[Boolean] is implicitly passed here
+            )                       // TraceableValue[Boolean] is implicitly passed here
           )
       }
 
