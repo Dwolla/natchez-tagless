@@ -59,7 +59,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   )
   .jvmSettings(
     libraryDependencies ++= Seq(
-      "com.dwolla" %% "dwolla-otel-natchez" % "0.2.5" % Test,
+      "com.dwolla" %% "dwolla-otel-natchez" % "0.2.6" % Test,
     ),
   )
   .settings(doctestSettings *)
