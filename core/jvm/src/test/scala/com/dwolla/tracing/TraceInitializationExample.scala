@@ -7,7 +7,6 @@ import cats.effect.syntax.all.*
 import cats.effect.{IO, Resource, Trace as _, *}
 import cats.syntax.all.*
 import com.dwolla.buildinfo.BuildInfo
-import com.dwolla.tracing.instances.*
 import natchez.{EntryPoint, Span, Trace}
 import natchez.mtl.localSpanForKleisli
 import org.typelevel.log4cats.{Logger, LoggerFactory}
@@ -36,7 +35,7 @@ object TraceInitializationExample extends IOApp.Simple {
     }
 
   private def io: Resource[IO, Unit] =
-    IOLocal(Span.noop[IO])
+    IO.local(Span.noop[IO])
       .toResource
       .flatMap { implicit ioLocal =>
         Random.scalaUtilRandom[IO].toResource.flatMap { implicit random =>
