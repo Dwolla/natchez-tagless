@@ -20,7 +20,7 @@ ThisBuild / mergifyStewardConfig ~= { _.map {
   _.withAuthor("dwolla-oss-scala-steward[bot]")
     .withMergeMinors(true)
 }}
-ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
+ThisBuild / resolvers += Resolver.sonatypeCentralSnapshots
 
 lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
   core,
@@ -50,10 +50,12 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-mtl" % "1.5.0",
       "org.typelevel" %%% "log4cats-noop" % "2.7.1",
       "io.circe" %%% "circe-core" % "0.14.14",
+      "com.dwolla" %%% "scala2-notgiven-compat" % "0.1-90f5de2-SNAPSHOT",
       "org.tpolecat" %%% "natchez-testkit" % "0.3.8" % Test,
       "org.typelevel" %% "munit-cats-effect" % "2.1.0" % Test,
       "org.typelevel" %% "scalacheck-effect" % "2.0.0-M2" % Test,
       "org.typelevel" %% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
+      "io.circe" %%% "circe-generic" % "0.14.14" % Test,
     ),
   )
   .jvmSettings(
