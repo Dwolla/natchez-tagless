@@ -49,13 +49,13 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-tagless-core" % "0.16.3",
       "org.typelevel" %%% "cats-mtl" % "1.6.0",
       "org.typelevel" %%% "log4cats-noop" % "2.7.1",
-      "io.circe" %%% "circe-core" % "0.14.14",
+      "io.circe" %%% "circe-core" % "0.14.15",
       "com.dwolla" %%% "scala2-notgiven-compat" % "0.1-90f5de2-SNAPSHOT",
       "org.tpolecat" %%% "natchez-testkit" % "0.3.8" % Test,
       "org.typelevel" %% "munit-cats-effect" % "2.1.0" % Test,
       "org.typelevel" %% "scalacheck-effect" % "2.0.0-M2" % Test,
       "org.typelevel" %% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
-      "io.circe" %%% "circe-generic" % "0.14.14" % Test,
+      "io.circe" %%% "circe-generic" % "0.14.15" % Test,
     ),
   )
   .jvmSettings(
@@ -73,7 +73,7 @@ lazy val scalacache = crossProject(JVMPlatform)
     name := "natchez-tagless-scalacache",
     libraryDependencies ++= Seq(
       "com.github.cb372" %%% "scalacache-core" % "1.0.0-M6",
-      "io.circe" %%% "circe-generic" % "0.14.14",
+      "io.circe" %%% "circe-generic" % "0.14.15",
     ),
     libraryDependencies ++= {
       if (scalaBinaryVersion.value.startsWith("2")) Seq("org.typelevel" %%% "cats-tagless-macros" % "0.16.3")
