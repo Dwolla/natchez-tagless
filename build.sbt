@@ -9,7 +9,7 @@ ThisBuild / developers := List(
 )
 
 val Scala213 = "2.13.18"
-ThisBuild / crossScalaVersions := Seq(Scala213, "2.12.21", "3.3.8")
+ThisBuild / crossScalaVersions := Seq(Scala213, "2.12.21", "3.8.4")
 ThisBuild / scalaVersion := Scala213 // the default Scala
 ThisBuild / githubWorkflowScalaVersions := Seq("2.13", "2.12", "3")
 ThisBuild / tlVersionIntroduced := Map("3" -> "0.2.4")
