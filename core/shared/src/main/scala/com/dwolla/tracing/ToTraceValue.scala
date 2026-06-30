@@ -5,8 +5,7 @@ import cats.syntax.all.*
 import io.circe.Encoder
 import io.circe.syntax.*
 import natchez.{TraceValue, TraceableValue}
-
-import com.dwolla.compat.scala.util.NotGiven
+import org.typelevel.scalaccompat.scala.util.NotGiven
 
 object LowPriorityTraceableValueInstances extends LowPriorityTraceableValueInstances
 
