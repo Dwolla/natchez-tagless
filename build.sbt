@@ -117,9 +117,17 @@ lazy val raiseAspectLaws = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-laws" % catsVersion,
       "org.typelevel" %%% "discipline-munit" % disciplineMunitVersion,
     ),
+    // law L9 compares our derivation against upstream's on capability-free
+    // algebras. On Scala 2 that lives in cats-tagless-macros; on Scala 3 it is
+    // `Derive` in cats-tagless-core, which raise-aspect-core already provides.
+    libraryDependencies ++= {
+      if (scalaBinaryVersion.value.startsWith("2"))
+        Seq("org.typelevel" %%% "cats-tagless-macros" % catsTaglessVersion % Test)
+      else Seq.empty
+    },
     mimaPreviousArtifacts := Set.empty,
   )
-  .dependsOn(raiseAspectCore)
+  .dependsOn(raiseAspectCore % "compile->compile;test->test")
 
 lazy val raiseAspectMacros = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
