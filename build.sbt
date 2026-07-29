@@ -26,6 +26,7 @@ val catsVersion = "2.13.0"
 val catsMtlVersion = "1.7.0"
 val catsTaglessVersion = "0.16.5"
 val disciplineMunitVersion = "2.0.0"
+val munitVersion = "1.2.0"
 
 lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
   core,
@@ -101,6 +102,8 @@ lazy val raiseAspectCore = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-core" % catsVersion,
       "org.typelevel" %%% "cats-mtl" % catsMtlVersion,
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
+      "org.scalameta" %%% "munit" % munitVersion % Test,
+      "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
     ),
     mimaPreviousArtifacts := Set.empty,
   )
