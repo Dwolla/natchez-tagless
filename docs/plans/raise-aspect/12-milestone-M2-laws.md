@@ -33,9 +33,14 @@ rule sets.
    the weave laws meaningless.
 2. **`implicit val raiseResult: Raise[Result, TestError] = Raise[Result, TestError]`
    resolves to itself** and initializes to `null`, surfacing much later as an
-   NPE inside `raiseLift`. This actually happened here. `LawsInstances` names
-   `Raise.raiseEither[TestError]` explicitly. M1's specs avoided it only by
-   luck — their equivalent val is not `implicit`.
+   NPE inside `raiseLift`. This actually happened here. `LawsInstances.raiseResult`
+   is a plain `val`, matching M1's specs: `Raise`'s companion supplies
+   `Raise[Result, TestError]`, and `Raise[Result, ErrA]`/`Raise[Result, ErrB]` by
+   contravariance in `E`, so no local implicit is needed — which removes the trap
+   rather than documenting around it. Verified on 2.12, 2.13 and 3.3. `raiseWoven`
+   must stay `implicit` (no cats-mtl instance for the woven carrier, and
+   `eqTestAlg[Woven]` is summoned by `checkAll`), and is safe because it names
+   `raiseResult` on the right-hand side instead of summoning.
 
 ### Design decisions worth reviewing
 

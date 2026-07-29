@@ -36,8 +36,13 @@ weaves are never `==`. Every structural comparison therefore goes through
 **Do not summon `Raise[Result, TestError]` into an implicit val.** Writing
 `implicit val raiseResult: Raise[Result, TestError] = Raise[Result, TestError]`
 resolves the summon to the val being defined and initializes it to `null`, which
-surfaces much later as an NPE inside `raiseLift`. `LawsInstances` names
-`Raise.raiseEither[TestError]` explicitly for this reason.
+surfaces much later as an NPE inside `raiseLift`. `LawsInstances.raiseResult` is
+therefore a plain `val`: `Raise`'s companion supplies the instance, so no local
+implicit is needed at all — the val only names one instance for the value-level
+laws, which take the capability as an explicit parameter. `raiseWoven` *is* an
+`implicit val`, because cats-mtl has no instance for the woven carrier and
+`eqTestAlg[Woven]` is summoned by `checkAll`; it is safe because its right-hand
+side names `raiseResult` rather than summoning a `Raise[Woven, TestError]`.
 
 ## The substitution seam
 

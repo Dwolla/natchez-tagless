@@ -44,11 +44,28 @@ object LawsInstances {
   /** The error hierarchy is all case classes, so structural equality is right. */
   implicit val eqTestError: Eq[TestError] = Eq.fromUniversalEquals
 
-  /** Named explicitly rather than summoned: `Raise[Result, TestError]` would
-    * resolve to this very val and initialize it to `null`.
+  /** Deliberately not `implicit`. `Raise`'s companion already supplies
+    * `Raise[Result, TestError]` — and, because `Raise` is contravariant in `E`,
+    * the `Raise[Result, ErrA]` and `Raise[Result, ErrB]` that [[eqTestAlg]] asks
+    * for — so nothing about `Result` needs to be in implicit scope here. The val
+    * exists to name one instance for the value-level laws, which take the
+    * capability as an explicit parameter.
+    *
+    * Adding `implicit` would also be a trap: the summon on the right would then
+    * resolve to the val being defined and initialize it to `null`, surfacing
+    * much later as an NPE inside `raiseLift`.
     */
-  implicit val raiseResult: Raise[Result, TestError] = Raise.raiseEither[TestError]
+  val raiseResult: Raise[Result, TestError] = Raise[Result, TestError]
 
+  /** This one, unlike [[raiseResult]], does have to be `implicit`. cats-mtl knows
+    * nothing about the woven carrier, so [[WeaveArrows.raiseLift]] is the only
+    * source of a `Raise[Woven, _]` — and the place that needs one is
+    * [[eqTestAlg]] at `F = Woven`, summoned implicitly by the rule set builders
+    * as their `Eq[Alg[A]]`, with no call site at which to pass it.
+    *
+    * It escapes the `null` trap because the right-hand side names its dependency
+    * rather than summoning a `Raise[Woven, TestError]`.
+    */
   implicit val raiseWoven: Raise[Woven, TestError] =
     WeaveArrows.raiseLift[Result, Render, Render].apply(raiseResult)
 
