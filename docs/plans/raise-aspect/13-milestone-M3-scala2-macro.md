@@ -1,5 +1,97 @@
 # Milestone M3 — Scala 2 derivation macro
 
+## Status
+
+**Complete** (branch `milestone/m3-scala2-macro`, stacked on `milestone/m2-laws`).
+Next: M4 Scala 3 macro.
+
+`DeriveRaise.aspect` and `DeriveRaise.functorK` are implemented in
+`raise-aspect-macros/src/main/scala-2`, adapted from the vendored upstream
+`DeriveMacros` with an Apache-2.0 attribution header naming the repo, tag,
+commit, upstream file, and the fact of modification.
+
+**45 tests pass on both 2.12.21 and 2.13.18** — the full M2 law suite (24) through
+the seam, plus 4 differential-oracle, 4 L9, 8 diagnostics and 5 edge-case tests.
+No version guards were needed: the reflect API usage is identical on both axes.
+Frozen sources verified untouched — `git diff` against `1c84af7` scoped to
+`raise-aspect-laws/` and `raise-aspect-core/` is empty; M3 modifies only
+`build.sbt` and adds new files.
+
+### Divergences from upstream's macro, and why
+
+1. **Capability transport** — the point of the milestone. Where upstream aborts on
+   `occursInSignature(f)`, we classify parameters whose type dealiases to exactly
+   `Raise[F, e]`, substitute the effect inside that type in the generated
+   signature, and pass `WeaveArrows.raisePull[F, Dom, Cod].apply(r)` (weave) or
+   `arrow.pull(r)` (mapK) at the underlying call site.
+2. **Classification is by exact type symbol, never a subtype test.** `Handle[F, E]
+   extends Raise[F, E]`, and `Handle` consumes `F`. A `<:<` test would silently
+   classify `Handle` parameters as transportable and generate unsound code. This is
+   the single most important line in the file.
+3. **Stricter nested-return rejection.** Upstream's weave guard is
+   `returnType.typeSymbol == f`, which *accepts* `F[F[A]]` and then fails later
+   with a confusing missing-`Cod[F[A]]` error. `returnsEffectDirectly` additionally
+   requires the return type's arguments not to mention `F`, so `F[F[A]]` gets a
+   clear diagnostic. Stricter than upstream, and matches overview rule 3.
+4. **`Dom`/`Cod` instances are pre-summoned** with `c.inferImplicitValue` and passed
+   explicitly to `Advice.byValue`/`byName`, so a missing instance aborts naming the
+   type, parameter and method (task 3). Upstream emits `byValue[Dom, pt](…)` and
+   lets the implicit search fail generically.
+5. **Domain capture** follows upstream — drop the trailing implicit clause wholesale
+   — *plus* filtering capability parameters out of the remaining clauses, which is
+   needed because a `Raise` parameter need not be implicit. Per Brian's decision;
+   this is what keeps L9 unconditionally true.
+
+### Upstream behaviours the overview's rules don't cover — these feed M4
+
+1. **Abstract `val`s returning `F[A]` are unsupported in both derivations.**
+   `delegateMethods` filters `!member.asMethod.isAccessor`, so the member is never
+   implemented and compilation fails with the compiler's own *"object creation
+   impossible. Missing implementation for member … val v"*. Overview rule 6 asks
+   for parity with upstream, and parity holds — but the failure mode is opaque.
+   M4 should decide whether to detect accessors and emit a real diagnostic.
+   Verified manually; see the next point for why it is not a test.
+2. **`compileErrors` cannot observe macro-internal typecheck errors.** Errors
+   reported by `c.typecheck` *inside* the macro (which is how the abstract-val
+   failure surfaces) escape munit's capture, and `compileErrors` returns `""`. Only
+   `c.abort` messages are capturable. An earlier version of the diagnostics suite
+   asserted on this and was silently vacuous until the behaviour was probed
+   directly. M4's compile-error suite needs the same caveat.
+3. **`hasImplicits` inspects only the last parameter list.** Sound on Scala 2, which
+   permits at most one implicit clause. **Scala 3 allows multiple `using` clauses**,
+   so M4 cannot copy this shape — it must drop every `using` clause, or the domain
+   will capture capabilities from all but the last.
+4. **Overloads work** on Scala 2: each overload is a distinct member symbol, so
+   `delegateMethods` handles them independently. Confirmed by test.
+5. **A by-name capability parameter (`implicit R: => Raise[F, E]`) is not
+   classified as a capability.** `transformedParamLists` sees the `<byname>`
+   wrapper, so it falls through to the F-in-unsupported-position rejection rather
+   than being transported. Safe (it rejects rather than miscompiles) and bizarre to
+   write, but it is a gap rather than a decision.
+6. **Varargs keep upstream's limitation.** The `q"…: _*"` splice construction is
+   preserved verbatim, so a parameter clause mixing a vararg with other parameters
+   generates invalid code — upstream has the same bug. Out of scope per overview,
+   and no fixture exercises it.
+
+### Finding about M2
+
+`ConservativeExtensionSuite` hardcodes `private val ours = PlainAlgReference…` and
+exposes only `upstream` as a seam, so it cannot be reused to check a *derived*
+instance against upstream. Per Brian's decision the frozen module was left alone
+and `DerivedConservativeExtensionSpec` restates the three comparisons additively.
+Worth making `ours` a seam whenever the freeze is next lifted.
+
+### Verification
+
+`+clean` build: 0 errors, 0 new warnings, JVM tests green on 2.12/2.13/3, Scala.js
+links clean, MiMa skips the new modules, `+doc` succeeds, `githubWorkflowCheck`
+passes. The derived instance passed all ten laws on the first run — which M2 taught
+us to distrust — so the differential oracle is the load-bearing evidence here: it
+asserts the derived weave is *structurally identical* to M1's reference for every
+method across every sample, not merely behaviourally equivalent.
+
+---
+
 Read `01-overview-design-and-laws.md` first. Prerequisites: M1 and M2 merged.
 
 ## Non-negotiable ground rules for this milestone
