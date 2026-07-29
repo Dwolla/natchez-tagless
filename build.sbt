@@ -154,9 +154,16 @@ lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform)
   .in(file("natchez-tagless-mtl"))
   .settings(
     name := "natchez-tagless-mtl",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % munitVersion % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+    ),
     mimaPreviousArtifacts := Set.empty,
   )
-  .dependsOn(core, raiseAspectCore, raiseAspectMacros)
+  .settings(doctestSettings *)
+  // test->test reuses core's InMemorySuite harness (Kleisli/IOLocal Trace wiring)
+  // for the integration test, rather than re-deriving it.
+  .dependsOn(core % "compile->compile;test->test", raiseAspectCore, raiseAspectMacros)
 
 // sbt-buildinfo can't be enabled only for the test scope, so this is the workaround to use it only in tests
 lazy val buildInfoForTests = crossProject(JVMPlatform, JSPlatform)
