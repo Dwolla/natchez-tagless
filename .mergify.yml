@@ -36,6 +36,38 @@ pull_request_rules:
       add:
       - core
       remove: []
+- name: Label natchez-tagless-mtl PRs
+  conditions:
+  - files~=^natchez-tagless-mtl/
+  actions:
+    label:
+      add:
+      - natchez-tagless-mtl
+      remove: []
+- name: Label raise-aspect-core PRs
+  conditions:
+  - files~=^raise-aspect-core/
+  actions:
+    label:
+      add:
+      - raise-aspect-core
+      remove: []
+- name: Label raise-aspect-laws PRs
+  conditions:
+  - files~=^raise-aspect-laws/
+  actions:
+    label:
+      add:
+      - raise-aspect-laws
+      remove: []
+- name: Label raise-aspect-macros PRs
+  conditions:
+  - files~=^raise-aspect-macros/
+  actions:
+    label:
+      add:
+      - raise-aspect-macros
+      remove: []
 - name: Label scalacache PRs
   conditions:
   - files~=^scalacache/

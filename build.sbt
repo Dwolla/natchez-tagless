@@ -22,9 +22,18 @@ ThisBuild / mergifyStewardConfig ~= { _.map {
 }}
 ThisBuild / resolvers += Resolver.sonatypeCentralSnapshots
 
+val catsVersion = "2.13.0"
+val catsMtlVersion = "1.7.0"
+val catsTaglessVersion = "0.16.5"
+val disciplineMunitVersion = "2.0.0"
+
 lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
   core,
   scalacache,
+  raiseAspectCore,
+  raiseAspectLaws,
+  raiseAspectMacros,
+  natchezTaglessMtl,
 )
 
 lazy val doctestSettings: Seq[Def.Setting[?]] = Seq(
@@ -46,8 +55,8 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.tpolecat" %%% "natchez-core" % "0.3.10",
       "org.tpolecat" %%% "natchez-mtl" % "0.3.10",
-      "org.typelevel" %%% "cats-tagless-core" % "0.16.5",
-      "org.typelevel" %%% "cats-mtl" % "1.7.0",
+      "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
+      "org.typelevel" %%% "cats-mtl" % catsMtlVersion,
       "org.typelevel" %%% "log4cats-noop" % "2.8.0",
       "io.circe" %%% "circe-core" % "0.14.16",
       "org.typelevel" %%% "scalac-compat-features" % "0.1.5",
@@ -76,12 +85,60 @@ lazy val scalacache = crossProject(JVMPlatform)
       "io.circe" %%% "circe-generic" % "0.14.16",
     ),
     libraryDependencies ++= {
-      if (scalaBinaryVersion.value.startsWith("2")) Seq("org.typelevel" %%% "cats-tagless-macros" % "0.16.5")
+      if (scalaBinaryVersion.value.startsWith("2")) Seq("org.typelevel" %%% "cats-tagless-macros" % catsTaglessVersion)
       else Seq.empty
     },
   )
   .settings(doctestSettings *)
   .dependsOn(core)
+
+lazy val raiseAspectCore = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("raise-aspect-core"))
+  .settings(
+    name := "raise-aspect-core",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %%% "cats-core" % catsVersion,
+      "org.typelevel" %%% "cats-mtl" % catsMtlVersion,
+      "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
+    ),
+    mimaPreviousArtifacts := Set.empty,
+  )
+
+lazy val raiseAspectLaws = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("raise-aspect-laws"))
+  .settings(
+    name := "raise-aspect-laws",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %%% "cats-laws" % catsVersion,
+      "org.typelevel" %%% "discipline-munit" % disciplineMunitVersion,
+    ),
+    mimaPreviousArtifacts := Set.empty,
+  )
+  .dependsOn(raiseAspectCore)
+
+lazy val raiseAspectMacros = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("raise-aspect-macros"))
+  .settings(
+    name := "raise-aspect-macros",
+    libraryDependencies ++= {
+      if (scalaBinaryVersion.value.startsWith("2")) Seq("org.scala-lang" % "scala-reflect" % scalaVersion.value % Provided)
+      else Seq.empty
+    },
+    mimaPreviousArtifacts := Set.empty,
+  )
+  .dependsOn(raiseAspectCore)
+
+lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("natchez-tagless-mtl"))
+  .settings(
+    name := "natchez-tagless-mtl",
+    mimaPreviousArtifacts := Set.empty,
+  )
+  .dependsOn(core, raiseAspectCore, raiseAspectMacros)
 
 // sbt-buildinfo can't be enabled only for the test scope, so this is the workaround to use it only in tests
 lazy val buildInfoForTests = crossProject(JVMPlatform, JSPlatform)
