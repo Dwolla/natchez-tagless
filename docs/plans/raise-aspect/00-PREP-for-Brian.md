@@ -158,3 +158,54 @@ cross-building targets 2.12, 2.13, and Scala 3 LTS, with dropping 2.12 being
 an explicit, called-out decision reserved to you; Scala 3 stays on the LTS
 line, with the derivation entry points annotated `@experimental` and that
 requirement documented for users (see §2).
+
+## 7. Second round: M6–M9 (planned 2026-07-29, after M5 completed)
+
+The first round's protocol (§4) applies unchanged: one milestone per
+session/branch/PR, sessions read the overview plus exactly one milestone
+doc, no milestone N+1 before N's acceptance criteria are demonstrated in
+actual test output, and the laws freeze (§5) stays enforced — everything in
+this round is additive with respect to `raise-aspect-laws`.
+
+### Your actions before launching sessions
+
+- **Ratify (or amend) the proposed decisions** in the M6 and M7 docs — they
+  were drafted by a planning session, not agreed with you the way rounds
+  0–5 were. The genuinely contestable calls are flagged in each doc's
+  "Decisions (proposed)" section; once you've signed off, they're final in
+  the same do-not-relitigate sense as overview §2.
+- **Decide whether M8 runs at all** (its need gate is deliberately strict —
+  YAGNI), and know that its Phase 2 cannot start until you ratify the
+  design doc it produces.
+- **M9's community half is yours**: posting the upstream proposal and the
+  maintainer conversation. Consider having a session run M9 Tasks 1–2 (drift
+  survey + proposal draft) early — they're cheap, touch no code, and the
+  maintainers' answer to "Raise-specific or general?" sequences M8 versus
+  the port.
+- **Release awareness for M6**: it changes what the traced raise path emits
+  (two new `raise.*` span fields by default). Additive, but it belongs in a
+  consciously cut release, and it's the natural "before first public
+  release" item if these modules haven't shipped yet.
+
+### Model routing
+
+| Milestone | Suggested model | Rough size (LoC, frontier-LLM-authored) | Why |
+|---|---|---|---|
+| M6 typed-error recording | mid-tier (Sonnet-class) | ~300–500 + docs | Plumbing over decided shapes; the integration test is the only subtle part |
+| M7 method-local instances | strongest available | ~200–400 + spike report | Macro internals on both axes; the Scala 3 spike is genuinely uncertain |
+| M8 CapabilityAspect (Phase 1) | strongest available | design doc only | It's the next overview doc; everything downstream inherits its quality |
+| M8 CapabilityAspect (Phase 2) | strongest available | ~800–1,500 per its own map | New abstraction across core/laws/macros |
+| M9 Tasks 1–2 (survey + draft) | mid-tier | reports only | Research and writing, no code |
+| M9 Task 3 (the port) | strongest available | ≈ existing module size, cross-repo | Rebasing macros onto upstream HEAD under someone else's conventions |
+
+### Human review gates
+
+- **After M7**: rerun the M3/M4 macro-review checklist from §4 (parameter
+  lists, `implicit`/`using` flags, by-name modifiers, dealiasing, variance)
+  on the diff, and read the spike report yourself — GO/NO-GO on the Scala 3
+  in-body-summon hypothesis is exactly the kind of call a session shouldn't
+  self-adjudicate.
+- **After M8 Phase 1**: the design ratification is the review gate; treat it
+  like the original design discussion that produced the overview.
+- **M9 Task 2**: read the proposal draft for factual accuracy before
+  posting — it goes out under your name.

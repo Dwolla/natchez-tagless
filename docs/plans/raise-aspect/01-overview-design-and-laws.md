@@ -345,9 +345,21 @@ Novel laws:
 - M4 Scala 3 macro → `14-…`
 - M5 natchez-tagless integration + docs → `15-…`
 
-Future work (no milestone yet; do not implement): typed-error span recording
-hook at the `raiseLift` interception point; generalizing to a
-`CapabilityAspect` over `Ask`/`Tell`/`Stateful`; upstreaming to cats-tagless.
+Second round (planned 2026-07-29; M0–M5 are complete):
+
+- M6 typed-error span recording at the `raiseLift` interception point →
+  `16-milestone-M6-typed-error-span-recording.md`
+- M7 method-local `Dom`/`Cod` instances in derivation (resolves the
+  appendix below) → `17-milestone-M7-method-local-dom-cod-instances.md`
+- M8 generalizing to `CapabilityAspect` over `Ask`/`Tell`/`Stateful` —
+  design-gated and need-gated; see its doc →
+  `18-milestone-M8-capability-aspect.md`
+- M9 upstreaming to cats-tagless — gated on Brian and on maintainer
+  buy-in → `19-milestone-M9-upstreaming.md`
+
+M6 and M7 are independent of each other; M8 and M9 carry explicit gates
+recorded in their documents. As ever: do not do work belonging to milestones
+other than your own.
 
 ### Method-local `Dom`/`Cod` instances are not resolved (found in M4)
 
@@ -384,3 +396,7 @@ generated method body where the method's givens are genuinely in scope, or
 (c) reject it explicitly with a diagnostic pointing at the derivation site. Note
 the Scala 2 macro has the same limitation and no equivalent hack upstream, so
 whatever is chosen should apply to both axes.
+
+Milestone M7 (`17-milestone-M7-method-local-dom-cod-instances.md`) is the
+planned resolution: a spike-verified attempt at (b), with (c) as the decided
+fallback on both axes and (a) staying rejected.
