@@ -348,3 +348,39 @@ Novel laws:
 Future work (no milestone yet; do not implement): typed-error span recording
 hook at the `raiseLift` interception point; generalizing to a
 `CapabilityAspect` over `Ask`/`Tell`/`Stateful`; upstreaming to cats-tagless.
+
+### Method-local `Dom`/`Cod` instances are not resolved (found in M4)
+
+`Dom` and `Cod` instances are summoned at the *derivation* site. A method that
+supplies its own instance through a `using`/`implicit` clause is therefore not
+supported, even though the instance is in scope everywhere it is needed:
+
+```scala
+trait Widget
+trait WidgetAlg[F[_]] {
+  // Render[Widget] is supplied by the method, not by the derivation site
+  def show(w: Widget)(using Render[Widget]): F[String]
+}
+
+// DeriveRaise.aspect[WidgetAlg, Render, Render] fails with:
+//   Not found: given Render[Widget] for parameter w of method show
+```
+
+Capturing `w` in `domain` needs a `Render[Widget]`, and the only one available
+lives inside `show`'s own `using` clause — which the derivation cannot see, since
+it resolves instances before generating the method body.
+
+Upstream cats-tagless works around this in `MacroAspect` with an
+`addToGivenScope` block (commented "This is a hack") that reflects into
+`dotty.tools.dotc` internals to inject the method's given parameters into the
+implicit cache. M4 deliberately omitted it: it is reflection into compiler
+internals that silently degrades to a no-op on failure, no fixture exercised it,
+and shipping it in a published library means a future compiler change surfaces as
+a confusing implicit-not-found rather than an obvious break.
+
+If this shape turns out to matter, the options are (a) adapt upstream's hack with
+a fixture that actually covers it, (b) resolve `Dom`/`Cod` lazily inside the
+generated method body where the method's givens are genuinely in scope, or
+(c) reject it explicitly with a diagnostic pointing at the derivation site. Note
+the Scala 2 macro has the same limitation and no equivalent hack upstream, so
+whatever is chosen should apply to both axes.

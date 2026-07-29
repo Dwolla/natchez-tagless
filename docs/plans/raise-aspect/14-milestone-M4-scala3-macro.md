@@ -1,5 +1,110 @@
 # Milestone M4 — Scala 3 derivation macro
 
+## Status
+
+**Complete** (branch `milestone/m4-scala3-macro`, stacked on
+`milestone/m3-scala2-macro`). Next: M5 natchez integration + docs.
+
+`DeriveRaise.aspect` / `DeriveRaise.functorK` are implemented in
+`raise-aspect-macros/src/main/scala-3`, adapted from the vendored `MacroAspect`,
+`MacroFunctorK` and `DeriveMacros` with an Apache-2.0 attribution header. Entry
+points are `@experimental`; experimentality is confined to those annotations and
+their call sites — no nightly compiler, no raised baseline.
+
+**52 tests pass on 3.3.8** (24 M2 laws through the seam, 5 oracle, 4 L9, 4 `using`,
+9 diagnostics, 6 edge) and **46 on each of 2.12.21 / 2.13.18** (M3's 45 plus the new
+cross-version agreement spec). `build.sbt` needed no change, as predicted. Frozen
+M1/M2 sources and all M3 sources verified untouched: `git diff` against `0e78145`
+scoped to `raise-aspect-laws/`, `raise-aspect-core/`, `src/main/scala-2/` and the
+existing `src/test/scala-2/` files is empty.
+
+### What Scala 3 made easier than Scala 2
+
+1. **Signature substitution is free.** `newClassOf[T]` derives members from
+   `cls.memberType(member)` against the applied parent, so in
+   `Alg[Weave[F, Dom, Cod, *]]` a `Raise[F, E]` parameter *arrives already*
+   substituted. M3's `substituteCapabilities` has no analogue and was not written.
+   Comparing the substituted effect against the carrier type lambda with `=:=`
+   works, so classification stayed precise.
+2. **`filterNot(c => c.isGiven || c.isImplicit)` drops every implicit/given
+   clause**, not just the last — which **fixes the Scala 2 limitation M3
+   reported**. Multiple `using` clauses on one method work with no extra code, and
+   `MultiUsingAlg` is the fixture that proves it (a shape Scala 2 cannot express).
+3. **Abstract `val`s returning `F[A]` work**, because `transformTo` handles
+   `transformVal` and `overridableMembers` includes `fieldMembers`.
+
+### The 2.x / 3 asymmetry — M5's docs must state this
+
+Per Brian's decision, each axis keeps parity with *its own* upstream rather than
+with the other. The consequence is user-visible:
+
+| Algebra shape | Scala 2.12/2.13 | Scala 3 |
+|---|---|---|
+| `def m(i: Int)(implicit R: Raise[F, E]): F[A]` | works | works |
+| `val v: F[A]` | **fails** — opaque "object creation impossible" | **works** |
+| two `using` clauses on one method | not expressible | works |
+
+An algebra using `val v: F[A]` therefore compiles on Scala 3 and fails on 2.13/2.12.
+M5's user documentation needs to say so.
+
+### Divergences from upstream `MacroAspect`
+
+1. **Capability transport** — the point of the milestone. `args` transform replaces
+   capability arguments with `WeaveArrows.raisePull[F, Dom, Cod](using F).apply(r)`
+   (weave) or `arrow.pull(r)` (mapK), and `domain` excludes them.
+2. **Classification by exact type symbol, never `<:<`** — `Handle[F, E] extends
+   Raise[F, E]` and consumes `F`; the same load-bearing rule as M3.
+3. **Validation runs up front against the declared `Alg[F]`**, before class
+   synthesis, so the diagnostics name the types the user wrote and arrive before any
+   confusing synthesis failure. Upstream instead relies on its `body` transform
+   simply not matching.
+4. **Context-function returns are rejected** (`Raise[F, E] ?=> F[A]`), detected by
+   matching `ContextFunctionN` on the dealiased result's type constructor — chosen
+   over `defn.FunctionClass` overloads because it is stable across 3.x.
+5. **`Dom`/`Cod` summoned via `Implicits.search`** with our own message naming the
+   parameter or method, rather than upstream's `failure.explanation`.
+6. **`addToGivenScope` omitted** — see the new future-work section in the overview,
+   with a triggering example, per Brian.
+7. **`newTypeAlias` retained**, the one remaining dotty-internal reflection. Unlike
+   the given-scope hack it is not optional: `overridableMembers` cannot build a class
+   for any algebra with a type member without it, M3 supports those, and it fails
+   loudly via `report.errorAndAbort` rather than silently.
+
+### Testing-tool finding, and a near-miss
+
+**Scala 3's `compileErrors` needs an explicit type annotation.** Writing
+`val errors = compileErrors("…")` makes the macro's inner typecheck trip a
+cyclic-reference check, and the captured string is
+`"Recursive value errors needs type"` — *not* the macro's diagnostic. All eight
+diagnostics assertions failed on that string before `val errors: String = …` fixed
+it. The assertions failed honestly rather than vacuously, but only because they
+assert on message *content*; a test asserting merely "some error occurred" would
+have passed for entirely the wrong reason.
+
+Note this is a **different** trap from M3's: on Scala 2, `compileErrors` cannot
+observe errors raised by `c.typecheck` inside the macro at all and returns `""`. Two
+distinct failure modes in the same tool across the two versions. Any future
+compile-error suite should assert on content, and should be probed once against a
+known-bad input to confirm it can actually fail.
+
+### Cross-compiler agreement (task 5)
+
+`ExpectedWeaves` in shared test sources holds the golden `RenderedWeave` values for
+a fixed set of `TestAlg` calls; a Scala 2 spec and a Scala 3 spec each assert their
+derived instance reproduces exactly that list. So the two derivations are compared
+directly, not merely transitively through the M1 reference — though both oracles
+also assert structural identity to that reference.
+
+### Verification
+
+`+clean` build: 0 errors, 0 new warnings, JVM tests green on all three versions,
+Scala.js links clean, MiMa skips the new modules, `+doc` succeeds,
+`githubWorkflowCheck` passes. As in M3, the laws passed on the first run, so the
+oracle and the golden values are the load-bearing evidence rather than the
+discipline rule sets.
+
+---
+
 Read `01-overview-design-and-laws.md` first. Prerequisites: M1–M3 merged.
 
 ## Non-negotiable ground rules for this milestone
