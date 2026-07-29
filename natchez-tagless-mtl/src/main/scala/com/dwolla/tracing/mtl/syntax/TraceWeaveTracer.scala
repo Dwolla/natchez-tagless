@@ -51,12 +51,13 @@ trait LowPriorityWithInputsAndOutputsTracer {
   implicit def fromRaiseAspect[Alg[_[_]], F[_]](implicit
       F: FlatMap[F],
       T: Trace[F],
-      A: RaiseAspect[Alg, TraceableValue, TraceableValue]
+      A: RaiseAspect[Alg, TraceableValue, TraceableValue],
+      R: RaiseRecorder[F]
   ): WithInputsAndOutputsTracer[Alg, F] =
     new WithInputsAndOutputsTracer[Alg, F] {
       def apply(alg: Alg[F]): Alg[F] =
         A.mapK(A.weave(alg))(
-          RaiseArrow(TraceWeaveCapturingInputsAndOutputs[F], WeaveArrows.raiseLift[F, TraceableValue, TraceableValue])
+          RaiseArrow(TraceWeaveCapturingInputsAndOutputs[F], WeaveArrows.raiseLift(R.onRaise))
         )
     }
 }
@@ -92,10 +93,11 @@ trait LowPriorityWithInputsTracer {
       F: Apply[F],
       T: Trace[F],
       A: RaiseAspect[Alg, TraceableValue, Cod],
-      syn: Synthetic[Cod]
+      syn: Synthetic[Cod],
+      R: RaiseRecorder[F]
   ): WithInputsTracer[Alg, Cod, F] =
     new WithInputsTracer[Alg, Cod, F] {
       def apply(alg: Alg[F]): Alg[F] =
-        A.mapK(A.weave(alg))(RaiseArrow(TraceWeaveCapturingInputs[F, Cod], WeaveArrows.raiseLift[F, TraceableValue, Cod]))
+        A.mapK(A.weave(alg))(RaiseArrow(TraceWeaveCapturingInputs[F, Cod], WeaveArrows.raiseLift(R.onRaise)))
     }
 }
