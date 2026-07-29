@@ -213,28 +213,34 @@ class WeaveArrowsOnRaiseSpec extends ScalaCheckSuite {
     * that coverage.
     */
   test("the raiseLift(onRaise) result is Serializable") {
-    val lifted: RaisePull[F, W] = WeaveArrows.raiseLift[F, Render, Render](OnRaise.noop[F])
+    // Only meaningful on the JVM: java.io.ObjectOutputStream/ObjectInputStream
+    // don't exist in Scala.js's java.io emulation, and Platform.isJvm is a
+    // compile-time constant, so scalac constant-folds this branch away
+    // entirely before the Scala.js linker ever sees it.
+    if (Platform.isJvm) {
+      val lifted: RaisePull[F, W] = WeaveArrows.raiseLift[F, Render, Render](OnRaise.noop[F])
 
-    val bytes = {
-      val bos = new ByteArrayOutputStream()
-      val oos = new ObjectOutputStream(bos)
-      oos.writeObject(lifted)
-      oos.close()
-      bos.toByteArray
+      val bytes = {
+        val bos = new ByteArrayOutputStream()
+        val oos = new ObjectOutputStream(bos)
+        oos.writeObject(lifted)
+        oos.close()
+        bos.toByteArray
+      }
+
+      val deserialized = {
+        val bis = new ByteArrayInputStream(bytes)
+        val ois = new ObjectInputStream(bis)
+        val obj = ois.readObject().asInstanceOf[RaisePull[F, W]]
+        ois.close()
+        obj
+      }
+
+      val err = NegativeInput(-9)
+      assertEquals(
+        deserialized.apply(raiseF).raise[NegativeInput, Int](err).codomain.target,
+        err.asLeft[Int].leftWiden[TestError]
+      )
     }
-
-    val deserialized = {
-      val bis = new ByteArrayInputStream(bytes)
-      val ois = new ObjectInputStream(bis)
-      val obj = ois.readObject().asInstanceOf[RaisePull[F, W]]
-      ois.close()
-      obj
-    }
-
-    val err = NegativeInput(-9)
-    assertEquals(
-      deserialized.apply(raiseF).raise[NegativeInput, Int](err).codomain.target,
-      err.asLeft[Int].leftWiden[TestError]
-    )
   }
 }
