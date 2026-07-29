@@ -135,12 +135,19 @@ lazy val raiseAspectMacros = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "raise-aspect-macros",
     libraryDependencies ++= {
-      if (scalaBinaryVersion.value.startsWith("2")) Seq("org.scala-lang" % "scala-reflect" % scalaVersion.value % Provided)
+      if (scalaBinaryVersion.value.startsWith("2"))
+        Seq("scala-compiler", "scala-reflect").map("org.scala-lang" % _ % scalaVersion.value % Provided)
       else Seq.empty
+    },
+    // A macro bundle manipulates trees the compiler cannot see through, which
+    // provokes spurious unused warnings. Upstream cats-tagless drops the same
+    // options in its macros module.
+    scalacOptions ~= {
+      _.filterNot(o => o.startsWith("-Wunused") || o.startsWith("-Ywarn-unused"))
     },
     mimaPreviousArtifacts := Set.empty,
   )
-  .dependsOn(raiseAspectCore)
+  .dependsOn(raiseAspectCore % "compile->compile;test->test", raiseAspectLaws % "test->test")
 
 lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
