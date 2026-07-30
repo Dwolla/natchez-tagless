@@ -124,7 +124,7 @@ abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
     }
   }
 
-  test("RaiseAspect tracing releases the span and records only the input attribute when the method raises - Kleisli") {
+  test("RaiseAspect tracing releases the span and records the input attribute and the raised error's type/message when the method raises - Kleisli") {
     InMemory.EntryPoint.create[Kleisli[IO, Span[IO], *]]
       .flatMap { ep =>
         raisingProgram[Kleisli[IO, Span[IO], *]](ep) *> ep.ref.get.map(_.toList)
@@ -133,7 +133,7 @@ abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
       .map(assertRaisingHistory)
   }
 
-  test("RaiseAspect tracing releases the span and records only the input attribute when the method raises - IOLocal") {
+  test("RaiseAspect tracing releases the span and records the input attribute and the raised error's type/message when the method raises - IOLocal") {
     IOLocal(Span.noop[IO])
       .map(localViaIoLocal(_))
       .map(implicit L => raisingProgram[IO](_))

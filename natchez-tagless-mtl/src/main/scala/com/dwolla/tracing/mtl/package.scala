@@ -117,6 +117,17 @@ import natchez.{TraceValue, TraceableValue}
   * hook at the `raiseLift` interception point, falling back to this `Trace`-based
   * recording whenever no more specific hook is in scope.
   *
+  * This default rendering is not redaction-aware, unlike the rest of this
+  * library: `raise.error.message` is the domain error's raw `e.toString`, not
+  * a `TraceableValue[E]` rendering, so none of the newtype-plus-custom-
+  * `TraceableValue` redaction pattern this library uses for sensitive
+  * parameters (see `TraceWeaveCapturingInputs`/
+  * `TraceWeaveCapturingInputsAndOutputs`) applies to it. An error ADT that
+  * carries a token, an email address, or a card number will have that
+  * value's `toString` land in the tracing backend by default. Redacting or
+  * omitting such fields means supplying a custom `OnRaise[F]` — the same
+  * override mechanism shown next.
+  *
   * ==Overriding the default recording==
   *
   * `RaiseRecorder` resolution is just implicit priority: a user-supplied
