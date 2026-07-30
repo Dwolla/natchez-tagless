@@ -133,6 +133,15 @@ modules/
 > application of a pull now carries `Err[E]`. See
 > `03-evidence-carrying-transport-design.md`.
 
+> **Amended 2026-07-30 by M11.** `WeaveInterpreter` (M11) is backend-agnostic:
+> `Dom`, `Cod`, `Err`, the `Weave ~> F` interpreter, and the `OnRaise` hook are
+> all caller-supplied. A second backend — otel4s is the motivating case, and
+> shares no rendering type class with natchez except `cats.tagless.Trivial` —
+> needs only its own `Weave ~> F` interpreters, its own `Synthetic` instance
+> for its rendering type class, and its own `RaiseRecorder`-equivalent
+> resolving the default hook. The resolution mechanism, the arrows, and
+> `OnRaise` are reused unchanged.
+
 ### 3.2 Core types
 
 Algebras with method-level `Raise` parameters are functorial over a category
