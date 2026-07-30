@@ -107,34 +107,6 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
     }
   }
 
-  // ------------------------------------------- L4/L5 at Err = Trivial (∀E)
-
-  // Adding `implicit ev: Err[E]` to the laws narrows them from "for all E" to
-  // "for all E for which Err[E] exists". `Trivial`'s instance is universal, so
-  // this instantiation restores the original quantifier. The `Render`
-  // instantiations above cover the evidence-carrying path; these cover the
-  // strength the laws had before M10.
-  property("L4 arrow coherence for eraseWeave, at Err = Trivial") {
-    forAllErrors { e =>
-      val law = RaiseArrowLaws.arrowCoherence[Woven, Result, Trivial, TestError, Int](
-        WeaveArrows.eraseWeave[Result, Render, Render, Trivial],
-        raiseResult,
-        e
-      )
-      assertEquals(law.lhs, law.rhs)
-    }
-  }
-
-  property("L5 section/retraction, at Err = Trivial") {
-    forAllErrors { e =>
-      val law = RaiseArrowLaws.sectionRetraction[Result, Render, Render, Trivial, TestError, Int](
-        raiseResult,
-        e
-      )
-      assertEquals(law.lhs, law.rhs)
-    }
-  }
-
   property("L6a the synthesized functor maps the codomain target") {
     forAllInts { i =>
       val law = RaiseArrowLaws.liftedFunctorMapsTarget[Result, Render, Render, Render, TestError, Int, Int](
@@ -188,6 +160,87 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
   test("L7 the pulled capability uses the ambient Functor instance itself") {
     val pulled = WeaveArrows.raisePull[Result, Render, Render, Render](functorResult).apply(raiseWoven)
     assert(pulled.functor eq functorResult)
+  }
+
+  // ------------------------- L4/L5/L6a-d/L7 at Err = Trivial (∀E)
+
+  // All seven value-level laws above take `implicit ev: Err[E]`, which
+  // narrows each from "for all E" to "for all E for which Err[E] exists" —
+  // L6a-d and L7 reach the evidence through `lifted`/`raiseLift`/`raisePull`
+  // just as L4/L5 do, even though their bodies don't call `.raise` directly.
+  // `Trivial`'s instance is universal, so instantiating all seven at
+  // `Err = Trivial` restores the original quantifier for each. The `Render`
+  // instantiations above cover the evidence-carrying path; these cover the
+  // strength the laws had before M10.
+  property("L4 arrow coherence for eraseWeave, at Err = Trivial") {
+    forAllErrors { e =>
+      val law = RaiseArrowLaws.arrowCoherence[Woven, Result, Trivial, TestError, Int](
+        WeaveArrows.eraseWeave[Result, Render, Render, Trivial],
+        raiseResult,
+        e
+      )
+      assertEquals(law.lhs, law.rhs)
+    }
+  }
+
+  property("L5 section/retraction, at Err = Trivial") {
+    forAllErrors { e =>
+      val law = RaiseArrowLaws.sectionRetraction[Result, Render, Render, Trivial, TestError, Int](
+        raiseResult,
+        e
+      )
+      assertEquals(law.lhs, law.rhs)
+    }
+  }
+
+  property("L6a the synthesized functor maps the codomain target, at Err = Trivial") {
+    forAllInts { i =>
+      val law = RaiseArrowLaws.liftedFunctorMapsTarget[Result, Render, Render, Trivial, TestError, Int, Int](
+        raiseResult,
+        sampleWeave(i),
+        _ + 1
+      )
+      assertEquals(law.lhs, law.rhs)
+    }
+  }
+
+  property("L6b/c/d the synthesized functor preserves the weave metadata, at Err = Trivial") {
+    forAllInts { i =>
+      val w = sampleWeave(i)
+      val algebraName =
+        RaiseArrowLaws.liftedFunctorPreservesAlgebraName[Result, Render, Render, Trivial, TestError, Int, Int](
+          raiseResult,
+          w,
+          _ + 1
+        )
+      val codomainName =
+        RaiseArrowLaws.liftedFunctorPreservesCodomainName[Result, Render, Render, Trivial, TestError, Int, Int](
+          raiseResult,
+          w,
+          _ + 1
+        )
+      val domain =
+        RaiseArrowLaws.liftedFunctorPreservesDomain[Result, Render, Render, Trivial, TestError, Int, Int](
+          raiseResult,
+          w,
+          _ + 1
+        )
+
+      assertEquals(algebraName.lhs, algebraName.rhs)
+      assertEquals(codomainName.lhs, codomainName.rhs)
+      assertEquals(domain.lhs, domain.rhs)
+    }
+  }
+
+  property("L7 the pulled capability reports the ambient Functor[F], at Err = Trivial") {
+    forAllInts { i =>
+      val law = RaiseArrowLaws.pulledFunctorIsAmbient[Result, Render, Render, Trivial, TestError, Int, Int](
+        raiseWoven,
+        i.asRight[TestError],
+        _ + 1
+      )
+      assertEquals(law.lhs, law.rhs)
+    }
   }
 
   // ------------------------------------------ L8 weave structure fidelity
