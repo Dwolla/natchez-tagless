@@ -11,5 +11,5 @@ import scala.annotation.experimental
   */
 @experimental
 class DerivedRaiseAspectSpec extends RaiseAspectSuite:
-  def instance: RaiseAspect[TestAlg, Render, Render] =
-    DeriveRaise.aspect[TestAlg, Render, Render]
+  def instance: RaiseAspect[TestAlg, Render, Render, Render] =
+    DeriveRaise.aspect[TestAlg, Render, Render, Render]

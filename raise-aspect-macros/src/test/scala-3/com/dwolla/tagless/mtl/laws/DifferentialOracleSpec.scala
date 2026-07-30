@@ -18,11 +18,11 @@ import LawsInstances._
 @experimental
 class DifferentialOracleSpec extends FunSuite:
 
-  private val derived: RaiseAspect[TestAlg, Render, Render] =
-    DeriveRaise.aspect[TestAlg, Render, Render]
+  private val derived: RaiseAspect[TestAlg, Render, Render, Render] =
+    DeriveRaise.aspect[TestAlg, Render, Render, Render]
 
-  private val reference: RaiseAspect[TestAlg, Render, Render] =
-    TestAlgReference.referenceRaiseAspect[Render, Render]
+  private val reference: RaiseAspect[TestAlg, Render, Render, Render] =
+    TestAlgReference.referenceRaiseAspect[Render, Render, Render]
 
   private val outcomes = List(-1, 0, 1)
 
@@ -52,7 +52,10 @@ class DifferentialOracleSpec extends FunSuite:
     outcomes.foreach { outcome =>
       val impl = new EitherTestAlg(outcome)
       assert(
-        eqAlg.eqv(derived.mapK(impl)(RaiseArrow.id[Result]), reference.mapK(impl)(RaiseArrow.id[Result])),
+        eqAlg.eqv(
+          derived.mapK(impl)(RaiseArrow.id[Result, Render]),
+          reference.mapK(impl)(RaiseArrow.id[Result, Render])
+        ),
         s"mapK under the identity arrow differs for eOutcome $outcome"
       )
     }
@@ -60,7 +63,7 @@ class DifferentialOracleSpec extends FunSuite:
 
   test("the derived mapK agrees with the reference under the erasure arrow") {
     val eqAlg = eqTestAlg[Result]
-    val erase = WeaveArrows.eraseWeave[Result, Render, Render]
+    val erase = WeaveArrows.eraseWeave[Result, Render, Render, Render]
     outcomes.foreach { outcome =>
       val impl = new EitherTestAlg(outcome)
       assert(
@@ -74,11 +77,16 @@ class DifferentialOracleSpec extends FunSuite:
   }
 
   test("the derived functorK agrees with the derived aspect's mapK") {
-    val functorK = DeriveRaise.functorK[TestAlg]
+    val functorK = DeriveRaise.functorK[TestAlg, Render]
     val eqAlg = eqTestAlg[Result]
     outcomes.foreach { outcome =>
       val impl = new EitherTestAlg(outcome)
-      assert(eqAlg.eqv(functorK.mapK(impl)(RaiseArrow.id[Result]), derived.mapK(impl)(RaiseArrow.id[Result])))
+      assert(
+        eqAlg.eqv(
+          functorK.mapK(impl)(RaiseArrow.id[Result, Render]),
+          derived.mapK(impl)(RaiseArrow.id[Result, Render])
+        )
+      )
     }
   }
 
