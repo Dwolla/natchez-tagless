@@ -140,7 +140,14 @@ modules/
 > needs only its own `Weave ~> F` interpreters, its own `Synthetic` instance
 > for its rendering type class, and its own `RaiseRecorder`-equivalent
 > resolving the default hook. The resolution mechanism, the arrows, and
-> `OnRaise` are reused unchanged.
+> `OnRaise` are reused unchanged. That `Synthetic` instance must live
+> somewhere its own syntax import will carry it — a package object is in the
+> implicit scope of neither `Synthetic` nor the backend's rendering type
+> class, so `Synthetic[Cod]`, resolved from `raise-aspect-core` rather than a
+> lexically-enclosing scope, won't find it there; natchez-tagless hit this
+> directly and moved its instance onto its syntax trait to fix it. See
+> `03-evidence-carrying-transport-design.md` §B.2 for the discovery and the
+> fix.
 
 ### 3.2 Core types
 

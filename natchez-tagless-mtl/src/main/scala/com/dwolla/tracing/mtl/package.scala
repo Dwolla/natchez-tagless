@@ -109,12 +109,11 @@ package com.dwolla.tracing
   * `RaiseRecorder.ErrorValueKey` on `RaiseRecorder`'s companion — giving the
   * domain error's runtime class name and its `TraceableValue` rendering, even
   * though the `Throwable` channel above still only shows `Submarine`. This
-  * happens with no action required from the caller: `traceWithInputs`/
-  * `traceWithInputsAndOutputs` resolve a `WeaveInterpreter` and a
-  * `RaiseRecorder[F, TraceableValue]`, and sequence the latter's
-  * `OnRaise[F, TraceableValue]` hook at the `raiseLift` interception point,
-  * falling back to this `Trace`-based recording whenever no more specific hook
-  * is in scope.
+  * happens with no action required from the caller: both syntax methods
+  * resolve a `RaiseRecorder[F, TraceableValue]` and hand its
+  * `OnRaise[F, TraceableValue]` hook to `WeaveInterpreter`, which sequences it
+  * at the `raiseLift` interception point — falling back to this `Trace`-based
+  * recording whenever no more specific hook is in scope.
   *
   * This default rendering ''is'' redaction-aware, like the rest of this
   * library: `raise.error.value` is the error's `TraceableValue[E]` rendering,
