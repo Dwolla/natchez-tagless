@@ -2,8 +2,38 @@
 
 ## Status
 
-**Not started.** Prerequisites: M5 merged; M6/M7 recommended first (their
-shapes constrain this design — see "Interactions" below).
+**Not started; scheduled after M7** (Brian, 2026-07-30). Prerequisites: M5
+merged; M6/M7 recommended first (their shapes constrain this design — see
+"Interactions" below). The two gates below are unchanged and both still shut.
+
+### What changed under this milestone since it was written
+
+M10 and M11 landed on `milestone/m10-evidence-carrying-transport` (unmerged).
+They change the input to three of the six Phase 1 questions:
+
+- **Question 1 (representation).** `RaisePull` now carries an `Err[_]`
+  evidence parameter — `apply[E](rg: Raise[G, E])(implicit ev: Err[E])` — so
+  the "one polymorphic pull versus a pull per capability" question now also
+  has to answer *what evidence each capability's transport carries*, and
+  whether a mixed-capability method needs one evidence type class or several.
+  M10 settled the analogous question for `Raise` — transport stays uniform in
+  the type, evidence arrives per application site — and that answer should be
+  treated as precedent rather than re-litigated from scratch.
+- **Question 4 (compatibility).** Partly pre-empted: M10 already broke
+  `RaiseAspect`, `RaiseFunctorK`, `RaiseArrow`, `RaisePull` and `OnRaise`
+  without shims, under ratified decision D7. The precedent for a clean break
+  on this API family is established; the question is now narrower.
+- **Question 6 (interactions).** M6's `OnRaise` is now `OnRaise[F, Err]`, and
+  M11 added `WeaveInterpreter[Alg, Dom, Cod, Err, F]` in `raise-aspect-core`
+  as the backend-agnostic resolution point. A generalized capability design
+  has to say what `WeaveInterpreter` becomes, not just what `RaiseAspect`
+  becomes.
+
+One hard-won constraint worth carrying into any new backend or capability
+module, recorded in `03-evidence-carrying-transport-design.md` §B.2: an
+instance a syntax import is expected to supply must live somewhere that import
+actually carries it. Placing it in a package object works only for callers
+lexically inside that package.
 
 **Two gates, both Brian's:**
 

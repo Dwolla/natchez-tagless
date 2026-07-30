@@ -2,11 +2,36 @@
 
 ## Status
 
-**Not started.** Prerequisites: M5 merged (the macros as they landed in
-M3/M4). Independent of M6 — the two can run in either order. The Decisions
-section below was proposed by the planning session on 2026-07-29 and has not
-yet been ratified by Brian; confirm it before starting, then treat it as
-final.
+**Not started. Next up** — Brian set the order on 2026-07-30: M7, then M8.
+
+Prerequisites: M5 merged (the macros as they landed in M3/M4). Independent of
+M6 — the two can run in either order. The Decisions section below was proposed
+by the planning session on 2026-07-29 and **has not yet been ratified**;
+confirm it before starting, then treat it as final.
+
+### What changed under this milestone since it was written
+
+M10 and M11 landed on `milestone/m10-evidence-carrying-transport` (unmerged, on
+top of the equally unmerged M6). Two consequences for this milestone:
+
+1. **There is now a third instance to resolve, not two.** M10 gave the
+   derivation an `Err[_]` evidence parameter, summoned per `Raise[F, E]`
+   capability parameter at the derivation site — `inferErrOrAbort` on the
+   Scala 2 axis, `summonErrOrAbort` on the Scala 3 axis. A method supplying
+   its own `TraceableValue[ErrA]`/`Render[ErrA]` through its own
+   `implicit`/`using` clause has exactly the problem this milestone exists to
+   solve, so **whatever is decided for `Dom`/`Cod` must cover `Err` too**, on
+   both axes. Recorded in `03-evidence-carrying-transport-design.md` §A.6.
+   Task 1's `WidgetAlg` fixture should gain a capability parameter whose `Err`
+   instance is method-local, alongside the `Dom`/`Cod` case it already
+   specifies.
+2. **The derivation entry points gained a type parameter.** They are now
+   `DeriveRaise.aspect[Alg, Dom, Cod, Err]` and
+   `DeriveRaise.functorK[Alg, Err]` on both axes. Any snippet in this document
+   showing a three-argument `aspect` call is stale.
+
+Nothing in M10/M11 invalidates this milestone's Decisions section; option (b)
+and the (a)/(c) rulings stand as written.
 
 ---
 
