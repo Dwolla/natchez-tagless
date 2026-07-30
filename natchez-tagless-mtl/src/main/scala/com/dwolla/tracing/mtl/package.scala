@@ -97,17 +97,66 @@ import natchez.{TraceValue, TraceableValue}
   *
   * ==The Submarine caveat==
   *
-  * A raise that crosses the traced wrapper before being rescued surfaces in the
-  * `Throwable` channel as cats-mtl's own opaque `Submarine` exception (see
+  * A raise that crosses the traced wrapper before being rescued still surfaces in
+  * the `Throwable` channel as cats-mtl's own opaque `Submarine` exception (see
   * [[https://github.com/typelevel/cats-mtl/issues/648 cats-mtl#648]]), not as
   * `ValidationError` directly — confirmed directly against natchez's own
   * `natchez.mtl.LocalTrace#span`, which calls `attachError` on any exception that
-  * escapes a traced call, before `Handle.rescue` ever gets to catch it. So an
-  * in-flight domain error that is later recovered may still show up as a span
-  * error annotation, but that annotation carries only that a raise happened, not
-  * what it was. A typed-error recording hook at the `raiseLift` interception point
-  * — so the ''real'' domain error could be attached instead — is planned future
-  * work; it is not implemented here.
+  * escapes a traced call, before `Handle.rescue` ever gets to catch it. That half
+  * of the caveat hasn't changed and isn't fixable from this side; it's upstream.
+  *
+  * What's no longer true: that the domain error is invisible to the trace. By
+  * default, every algebra traced via the `RaiseAspect` path records the typed
+  * error as span fields at the moment of the raise — `raise.error.type` and
+  * `raise.error.message`, named as `RaiseRecorder.ErrorTypeKey` and
+  * `RaiseRecorder.ErrorMessageKey` on `RaiseRecorder`'s companion — giving the
+  * domain error's runtime class name and rendered message, even though the
+  * `Throwable` channel above still only shows `Submarine`. This happens with no
+  * action required from the caller: `WithInputsAndOutputsTracer`/
+  * `WithInputsTracer` resolve a `RaiseRecorder[F]` and sequence its `OnRaise[F]`
+  * hook at the `raiseLift` interception point, falling back to this `Trace`-based
+  * recording whenever no more specific hook is in scope.
+  *
+  * This default rendering is not redaction-aware, unlike the rest of this
+  * library: `raise.error.message` is the domain error's raw `e.toString`, not
+  * a `TraceableValue[E]` rendering, so none of the newtype-plus-custom-
+  * `TraceableValue` redaction pattern this library uses for sensitive
+  * parameters (see `TraceWeaveCapturingInputs`/
+  * `TraceWeaveCapturingInputsAndOutputs`) applies to it. An error ADT that
+  * carries a token, an email address, or a card number will have that
+  * value's `toString` land in the tracing backend by default. Redacting or
+  * omitting such fields means supplying a custom `OnRaise[F]` — the same
+  * override mechanism shown next.
+  *
+  * ==Overriding the default recording==
+  *
+  * `RaiseRecorder` resolution is just implicit priority: a user-supplied
+  * `OnRaise[F]` (`com.dwolla.tagless.mtl.OnRaise`) always outranks the `Trace`-based
+  * default, so overriding it is a matter of defining one — no separate wiring step:
+  *
+  * {{{
+  *   import cats.Applicative
+  *   import com.dwolla.tagless.mtl.OnRaise
+  *   import natchez.Trace
+  *
+  *   // Reusing `ValidationError`/`TooSmall` from the worked example above — this
+  *   // block shares that scope, so no need to redeclare them.
+  *
+  *   // Just having this implicit in scope is the entire override: RaiseRecorder's
+  *   // fromOnRaise instance outranks fromTrace, the default used above.
+  *   implicit def onRaiseValidationError[F[_] : Applicative](implicit T: Trace[F]): OnRaise[F] =
+  *     new OnRaise[F] {
+  *       def apply[E](e: E): F[Unit] = e match {
+  *         case TooSmall(i) => T.put("validation.too_small.value" -> i)
+  *         case _ => ().pure[F]
+  *       }
+  *     }
+  *
+  *   // RaiseRecorder.fromOnRaise picks up onRaiseValidationError automatically;
+  *   // no other change is needed at any tracing call site.
+  *   def recorderResolvesViaOnRaise[F[_] : Applicative](implicit T: Trace[F]): RaiseRecorder[F] =
+  *     implicitly[RaiseRecorder[F]]
+  * }}}
   */
 package object mtl {
 

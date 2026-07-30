@@ -47,16 +47,19 @@ trait LowPriorityWithInputsAndOutputsTracer {
     * from `raise-aspect-core`. `Dom`/`Cod` are fixed to `TraceableValue` here (unlike
     * [[WithInputsTracer]]), so `raiseLift` resolves the package's own
     * `syntheticTraceableValue` directly; no extra constraint parameter is needed.
+    * `raiseLift` is driven by the resolved `RaiseRecorder[F]`'s `R.onRaise` hook — see
+    * `RaiseRecorder` for where that hook comes from.
     */
   implicit def fromRaiseAspect[Alg[_[_]], F[_]](implicit
       F: FlatMap[F],
       T: Trace[F],
-      A: RaiseAspect[Alg, TraceableValue, TraceableValue]
+      A: RaiseAspect[Alg, TraceableValue, TraceableValue],
+      R: RaiseRecorder[F]
   ): WithInputsAndOutputsTracer[Alg, F] =
     new WithInputsAndOutputsTracer[Alg, F] {
       def apply(alg: Alg[F]): Alg[F] =
         A.mapK(A.weave(alg))(
-          RaiseArrow(TraceWeaveCapturingInputsAndOutputs[F], WeaveArrows.raiseLift[F, TraceableValue, TraceableValue])
+          RaiseArrow(TraceWeaveCapturingInputsAndOutputs[F], WeaveArrows.raiseLift(R.onRaise))
         )
     }
 }
@@ -86,16 +89,19 @@ trait LowPriorityWithInputsTracer {
     * [[WithInputsAndOutputsTracer]]'s fixed-`Cod` variant) because `Cod` is a free
     * type parameter and `WeaveArrows.raiseLift` needs a `Cod` instance to build the
     * shell `Weave`'s codomain advice — a structural consequence of `RaiseAspect`'s
-    * design, not an arbitrary new restriction.
+    * design, not an arbitrary new restriction. As in [[WithInputsAndOutputsTracer]],
+    * `raiseLift` is driven by the resolved `RaiseRecorder[F]`'s `R.onRaise` hook — see
+    * `RaiseRecorder` for where that hook comes from.
     */
   implicit def fromRaiseAspect[Alg[_[_]], Cod[_], F[_]](implicit
       F: Apply[F],
       T: Trace[F],
       A: RaiseAspect[Alg, TraceableValue, Cod],
-      syn: Synthetic[Cod]
+      syn: Synthetic[Cod],
+      R: RaiseRecorder[F]
   ): WithInputsTracer[Alg, Cod, F] =
     new WithInputsTracer[Alg, Cod, F] {
       def apply(alg: Alg[F]): Alg[F] =
-        A.mapK(A.weave(alg))(RaiseArrow(TraceWeaveCapturingInputs[F, Cod], WeaveArrows.raiseLift[F, TraceableValue, Cod]))
+        A.mapK(A.weave(alg))(RaiseArrow(TraceWeaveCapturingInputs[F, Cod], WeaveArrows.raiseLift(R.onRaise)))
     }
 }

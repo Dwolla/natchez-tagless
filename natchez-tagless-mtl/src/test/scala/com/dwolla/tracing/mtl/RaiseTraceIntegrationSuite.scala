@@ -72,12 +72,13 @@ abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
     entryPoint.root("test").use(L.scope(effect))
   }
 
-  /** The raise path's history minus its `AttachError` entry: only the input `Put`
-    * runs before the codomain target raises, so there is no second `Put` for the
-    * return value. Both variants below additionally record an `AttachError` for
-    * the escaping `Submarine` exception, between the input `Put` and
-    * `ReleaseSpan`; [[assertRaisingHistory]] checks that entry structurally and
-    * this list around it.
+  /** The raise path's history minus its `AttachError` entry: the input `Put` runs
+    * before the codomain target raises, so there is no `Put` for the return value —
+    * but M6's `RaiseRecorder` default now records the typed error itself as a second
+    * `Put`, sequenced (per `WeaveArrows.raiseLift(onRaise)`) before the raise actually
+    * happens. Both variants below additionally record an `AttachError` for the
+    * escaping `Submarine` exception, between that `Put` and `ReleaseSpan`;
+    * [[assertRaisingHistory]] checks that entry structurally and this list around it.
     *
     * `natchez.mtl.LocalTrace#span` calls `s.attachError(err)` in an `.onError`
     * handler whenever the traced body raises — confirmed by reading its source —
@@ -85,12 +86,19 @@ abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
     * being caught, exactly as the milestone's Submarine caveat anticipates: the
     * attached error is cats-mtl's opaque `Submarine` wrapper, not `BarError`
     * directly, so span error annotations for a recovered domain error carry only
-    * that the raise happened, not what it was.
+    * that the raise happened, not what it was — the `RaiseRecorder`-derived `Put`
+    * is what carries the typed error, under its own `raise.*` key prefix.
     */
   private val raisingProgramHistory: List[(Lineage, NatchezCommand)] = List(
     Root -> CreateRootSpan("test", Kernel(Map.empty), Span.Options.Defaults),
     Root("test") -> CreateSpan("Bar.bar", None, Span.Options.Defaults),
     Root("test") / "Bar.bar" -> Put(List("Bar.bar.i" -> NumberValue(-1))),
+    Root("test") / "Bar.bar" -> Put(
+      List(
+        RaiseRecorder.ErrorTypeKey -> StringValue(classOf[BarError.Negative].getName),
+        RaiseRecorder.ErrorMessageKey -> StringValue(BarError.Negative(-1).toString)
+      )
+    ),
     Root("test") -> ReleaseSpan("Bar.bar"),
     Root -> ReleaseRootSpan("test")
   )
@@ -104,11 +112,11 @@ abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
     * same `bar(-1)` call, that the wrapped domain error is `Negative(-1)`.
     */
   private def assertRaisingHistory(history: List[(Lineage, NatchezCommand)]): Unit = {
-    assertEquals(history.size, 6)
-    assertEquals(history.take(3), raisingProgramHistory.take(3))
-    assertEquals(history.drop(4), raisingProgramHistory.drop(3))
+    assertEquals(history.size, 7)
+    assertEquals(history.take(4), raisingProgramHistory.take(4))
+    assertEquals(history.drop(5), raisingProgramHistory.drop(4))
 
-    val (lineage, attachError) = history(3)
+    val (lineage, attachError) = history(4)
     assertEquals(lineage, Root("test") / "Bar.bar")
     attachError match {
       case AttachError(err, Nil) => assertEquals(err.getClass.getSimpleName, "Submarine")
@@ -116,7 +124,7 @@ abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
     }
   }
 
-  test("RaiseAspect tracing releases the span and records only the input attribute when the method raises - Kleisli") {
+  test("RaiseAspect tracing releases the span and records the input attribute and the raised error's type/message when the method raises - Kleisli") {
     InMemory.EntryPoint.create[Kleisli[IO, Span[IO], *]]
       .flatMap { ep =>
         raisingProgram[Kleisli[IO, Span[IO], *]](ep) *> ep.ref.get.map(_.toList)
@@ -125,7 +133,7 @@ abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
       .map(assertRaisingHistory)
   }
 
-  test("RaiseAspect tracing releases the span and records only the input attribute when the method raises - IOLocal") {
+  test("RaiseAspect tracing releases the span and records the input attribute and the raised error's type/message when the method raises - IOLocal") {
     IOLocal(Span.noop[IO])
       .map(localViaIoLocal(_))
       .map(implicit L => raisingProgram[IO](_))

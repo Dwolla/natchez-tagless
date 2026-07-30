@@ -1,8 +1,10 @@
 package com.dwolla.tagless.mtl
 
+import cats.Apply
 import cats.Functor
 import cats.arrow.FunctionK
 import cats.mtl.Raise
+import cats.syntax.all._
 import cats.tagless.aop.Aspect
 import cats.~>
 
@@ -62,6 +64,37 @@ object WeaveArrows {
               RaiseName,
               Nil,
               Aspect.Advice[F, Cod, A](RaiseName, rf.raise[E2, A](e))(syn.apply[A])
+            )
+        }
+    }
+
+  /** As [[raiseLift]], but sequences the given `onRaise` hook's effect before
+    * the raised value crosses the interception point — see M6's typed-error
+    * span recording. The synthesized `functor` member is identical to the
+    * no-hook overload's; only the shell target's effect changes.
+    *
+    * `Apply[F]`, not `Functor[F]`, is what sequencing the hook's effect with
+    * `rf.raise` needs; `Apply[F] extends Functor[F]` in cats, so this still
+    * satisfies `syntheticWeaveFunctor`'s `Functor[F]` requirement.
+    */
+  def raiseLift[F[_], Dom[_], Cod[_]](onRaise: OnRaise[F])(implicit
+      F: Apply[F],
+      syn: Synthetic[Cod]
+  ): RaisePull[F, Aspect.Weave[F, Dom, Cod, *]] =
+    new RaisePull[F, Aspect.Weave[F, Dom, Cod, *]] {
+      def apply[E](rf: Raise[F, E]): Raise[Aspect.Weave[F, Dom, Cod, *], E] =
+        new Raise[Aspect.Weave[F, Dom, Cod, *], E] {
+          val functor: Functor[Aspect.Weave[F, Dom, Cod, *]] =
+            syntheticWeaveFunctor[F, Dom, Cod]
+
+          def raise[E2 <: E, A](e: E2): Aspect.Weave[F, Dom, Cod, A] =
+            Aspect.Weave[F, Dom, Cod, A](
+              RaiseName,
+              Nil,
+              Aspect.Advice[F, Cod, A](
+                RaiseName,
+                onRaise(e) *> rf.raise[E2, A](e)
+              )(syn.apply[A])
             )
         }
     }

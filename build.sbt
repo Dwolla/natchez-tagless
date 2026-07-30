@@ -107,6 +107,17 @@ lazy val raiseAspectCore = crossProject(JVMPlatform, JSPlatform)
     ),
     mimaPreviousArtifacts := Set.empty,
   )
+  // Test-only, additive split so a `Platform.isJvm` compile-time constant
+  // (see OnRaiseSpec/WeaveArrowsOnRaiseSpec) can differ between the JVM and
+  // JS builds without moving raiseAspectCore to CrossType.Full. Mirrors this
+  // project's existing scala-2/scala-3 source-directory convention, and the
+  // `cats-kernel-laws` Platform.isJvm pattern it's modeled on.
+  .jvmSettings(
+    Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+  .jsSettings(
+    Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-js",
+  )
 
 lazy val raiseAspectLaws = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
