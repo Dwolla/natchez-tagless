@@ -23,11 +23,11 @@ class TestAlgReferencePropertySpec extends ScalaCheckSuite {
 
   private val raiseF: Raise[F, TestError] = Raise[F, TestError]
 
-  private val ref: RaiseAspect[TestAlg, Render, Render] =
-    TestAlgReference.referenceRaiseAspect[Render, Render]
+  private val ref: RaiseAspect[TestAlg, Render, Render, Render] =
+    TestAlgReference.referenceRaiseAspect[Render, Render, Render]
 
   private def erased(impl: TestAlg[F]): TestAlg[F] =
-    ref.mapK(ref.weave(impl)(Functor[F]))(WeaveArrows.eraseWeave[F, Render, Render])
+    ref.mapK(ref.weave(impl)(Functor[F]))(WeaveArrows.eraseWeave[F, Render, Render, Render])
 
   property("erasure preserves the result of every method, raising or not") {
     forAll { (i: Int, x: String, y: Int, j: Int, eOutcome: Int) =>

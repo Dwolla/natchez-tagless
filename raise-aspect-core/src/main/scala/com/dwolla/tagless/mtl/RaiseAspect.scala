@@ -8,8 +8,8 @@ import cats.tagless.aop.Aspect
   * `mapK` over an `F ~> G` cannot turn the `Raise[G, E]` a `G`-side method
   * receives into the `Raise[F, E]` the underlying method needs.
   */
-trait RaiseFunctorK[Alg[_[_]]] extends Serializable {
-  def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G]): Alg[G]
+trait RaiseFunctorK[Alg[_[_]], Err[_]] extends Serializable {
+  def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G, Err]): Alg[G]
 }
 
 /** The `Aspect` analogue for algebras with `Raise` capability parameters.
@@ -20,7 +20,14 @@ trait RaiseFunctorK[Alg[_[_]]] extends Serializable {
   * There is deliberately no `E` parameter: transport is uniform in the error
   * type, so each method is handled with whatever error types it declares,
   * including several `Raise` parameters on one method.
+  *
+  * `Err` is not an `E` parameter. It is a per-error-type ''evidence'' type
+  * class — `RaisePull#apply` still quantifies over `E` itself and merely
+  * demands an `Err[E]` at each application — so transport stays uniform while
+  * an interception point gains something better than `toString` to render a
+  * raised error with. Use `cats.tagless.Trivial` for `Err` when no evidence is
+  * wanted.
   */
-trait RaiseAspect[Alg[_[_]], Dom[_], Cod[_]] extends RaiseFunctorK[Alg] {
+trait RaiseAspect[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorK[Alg, Err] {
   def weave[F[_]](af: Alg[F])(implicit F: Functor[F]): Alg[Aspect.Weave[F, Dom, Cod, *]]
 }

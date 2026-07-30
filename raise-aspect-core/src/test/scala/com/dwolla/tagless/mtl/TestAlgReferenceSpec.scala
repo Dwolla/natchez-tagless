@@ -22,16 +22,16 @@ class TestAlgReferenceSpec extends FunSuite {
 
   private val raiseF: Raise[F, TestError] = Raise[F, TestError]
   private val raiseW: Raise[W, TestError] =
-    WeaveArrows.raiseLift[F, Render, Render].apply(raiseF)
+    WeaveArrows.raiseLift[F, Render, Render, Render].apply(raiseF)
 
-  private val ref: RaiseAspect[TestAlg, Render, Render] =
-    TestAlgReference.referenceRaiseAspect[Render, Render]
+  private val ref: RaiseAspect[TestAlg, Render, Render, Render] =
+    TestAlgReference.referenceRaiseAspect[Render, Render, Render]
 
   private def wovenOf(eOutcome: Int): TestAlg[W] =
     ref.weave(new EitherTestAlg(eOutcome))(Functor[F])
 
   private def erasedOf(eOutcome: Int): TestAlg[F] =
-    ref.mapK(wovenOf(eOutcome))(WeaveArrows.eraseWeave[F, Render, Render])
+    ref.mapK(wovenOf(eOutcome))(WeaveArrows.eraseWeave[F, Render, Render, Render])
 
   // ---------------------------------------------------------------- erasure
 
@@ -65,7 +65,7 @@ class TestAlgReferenceSpec extends FunSuite {
 
   test("mapK with the identity arrow leaves the algebra's behaviour unchanged") {
     val impl = new EitherTestAlg(0)
-    val mapped = ref.mapK(impl)(RaiseArrow.id[F])
+    val mapped = ref.mapK(impl)(RaiseArrow.id[F, Render])
 
     assertEquals(mapped.a(3)(raiseF), impl.a(3)(raiseF))
     assertEquals(mapped.a(-3)(raiseF), impl.a(-3)(raiseF))

@@ -29,11 +29,11 @@ object WeaveArrows {
     * The produced `Raise` reports the ambient `Functor[F]`, never a functor
     * routed through the weave — law L7.
     */
-  def raisePull[F[_], Dom[_], Cod[_]](implicit
+  def raisePull[F[_], Dom[_], Cod[_], Err[_]](implicit
       F: Functor[F]
-  ): RaisePull[Aspect.Weave[F, Dom, Cod, *], F] =
-    new RaisePull[Aspect.Weave[F, Dom, Cod, *], F] {
-      def apply[E](rw: Raise[Aspect.Weave[F, Dom, Cod, *], E]): Raise[F, E] =
+  ): RaisePull[Aspect.Weave[F, Dom, Cod, *], F, Err] =
+    new RaisePull[Aspect.Weave[F, Dom, Cod, *], F, Err] {
+      def apply[E](rw: Raise[Aspect.Weave[F, Dom, Cod, *], E])(implicit ev: Err[E]): Raise[F, E] =
         new Raise[F, E] {
           val functor: Functor[F] = F
 
@@ -48,13 +48,18 @@ object WeaveArrows {
     * The `Cod` instance on that shell is synthesized. It is sound because the
     * shell is unwrapped immediately via `codomain.target`, and a raised `F[A]`
     * never yields an `A` for anything to render.
+    *
+    * The `Err[E]` this method receives and the `Cod[A]` it synthesizes mean
+    * opposite things, despite looking alike: the error value is real, so its
+    * evidence is resolved by the caller and can genuinely render it; the
+    * success value never comes into existence, so its instance can be made up.
     */
-  def raiseLift[F[_], Dom[_], Cod[_]](implicit
+  def raiseLift[F[_], Dom[_], Cod[_], Err[_]](implicit
       F: Functor[F],
       syn: Synthetic[Cod]
-  ): RaisePull[F, Aspect.Weave[F, Dom, Cod, *]] =
-    new RaisePull[F, Aspect.Weave[F, Dom, Cod, *]] {
-      def apply[E](rf: Raise[F, E]): Raise[Aspect.Weave[F, Dom, Cod, *], E] =
+  ): RaisePull[F, Aspect.Weave[F, Dom, Cod, *], Err] =
+    new RaisePull[F, Aspect.Weave[F, Dom, Cod, *], Err] {
+      def apply[E](rf: Raise[F, E])(implicit ev: Err[E]): Raise[Aspect.Weave[F, Dom, Cod, *], E] =
         new Raise[Aspect.Weave[F, Dom, Cod, *], E] {
           val functor: Functor[Aspect.Weave[F, Dom, Cod, *]] =
             syntheticWeaveFunctor[F, Dom, Cod]
@@ -77,12 +82,12 @@ object WeaveArrows {
     * `rf.raise` needs; `Apply[F] extends Functor[F]` in cats, so this still
     * satisfies `syntheticWeaveFunctor`'s `Functor[F]` requirement.
     */
-  def raiseLift[F[_], Dom[_], Cod[_]](onRaise: OnRaise[F])(implicit
+  def raiseLift[F[_], Dom[_], Cod[_], Err[_]](onRaise: OnRaise[F, Err])(implicit
       F: Apply[F],
       syn: Synthetic[Cod]
-  ): RaisePull[F, Aspect.Weave[F, Dom, Cod, *]] =
-    new RaisePull[F, Aspect.Weave[F, Dom, Cod, *]] {
-      def apply[E](rf: Raise[F, E]): Raise[Aspect.Weave[F, Dom, Cod, *], E] =
+  ): RaisePull[F, Aspect.Weave[F, Dom, Cod, *], Err] =
+    new RaisePull[F, Aspect.Weave[F, Dom, Cod, *], Err] {
+      def apply[E](rf: Raise[F, E])(implicit ev: Err[E]): Raise[Aspect.Weave[F, Dom, Cod, *], E] =
         new Raise[Aspect.Weave[F, Dom, Cod, *], E] {
           val functor: Functor[Aspect.Weave[F, Dom, Cod, *]] =
             syntheticWeaveFunctor[F, Dom, Cod]
@@ -93,18 +98,21 @@ object WeaveArrows {
               Nil,
               Aspect.Advice[F, Cod, A](
                 RaiseName,
-                onRaise(e) *> rf.raise[E2, A](e)
+                // `e` is an `E2 <: E` and the evidence in scope is `Err[E]`,
+                // so the hook is invoked at `E` and `e` widens. This is why
+                // `Err` needs no variance annotation.
+                onRaise.apply[E](e)(ev) *> rf.raise[E2, A](e)
               )(syn.apply[A])
             )
         }
     }
 
   /** The full erasure morphism `Weave[F, Dom, Cod, *] ⇒ F`. */
-  def eraseWeave[F[_], Dom[_], Cod[_]](implicit
+  def eraseWeave[F[_], Dom[_], Cod[_], Err[_]](implicit
       F: Functor[F],
       syn: Synthetic[Cod]
-  ): RaiseArrow[Aspect.Weave[F, Dom, Cod, *], F] =
-    RaiseArrow(codomainTarget[F, Dom, Cod], raiseLift[F, Dom, Cod])
+  ): RaiseArrow[Aspect.Weave[F, Dom, Cod, *], F, Err] =
+    RaiseArrow(codomainTarget[F, Dom, Cod], raiseLift[F, Dom, Cod, Err])
 
   /** Satisfies `Raise`'s abstract `functor` member on shell weaves. Maps the
     * codomain target with the ambient `Functor[F]`, substitutes a synthesized
