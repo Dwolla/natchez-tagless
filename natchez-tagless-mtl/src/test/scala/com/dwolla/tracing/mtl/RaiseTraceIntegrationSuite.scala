@@ -4,6 +4,7 @@ import cats.data.Kleisli
 import cats.effect.{IO, IOLocal, MonadCancelThrow}
 import cats.mtl.{Handle, Local}
 import cats.syntax.all._
+import cats.tagless.Trivial
 import com.dwolla.tagless.mtl.RaiseAspect
 import com.dwolla.tracing.InMemorySuite
 import com.dwolla.tracing.mtl.syntax._
@@ -24,9 +25,16 @@ import natchez._
   * `barRaiseAspect` is abstract so the Scala 2 and Scala 3 concrete specs can each
   * supply `DeriveRaise.aspect[Bar, TraceableValue, TraceableValue, TraceableValue]`
   * at their own, version-appropriate call site (the Scala 3 one needs `@experimental`).
+  *
+  * `barRaiseAspectTrivialCod` supplies the same derivation at `Cod = Trivial`, so
+  * `traceWithInputs[Trivial]` (M11) has a `RaiseAspect[Bar, TraceableValue, Trivial,
+  * TraceableValue]` to resolve `WeaveInterpreter.fromRaiseAspect` against — the
+  * `Synthetic[Cod]` constraint that mechanism added is otherwise untested with a
+  * `Cod` other than `Err`.
   */
 abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
   implicit def barRaiseAspect: RaiseAspect[Bar, TraceableValue, TraceableValue, TraceableValue]
+  implicit def barRaiseAspectTrivialCod: RaiseAspect[Bar, TraceableValue, Trivial, TraceableValue]
 
   traceTest(
     "RaiseAspect tracing captures span, input, and output",
@@ -62,6 +70,27 @@ abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
     import natchez.mtl._
 
     val tracedBar: Bar[F] = Bar[F].traceWithInputsAndOutputs
+
+    val effect: F[Unit] =
+      Handle
+        .allowF[F, BarError] { implicit h => tracedBar.bar(-1) }
+        .rescue(_ => "rescued".pure[F])
+        .void
+
+    entryPoint.root("test").use(L.scope(effect))
+  }
+
+  /** Same raising program as [[raisingProgram]], but woven through
+    * `traceWithInputs[Trivial]` (M11) instead of `traceWithInputsAndOutputs` —
+    * fixing `Cod` to `Trivial` opts the woven algebra out of return-value
+    * rendering, per `RaiseTraceWeaveOps#traceWithInputs`'s scaladoc.
+    */
+  private def raisingProgramTraceWithInputs[F[_]: MonadCancelThrow](entryPoint: EntryPoint[F])(implicit
+      L: Local[F, Span[F]]
+  ): F[Unit] = {
+    import natchez.mtl._
+
+    val tracedBar: Bar[F] = Bar[F].traceWithInputs[Trivial]
 
     val effect: F[Unit] =
       Handle
@@ -143,6 +172,50 @@ abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
         }
       }
       .map(assertRaisingHistory)
+  }
+
+  /** `Cod = Trivial` never has a `TraceableValue` (or any other `Cod`)
+    * instance for `Bar.bar`'s `String` result to render through, so a stray
+    * `Bar.bar.returnValue` `Put` in the history would mean output rendering
+    * leaked back in despite `Cod` being fixed to `Trivial` — the failure mode
+    * this scan exists to catch, distinct from [[assertRaisingHistory]]'s
+    * exact-equality check (which would also fail, but only incidentally,
+    * since it isn't specifically about the return value).
+    */
+  private def assertNoReturnValuePut(history: List[(Lineage, NatchezCommand)]): Unit =
+    assert(
+      !history.exists {
+        case (_, Put(fields)) => fields.exists(_._1 == "Bar.bar.returnValue")
+        case _ => false
+      },
+      s"expected no Bar.bar.returnValue Put in $history"
+    )
+
+  test("traceWithInputs[Trivial] still records the raised error's type/message and the input attribute, but no return value - Kleisli") {
+    InMemory.EntryPoint.create[Kleisli[IO, Span[IO], *]]
+      .flatMap { ep =>
+        raisingProgramTraceWithInputs[Kleisli[IO, Span[IO], *]](ep) *> ep.ref.get.map(_.toList)
+      }
+      .run(Span.noop[IO])
+      .map { history =>
+        assertRaisingHistory(history)
+        assertNoReturnValuePut(history)
+      }
+  }
+
+  test("traceWithInputs[Trivial] still records the raised error's type/message and the input attribute, but no return value - IOLocal") {
+    IOLocal(Span.noop[IO])
+      .map(localViaIoLocal(_))
+      .map(implicit L => raisingProgramTraceWithInputs[IO](_))
+      .flatMap { program =>
+        InMemory.EntryPoint.create[IO].flatMap { ep =>
+          program(ep) *> ep.ref.get.map(_.toList)
+        }
+      }
+      .map { history =>
+        assertRaisingHistory(history)
+        assertNoReturnValuePut(history)
+      }
   }
 
   test("the default recorder renders the error through TraceableValue, not toString") {

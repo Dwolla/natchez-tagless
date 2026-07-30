@@ -4,15 +4,16 @@ package syntax
 import com.dwolla.tagless.mtl.OnRaise
 import natchez.{Trace, TraceableValue}
 
-/** Resolves the [[OnRaise]] hook that the `RaiseAspect`-based tracing strategies in
-  * [[TraceWeaveTracer]] sequence at a `raiseLift` interception point: a user-supplied
+/** Resolves the [[com.dwolla.tagless.mtl.OnRaise]] hook that the `RaiseAspect`-based tracing strategy in
+  * `RaiseTraceWeaveOps` sequences at a `raiseLift` interception point: a user-supplied
   * `OnRaise[F, Err]` if one is in scope, or else a default that records the typed
   * error as span fields via the ambient `Trace[F]`.
   *
   * Same sealed-typeclass low-priority-implicit mechanism as
-  * [[WithInputsAndOutputsTracer]]/[[WithInputsTracer]] — see that file's docs for why
-  * this pattern, rather than a single implicit method with a default argument, is
-  * used to let one instance take priority over another.
+  * `com.dwolla.tagless.mtl.WeaveInterpreter` — see that type class's docs for why
+  * a single sealed type class, rather than two separate conversions, is what lets
+  * one instance take priority over the other: there's no supertype relationship
+  * between the two candidates to make one win otherwise.
   */
 sealed trait RaiseRecorder[F[_], Err[_]] {
   def onRaise: OnRaise[F, Err]

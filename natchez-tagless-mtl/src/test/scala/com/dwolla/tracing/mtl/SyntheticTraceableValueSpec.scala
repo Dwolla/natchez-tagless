@@ -1,6 +1,7 @@
 package com.dwolla.tracing.mtl
 
 import com.dwolla.tagless.mtl.Synthetic
+import com.dwolla.tracing.mtl.syntax._
 import munit.FunSuite
 import natchez.{TraceValue, TraceableValue}
 
