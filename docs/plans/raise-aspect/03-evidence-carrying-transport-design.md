@@ -410,10 +410,37 @@ problem, resolved at the syntax method.
 `Synthetic[Cod]` becomes an unconditional constraint on the `RaiseAspect`
 instance. Today the inputs-and-outputs variant avoids it by pinning
 `Cod = TraceableValue` so the natchez module's own `syntheticTraceableValue`
-resolves directly. With `Cod` free that dodge is gone. No user-visible change
-— the same instance still resolves at the same call sites — but the doc
-comment at `TraceWeaveTracer.scala:44-52` explaining why no constraint is
-needed becomes false and must go.
+resolves directly. With `Cod` free that dodge is gone, and the doc comment at
+`TraceWeaveTracer.scala:44-52` explaining why no constraint is needed becomes
+false and must go.
+
+> **Corrected 2026-07-30 during M11 implementation.** This paragraph originally
+> claimed "No user-visible change — the same instance still resolves at the
+> same call sites." That is false, and was caught only because an implementer
+> hit the compile failure. `syntheticTraceableValue` lives in the
+> `com.dwolla.tracing.mtl` package object. The old instance lived in
+> `...mtl.syntax`, lexically nested inside that package, so the instance was
+> simply in scope. `WeaveInterpreter` lives in `raise-aspect-core`, so
+> `Synthetic[Cod]` is resolved at the call site instead — and the package
+> object is in the implicit scope of neither `Synthetic` nor
+> `natchez.TraceableValue`. An external caller with only
+> `import com.dwolla.tracing.mtl.syntax._` therefore stopped compiling on the
+> `RaiseAspect` path.
+>
+> **Resolution:** `syntheticTraceableValue` moves out of the package object
+> and onto the `ToRaiseTraceWeaveOps` syntax trait, so one `syntax._` import
+> is sufficient for both syntax methods. Verified in all three caller
+> positions on 2.13.18 and 3.3.8. Note the tempting alternative — *duplicating*
+> the instance onto the trait while leaving the package object's copy — breaks
+> Scala 2: the two lexical scopes are ambiguous for anything inside
+> `com.dwolla.tracing.mtl` that imports `syntax._`, and a `LowPriority` parent
+> does not order lexical scopes. Scala 3 accepts it, making that variant
+> 2.x-broken only.
+>
+> The general lesson for the planned otel4s module: moving an instance from a
+> package object into a type class instance in another module silently changes
+> which scopes can see it. Put a backend's `Synthetic` instance where its
+> syntax import will carry it.
 
 **`onRaise` is an explicit argument, not an implicit constraint.** This keeps
 the backend-specific priority mechanism (`RaiseRecorder`) in the backend
@@ -541,9 +568,15 @@ caller does with `Cod`. That is the payoff of `Err` being its own parameter
 without touching typed error recording.
 
 `Synthetic[Cod]` is not named here — it is a constraint on
-`WeaveInterpreter.fromRaiseAspect`, resolved when `ev` is. That is one
-constraint fewer at the call site than the current
-`LowPriorityWithInputsTracer.fromRaiseAspect` shape exposes.
+`WeaveInterpreter.fromRaiseAspect`, resolved when `ev` is.
+
+That is one constraint fewer *written* at the syntax method, but not one fewer
+imposed: the caller must still have a `Synthetic[Cod]` in scope, and the error
+when they don't now names `WeaveInterpreter` without mentioning `Synthetic` at
+all, which is a worse diagnostic than the one it replaces. (An earlier draft of
+this section claimed it was "one constraint fewer at the call site" full stop.
+It isn't.) The instance's placement is what makes this a non-issue in practice
+— see the correction note in §B.2.
 
 A future otel4s module writes the same two methods against its own rendering
 typeclass and its own interpreters, reusing `WeaveInterpreter`, `RaiseArrow`,
