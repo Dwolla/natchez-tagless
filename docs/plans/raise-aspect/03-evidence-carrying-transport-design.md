@@ -430,37 +430,79 @@ parameters. One comment at the instance covers it.
 
 #### Why both `OnRaise` and `RaiseRecorder` (decision D4)
 
+> **Justification rewritten 2026-07-30, after M10's final review.** The
+> original argument for this decision rested on a claim about Scala implicit
+> scope that is false, and was disproved by a runtime counterexample on
+> 2.13.18. It asserted that a user hook placed in their error ADT's companion
+> object would be *found* through implicit scope and would lose to a
+> wildcard-imported peer default. In fact the companion is never searched at
+> all — see below — so that scenario was never the hazard. **The decision is
+> unchanged and still correct; only the reasoning below is.** The false version
+> also reached shipped scaladoc and was corrected in the same pass.
+
 They are not two spellings of one idea. `OnRaise[F, Err]` *is* the hook, and
 lives in core. `RaiseRecorder[F, Err]` is a resolution strategy, lives in the
-backend module, and exists so that a user-supplied hook reliably outranks the
-backend's default. Collapsing them fails on implicit resolution mechanics.
+backend module, and exists so that the choice between a user hook and the
+backend's default is made by an explicit, stable mechanism rather than by
+whichever accident of scoping happens to apply at the call site.
 
-Suppose the natchez module published its default directly as a low-priority
-`implicit def fromTrace[F: Trace]: OnRaise[F, TraceableValue]`. A user hook
-would then compete with it as a peer:
+First, the fact that governs everything here. **Implicit scope for
+`OnRaise[F, TraceableValue]` comprises the companions of `OnRaise`, `F`, and
+`TraceableValue` — and nothing else.** A user's error ADT does not appear
+anywhere in that type, so its companion is never searched. Putting a hook
+there does not work, with or without `RaiseRecorder`. This is the opposite of
+what `TraceableValue[MyError]` does, where `MyError` *is* in the type and the
+companion therefore is searched — which is why this library's docs correctly
+teach companion placement for `TraceableValue` and must not teach it for
+`OnRaise`. A hook has to reach the call site lexically: a local
+`implicit val`/`given`, or an import.
 
-- A user hook defined as a local `implicit val` wins on lexical precedence — a
-  local definition outranks a wildcard import. Fine.
-- A user hook placed in a **companion object** — of their error ADT or their
-  algebra, which is where this library's own docs teach people to put
-  instances — is found through implicit scope, which is searched only *after*
-  lexical scope fails. The wildcard-imported default is in lexical scope, so
-  the default wins. Silently: no ambiguity error, no compile failure, and the
-  user's redaction hook simply never runs.
+Given that, suppose the natchez module published its default directly as a
+low-priority `implicit def fromTrace[F: Trace]: OnRaise[F, TraceableValue]`.
+Both candidates are then peer `OnRaise` values competing in lexical scope:
 
-`RaiseRecorder` avoids this because `fromOnRaise`'s search for
-`OnRaise[F, Err]` happens *inside* a resolution that has already committed to
-the high-priority branch. A hook anywhere in scope — companion object
-included — wins.
+- User hook as a local `implicit val`, default reaching the call site through
+  `import com.dwolla.tracing.mtl.syntax._`: the local definition wins on
+  lexical precedence. It works — but by nesting depth, not by anything either
+  party declared. Move the hook into a shared `instances` object the user also
+  wildcard-imports, which is ordinary practice, and the tiebreak evaporates.
+- Both wildcard-imported: **genuine ambiguity, a compile error.** Two
+  wildcard imports at the same precedence level with no way to order them —
+  and no way for this library to fix it from its side, because the competing
+  candidates live in two different modules with no subtype relationship
+  between their owners. This is the real hazard, and it is the one
+  `RaiseRecorder` removes.
+
+`RaiseRecorder` removes it by taking the two candidates out of competition
+entirely. `fromOnRaise` and `fromTrace` are both `RaiseRecorder` instances in
+one implicit scope, ordered by owner derivation — the companion extends the
+low-priority trait — which is a mechanism this repo already uses and which
+does not depend on where anything is imported from. The user's `OnRaise` never
+competes with the default at all; it participates only as the argument to
+`fromOnRaise`'s implicit parameter. Either the user has a hook, in which case
+the high-priority branch succeeds, or they do not, in which case it fails and
+the low-priority branch supplies the `Trace`-based default. There is no
+tiebreak to lose.
+
+That ordering has its own version-specific wrinkle, discovered during M10 —
+see the §A.8 amendment on the `IsTraceableValue` witness.
 
 Moving the resolver into core does not help. Core cannot reach `Trace`, so its
 low-priority default could only be `OnRaise.noop`; the natchez default would
 then have to compete with the user's hook as a peer `OnRaise`, reproducing the
-silent-wrong-winner case above or producing outright ambiguity. Passing the
-hook explicitly at the syntax method with a default argument does not help
-either: it needs a second overload (a second way to do the same thing) and
-gives up the "define an implicit and it is picked up" ergonomics the M6 docs
-already teach.
+two-wildcard-import ambiguity above. Passing the hook explicitly at the syntax
+method with a default argument does not help either: it needs a second
+overload (a second way to do the same thing) and gives up the "define an
+implicit and it is picked up" ergonomics the M6 docs already teach.
+
+**What users must be told**, and what `natchez-tagless-mtl`'s package scaladoc
+now says: a hook must be in lexical scope at the call site. `RaiseRecorder`
+guarantees that a hook the compiler *finds* outranks the default; it cannot
+make the compiler find one that is out of scope. A missed hook degrades to the
+`Trace`-based default, which post-M10 renders through `TraceableValue` rather
+than `toString`, so the failure mode is a lost customization rather than a
+redaction hole. `RaiseRecorderPrioritySpec` pins all three cases: hook found
+and used, hook in an ADT companion and correctly not found, no hook at all.
 
 Both types stay. The naming is imperfect — `RaiseRecorder` resolves a hook
 rather than recording anything — but the thing it resolves genuinely is a
@@ -557,7 +599,7 @@ task-level plans produced separately.
 | D1 | `Err[_]` as a fourth parameter on `RaiseAspect`, second on `RaiseFunctorK` — not a reuse of `Dom` or `Cod` | Ratified 2026-07-30 |
 | D2 | Laws gain the evidence argument; value-level laws instantiated at both `Trivial` and `Render` to preserve the original ∀`E` strength | Ratified 2026-07-30. The three added `Render` instances are an additive edit to an otherwise frozen fixture — recorded in §A.7, not a separate decision |
 | D3 | `traceWithInputs[Cod]` keeps its free `Cod`, matching `core`; only `Err` is pinned | Ratified 2026-07-30 |
-| D4 | `WeaveInterpreter` lives in `raise-aspect-core` and takes `(fk, onRaise)` explicitly; `RaiseRecorder` stays backend-local; both `OnRaise` and `RaiseRecorder` are retained, for the resolution-mechanics reasons in §B.2 | Ratified 2026-07-30 |
+| D4 | `WeaveInterpreter` lives in `raise-aspect-core` and takes `(fk, onRaise)` explicitly; `RaiseRecorder` stays backend-local; both `OnRaise` and `RaiseRecorder` are retained, for the resolution-mechanics reasons in §B.2 | Ratified 2026-07-30. **Justification rewritten 2026-07-30** after M10's final review disproved the original argument's premise about implicit scope; decision unchanged, reasoning corrected in §B.2 |
 | D5 | Rename the `raise.error.message` span field to `raise.error.value` | Ratified 2026-07-30 — nothing consumes it in production yet |
 | D6 | The mtl syntax methods mirror `core`'s signatures exactly; no divergence | Ratified 2026-07-30 |
 | D7 | No compatibility shims for any of §A.9 | Ratified 2026-07-30 — unpublished, and the break is deliberate rather than incidental |
