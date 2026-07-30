@@ -8,9 +8,9 @@ import natchez.{Trace, TraceableValue}
 /** Task 3 (M6) / M11 — when an algebra has both an `Aspect` and a `RaiseAspect`
   * instance in scope, both `.traceWithInputsAndOutputs` and `.traceWithInputs`
   * must resolve unambiguously to the `Aspect` path, via the `WeaveInterpreter`
-  * that now backs both. A compilation check (no ambiguous-implicit error) plus a
-  * behavioral check (the `Aspect` path actually ran) cover `traceWithInputsAndOutputs`;
-  * a third test pins the same behavioral property for `traceWithInputs`.
+  * that now backs both. Each method gets the same pair of checks: a
+  * compilation check (no ambiguous-implicit error) and a behavioral check
+  * (the `Aspect` path actually ran).
   */
 class AspectPrioritySpec extends CatsEffectSuite {
   private implicit val trace: Trace[IO] = Trace.Implicits.noop[IO]
@@ -32,6 +32,19 @@ com.dwolla.tracing.mtl.syntax.Foo.io.traceWithInputsAndOutputs"""
   test("the Aspect path is used, not the poison RaiseAspect instance, and it produces the expected result") {
     val traced = Foo.io.traceWithInputsAndOutputs
     traced.foo(3).assertEquals("foo:3")
+  }
+
+  test("resolving traceWithInputs with both instances in scope does not report an ambiguous implicit") {
+    // Same rationale as the traceWithInputsAndOutputs case above: the type
+    // annotation on `errors` is required on Scala 3 to avoid a cyclic-reference
+    // check masking the snippet's own diagnostics.
+    val errors: String = compileErrors(
+      """import cats.effect.IO
+import natchez.{Trace, TraceableValue}
+implicit val trace: Trace[IO] = Trace.Implicits.noop[IO]
+com.dwolla.tracing.mtl.syntax.Foo.io.traceWithInputs[TraceableValue]"""
+    )
+    assertNoDiff(errors, "")
   }
 
   test("the Aspect path is used by traceWithInputs too, not the poison RaiseAspect instance") {
