@@ -153,13 +153,26 @@ each couples error rendering to a knob that exists to control something else.
 - **Reuse `Dom`.** Semantically wrong — an error is a way the method returns,
   not an input. And anyone deriving `RaiseAspect[Alg, Trivial, TraceableValue]`
   to opt out of *input* rendering would silently lose error rendering.
-- **Reuse `Cod`.** Semantically defensible, but `Cod` is exactly the parameter
-  a caller weakens to `Trivial` to opt out of *return-value* rendering. Under
-  that encoding, asking not to trace return values silently disables typed
-  error recording — the feature this whole part exists to fix — with no
-  compile error. This is not hypothetical: `traceWithInputs[Cod]` keeps a free
-  `Cod` (§B.3, decision D3), so `alg.traceWithInputs[Trivial]` is an ordinary
-  call that would lose error recording under this encoding.
+- **Reuse `Cod`.** Semantically defensible, but `Cod` is a free parameter a
+  caller can weaken to `Trivial` for reasons that have nothing to do with
+  errors — most often because their return types have no `TraceableValue` and
+  they are using `traceWithInputs`, which does not render them anyway. Under
+  this encoding, that unrelated choice silently disables typed error
+  recording, the feature this whole part exists to fix, with no compile error.
+  This is not hypothetical: `traceWithInputs[Cod]` keeps a free `Cod` (§B.3,
+  decision D3), so `alg.traceWithInputs[Trivial]` is an ordinary call.
+
+  > **Wording corrected 2026-07-30**, after M11's final review traced the
+  > source. An earlier draft said `Cod` is "exactly the parameter a caller
+  > weakens to `Trivial` to opt out of return-value rendering." That
+  > overstates what `Cod` does: `TraceWeaveCapturingInputs` never renders a
+  > return value for *any* `Cod`, including `TraceableValue` — see
+  > `core/shared/src/main/scala/com/dwolla/tracing/TraceWeaveCapturingInputs.scala`,
+  > whose `apply` never touches `codomain.instance`. What gates return-value
+  > rendering is *which syntax method you call*, not what `Cod` is bound to.
+  > The decision is unaffected — the hazard is that `Cod` is free and
+  > user-chosen, whatever their reason for choosing it — but the mechanism
+  > was described wrongly.
 
 `Err` is also where the parameter structurally belongs: `mapK` has no `Dom` or
 `Cod` at all, so `RaiseFunctorK` would otherwise have to borrow a parameter
@@ -381,9 +394,11 @@ object WeaveInterpreter extends LowPriorityWeaveInterpreter {
       ev: WeaveInterpreter[Alg, Dom, Cod, Err, F]
   ): WeaveInterpreter[Alg, Dom, Cod, Err, F] = ev
 
-  /** Higher priority: a plain `Aspect` wins whenever both instances exist. */
+  /** Higher priority: a plain `Aspect` wins whenever both instances exist.
+    * No effect constraint: `Aspect.weave` takes no implicit and `Aspect.mapK`
+    * takes only a `FunctionK`.
+    */
   implicit def fromAspect[Alg[_[_]], Dom[_], Cod[_], Err[_], F[_]](implicit
-      F: Functor[F],
       A: Aspect[Alg, Dom, Cod]
   ): WeaveInterpreter[Alg, Dom, Cod, Err, F]
 }
@@ -402,10 +417,22 @@ available there; it has no natchez dependency, so the typeclass is genuinely
 backend-agnostic.
 
 `Trace[F]` disappears from both instances. The effect constraints reduce to
-what the instances actually use: `Functor[F]` for `weave`, `Apply[F]` for
-`raiseLift`'s hook sequencing. Whatever the *interpreter* needs — `FlatMap[F]`
-and `Trace[F]` for `TraceWeaveCapturingInputsAndOutputs` — is the caller's
-problem, resolved at the syntax method.
+what the instances actually use: **nothing at all** for `fromAspect`, and
+`Apply[F]` for `fromRaiseAspect` (`raiseLift`'s hook sequencing needs it, and
+it subsumes the `Functor[F]` that `RaiseAspect.weave` requires). Whatever the
+*interpreter* needs — `FlatMap[F]` and `Trace[F]` for
+`TraceWeaveCapturingInputsAndOutputs` — is the caller's problem, resolved at
+the syntax method.
+
+> **Corrected 2026-07-30 during M11 implementation.** An earlier draft gave
+> `fromAspect` a `Functor[F]` and said the constraints reduce to "`Functor[F]`
+> for `weave`". Wrong for the `Aspect` branch: cats-tagless's
+> `Aspect.weave[F[_]](af: Alg[F])` takes no implicit
+> (`reference/upstream/core/src/main/scala/cats/tagless/aop/Aspect.scala:39`)
+> and `Aspect.mapK` takes only a `FunctionK`, so the constraint would burden
+> every caller for nothing. The implementer dropped it and said so; this is
+> the fourth claim in this document about implicit resolution that the
+> compiler falsified, and the first caught before it shipped.
 
 `Synthetic[Cod]` becomes an unconditional constraint on the `RaiseAspect`
 instance. Today the inputs-and-outputs variant avoids it by pinning
