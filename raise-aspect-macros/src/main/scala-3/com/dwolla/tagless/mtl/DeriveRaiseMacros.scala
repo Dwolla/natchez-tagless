@@ -266,6 +266,20 @@ private class DeriveRaiseMacros[Q <: Quotes](using val q: Q):
       case success: ImplicitSearchSuccess => success.tree
       case _ => report.errorAndAbort(s"Not found: given ${tpe.show} $describe")
 
+  /** As [[summonOrAbort]], but worded for a capability parameter's error type.
+    * Kept textually identical to the Scala 2 axis's message — the two axes are
+    * held to behavioral agreement.
+    */
+  def summonErrOrAbort(Err: TypeRepr, errorType: TypeRepr, methodName: String): Term =
+    Implicits.search(Err.appliedTo(errorType)) match
+      case success: ImplicitSearchSuccess => success.tree
+      case _ =>
+        report.errorAndAbort(
+          s"no evidence for the error type ${errorType.show} raised by method $methodName: " +
+            s"an implicit ${Err.typeSymbol.name}[${errorType.show}] is required at the derivation site. " +
+            s"Supply one, or derive at Err = cats.tagless.Trivial to opt out of error evidence."
+        )
+
   /** Reject every algebra member that uses the effect type in a way the
     * derivation cannot support. Runs against the ''declared'' algebra `Alg[F]`,
     * before any class synthesis, so the messages name the types the user wrote
@@ -326,22 +340,23 @@ end DeriveRaiseMacros
 @experimental
 private[mtl] object RaiseAspectMacros:
 
-  def aspect[Alg[_[_]]: Type, Dom[_]: Type, Cod[_]: Type](using Quotes): Expr[RaiseAspect[Alg, Dom, Cod]] = '{
-    new RaiseAspect[Alg, Dom, Cod]:
+  def aspect[Alg[_[_]]: Type, Dom[_]: Type, Cod[_]: Type, Err[_]: Type](using Quotes)
+      : Expr[RaiseAspect[Alg, Dom, Cod, Err]] = '{
+    new RaiseAspect[Alg, Dom, Cod, Err]:
       def weave[F[_]](af: Alg[F])(implicit F: Functor[F]): Alg[[X] =>> Aspect.Weave[F, Dom, Cod, X]] =
-        ${ deriveWeave[Alg, Dom, Cod, F]('af, 'F) }
+        ${ deriveWeave[Alg, Dom, Cod, Err, F]('af, 'F) }
 
-      def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G]): Alg[G] =
-        ${ deriveMapK[Alg, F, G]('af, 'arrow) }
+      def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G, Err]): Alg[G] =
+        ${ deriveMapK[Alg, F, G, Err]('af, 'arrow) }
   }
 
-  def functorK[Alg[_[_]]: Type](using Quotes): Expr[RaiseFunctorK[Alg]] = '{
-    new RaiseFunctorK[Alg]:
-      def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G]): Alg[G] =
-        ${ deriveMapK[Alg, F, G]('af, 'arrow) }
+  def functorK[Alg[_[_]]: Type, Err[_]: Type](using Quotes): Expr[RaiseFunctorK[Alg, Err]] = '{
+    new RaiseFunctorK[Alg, Err]:
+      def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G, Err]): Alg[G] =
+        ${ deriveMapK[Alg, F, G, Err]('af, 'arrow) }
   }
 
-  private def deriveWeave[Alg[_[_]]: Type, Dom[_]: Type, Cod[_]: Type, F[_]: Type](
+  private def deriveWeave[Alg[_[_]]: Type, Dom[_]: Type, Cod[_]: Type, Err[_]: Type, F[_]: Type](
       alg: Expr[Alg[F]],
       functor: Expr[Functor[F]]
   )(using Type[Aspect.Weave[F, Dom, Cod, ?]])(using q: Quotes): Expr[Alg[[X] =>> Aspect.Weave[F, Dom, Cod, X]]] =
@@ -371,13 +386,16 @@ private[mtl] object RaiseAspectMacros:
 
     alg.transformTo[Alg[[X] =>> Aspect.Weave[F, Dom, Cod, X]]](
       args = {
-        case (_, tpe, arg) if macros.capabilityError(tpe, Carrier).isDefined =>
+        case (methodSym, tpe, arg) if macros.capabilityError(tpe, Carrier).isDefined =>
           tpe.dealias.typeArgs.last.asType match
             case '[e] =>
+              val errEv = macros
+                .summonErrOrAbort(TypeRepr.of[Err], tpe.dealias.typeArgs.last, methodSym.name)
+                .asExprOf[Err[e]]
               '{
                 WeaveArrows
-                  .raisePull[F, Dom, Cod](using $functor)
-                  .apply(${ arg.asExprOf[Raise[[X] =>> Aspect.Weave[F, Dom, Cod, X], e]] })
+                  .raisePull[F, Dom, Cod, Err](using $functor)
+                  .apply(${ arg.asExprOf[Raise[[X] =>> Aspect.Weave[F, Dom, Cod, X], e]] })(using $errEv)
               }.asTerm
       },
       body = {
@@ -404,9 +422,9 @@ private[mtl] object RaiseAspectMacros:
       }
     )
 
-  private def deriveMapK[Alg[_[_]]: Type, F[_]: Type, G[_]: Type](
+  private def deriveMapK[Alg[_[_]]: Type, F[_]: Type, G[_]: Type, Err[_]: Type](
       alg: Expr[Alg[F]],
-      arrow: Expr[RaiseArrow[F, G]]
+      arrow: Expr[RaiseArrow[F, G, Err]]
   )(using q: Quotes): Expr[Alg[G]] =
     import quotes.reflect.*
     val macros = new DeriveRaiseMacros[q.type]
@@ -418,9 +436,13 @@ private[mtl] object RaiseAspectMacros:
 
     alg.transformTo[Alg[G]](
       args = {
-        case (_, tpe, arg) if macros.capabilityError(tpe, G).isDefined =>
+        case (methodSym, tpe, arg) if macros.capabilityError(tpe, G).isDefined =>
           tpe.dealias.typeArgs.last.asType match
-            case '[e] => '{ $arrow.pull(${ arg.asExprOf[Raise[G, e]] }) }.asTerm
+            case '[e] =>
+              val errEv = macros
+                .summonErrOrAbort(TypeRepr.of[Err], tpe.dealias.typeArgs.last, methodSym.name)
+                .asExprOf[Err[e]]
+              '{ $arrow.pull(${ arg.asExprOf[Raise[G, e]] })(using $errEv) }.asTerm
       },
       body = {
         case (_, tpe, body) if tpe.typeSymbol == G.typeSymbol =>

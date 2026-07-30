@@ -25,8 +25,8 @@ abstract class ConservativeExtensionSuite extends FunSuite {
     */
   def upstream: Aspect[PlainAlg, Render, Render]
 
-  private val ours: RaiseAspect[PlainAlg, Render, Render] =
-    PlainAlgReference.referenceRaiseAspect[Render, Render]
+  private val ours: RaiseAspect[PlainAlg, Render, Render, Render] =
+    PlainAlgReference.referenceRaiseAspect[Render, Render, Render]
 
   private val impl: PlainAlg[Result] = EitherPlainAlg
 
@@ -55,8 +55,8 @@ abstract class ConservativeExtensionSuite extends FunSuite {
   test("L9 our mapK agrees with upstream's FunctorK.mapK for any pull") {
     // PlainAlg has no capability parameters, so the pull must never be
     // consulted. This one blows up if it ever is.
-    val unusablePull = new RaisePull[Result, Result] {
-      def apply[E](rg: Raise[Result, E]): Raise[Result, E] =
+    val unusablePull = new RaisePull[Result, Result, Render] {
+      def apply[E](rg: Raise[Result, E])(implicit ev: Render[E]): Raise[Result, E] =
         fail("mapK must not consult the pull for a capability-free algebra")
     }
 

@@ -18,7 +18,7 @@ import BarError._
   * changes nothing about whether the domain error survives.
   */
 abstract class RaiseTraceValueSuite extends CatsEffectSuite {
-  implicit def barRaiseAspect: RaiseAspect[Bar, TraceableValue, TraceableValue]
+  implicit def barRaiseAspect: RaiseAspect[Bar, TraceableValue, TraceableValue, TraceableValue]
   private implicit val trace: Trace[IO] = Trace.Implicits.noop[IO]
 
   private val tracedBar: Bar[IO] = Bar[IO].traceWithInputsAndOutputs

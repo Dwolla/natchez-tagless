@@ -7,6 +7,6 @@ package laws
   * macro-derived instance instead — that is the whole substitution seam.
   */
 class ReferenceRaiseAspectSpec extends RaiseAspectSuite {
-  def instance: RaiseAspect[TestAlg, Render, Render] =
-    TestAlgReference.referenceRaiseAspect[Render, Render]
+  def instance: RaiseAspect[TestAlg, Render, Render, Render] =
+    TestAlgReference.referenceRaiseAspect[Render, Render, Render]
 }

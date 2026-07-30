@@ -11,7 +11,7 @@ package com.dwolla.tracing.mtl
   *   import cats.mtl.Raise
   *   import cats.syntax.all._
   *   import com.dwolla.tagless.mtl.{DeriveRaise, RaiseAspect}
-  *   import natchez.TraceableValue
+  *   import natchez.{TraceValue, TraceableValue}
   *
   *   import scala.annotation.experimental
   *
@@ -29,10 +29,21 @@ package com.dwolla.tracing.mtl
   *         else ("ok:" + i.toString).pure[F]
   *     }
   *
+  *     // The derivation below summons Err[E] (here TraceableValue[ValidationError])
+  *     // per raise parameter at the derivation site, per Task 6 — supply it before
+  *     // deriving, or the derivation fails with a diagnostic naming the method and
+  *     // the missing error type.
+  *     implicit val traceableValueValidationError: TraceableValue[ValidationError] =
+  *       new TraceableValue[ValidationError] {
+  *         def toTraceValue(a: ValidationError): TraceValue = a match {
+  *           case TooSmall(i) => TraceValue.StringValue("too small: " + i.toString)
+  *         }
+  *       }
+  *
   *     // One instance serves every F: weave/mapK are separately polymorphic per call.
   *     @experimental
-  *     implicit val raiseAspect: RaiseAspect[Validator, TraceableValue, TraceableValue] =
-  *       DeriveRaise.aspect[Validator, TraceableValue, TraceableValue]
+  *     implicit val raiseAspect: RaiseAspect[Validator, TraceableValue, TraceableValue, TraceableValue] =
+  *       DeriveRaise.aspect[Validator, TraceableValue, TraceableValue, TraceableValue]
   *   }
   * }}}
   */

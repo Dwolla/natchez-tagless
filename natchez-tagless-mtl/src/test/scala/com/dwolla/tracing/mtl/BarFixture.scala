@@ -3,6 +3,7 @@ package com.dwolla.tracing.mtl
 import cats.Applicative
 import cats.mtl.Raise
 import cats.syntax.all._
+import natchez.{TraceValue, TraceableValue}
 
 /** Task 4's fixture algebra: a method-level `Raise` capability, in a shape the
   * macro derives (M3/M4) and this milestone traces.
@@ -11,6 +12,17 @@ sealed trait BarError extends Product with Serializable
 
 object BarError {
   final case class Negative(i: Int) extends BarError
+
+  /** Deliberately not `toString`: the integration suite asserts on this exact
+    * string to prove the default recorder renders through `TraceableValue`
+    * rather than falling back to the error's own `toString`.
+    */
+  implicit val traceableValueBarError: TraceableValue[BarError] =
+    new TraceableValue[BarError] {
+      def toTraceValue(a: BarError): TraceValue = a match {
+        case Negative(i) => TraceValue.StringValue(s"negative:$i")
+      }
+    }
 }
 
 trait Bar[F[_]] {

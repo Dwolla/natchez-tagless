@@ -33,6 +33,17 @@ object Render {
   implicit val renderInt: Render[Int] = (a: Int) => a.toString
   implicit val renderString: Render[String] = (a: String) => a
   implicit val renderUnit: Render[Unit] = (_: Unit) => "()"
+
+  /** The error-type instances. `Err = Render` is one of the two
+    * instantiations the law suite runs (the other is `Trivial`), and the
+    * macro test fixtures derive at `Err = Render`, so all three error types
+    * that appear in `TestAlg`'s signatures need an instance. The prefixes
+    * make it observable that these instances — rather than `toString` — are
+    * what produced a rendering.
+    */
+  implicit val renderErrA: Render[ErrA] = (a: ErrA) => s"errA:$a"
+  implicit val renderErrB: Render[ErrB] = (a: ErrB) => s"errB:$a"
+  implicit val renderTestError: Render[TestError] = (a: TestError) => s"testError:$a"
 }
 
 /** The fixture algebra. Shapes are fixed by milestone M1 and M2 depends on them

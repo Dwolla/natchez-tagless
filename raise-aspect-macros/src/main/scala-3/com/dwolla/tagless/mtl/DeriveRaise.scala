@@ -22,10 +22,17 @@ import scala.annotation.experimental
   *   import scala.annotation.experimental
   *
   *   @experimental
-  *   implicit val barRaiseAspect: RaiseAspect[Bar, TraceableValue, TraceableValue] =
-  *     DeriveRaise.aspect[Bar, TraceableValue, TraceableValue]
+  *   implicit val barRaiseAspect: RaiseAspect[Bar, TraceableValue, TraceableValue, TraceableValue] =
+  *     DeriveRaise.aspect[Bar, TraceableValue, TraceableValue, TraceableValue]
   * }
   * }}}
+  *
+  * `Err` is the per-error-type evidence type class: for every `Raise[F, E]`
+  * capability parameter the derived code encounters, it summons an `Err[E]`
+  * at the derivation site and carries it through so a hook observing a raised
+  * error can render it through that type class instead of `toString`. Use
+  * `cats.tagless.Trivial` for `Err` to opt out; its universal instance makes
+  * the constraint vacuous.
   *
   * On Scala 3.4+ the `-experimental` compiler flag is an alternative to the
   * annotation, but this repository targets the 3.3.x LTS line, where that flag does
@@ -36,10 +43,10 @@ object DeriveRaise:
 
   /** Derive a [[RaiseAspect]], supporting both `weave` and `mapK`. */
   @experimental
-  inline def aspect[Alg[_[_]], Dom[_], Cod[_]]: RaiseAspect[Alg, Dom, Cod] =
-    ${ RaiseAspectMacros.aspect[Alg, Dom, Cod] }
+  inline def aspect[Alg[_[_]], Dom[_], Cod[_], Err[_]]: RaiseAspect[Alg, Dom, Cod, Err] =
+    ${ RaiseAspectMacros.aspect[Alg, Dom, Cod, Err] }
 
   /** Derive just a [[RaiseFunctorK]], when no weaving is needed. */
   @experimental
-  inline def functorK[Alg[_[_]]]: RaiseFunctorK[Alg] =
-    ${ RaiseAspectMacros.functorK[Alg] }
+  inline def functorK[Alg[_[_]], Err[_]]: RaiseFunctorK[Alg, Err] =
+    ${ RaiseAspectMacros.functorK[Alg, Err] }

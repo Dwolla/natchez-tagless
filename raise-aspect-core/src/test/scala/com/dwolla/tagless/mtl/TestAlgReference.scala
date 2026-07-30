@@ -4,7 +4,7 @@ import cats.Functor
 import cats.mtl.Raise
 import cats.tagless.aop.Aspect
 
-/** The hand-written `RaiseAspect[TestAlg, Dom, Cod]`.
+/** The hand-written `RaiseAspect[TestAlg, Dom, Cod, Err]`.
   *
   * ==THIS IS A PERMANENT TEST FIXTURE. DO NOT DELETE OR REGENERATE IT.==
   *
@@ -18,23 +18,29 @@ import cats.tagless.aop.Aspect
   *
   * The `Dom`/`Cod` instances are taken as implicit parameters rather than
   * summoned inside, mirroring what a macro expansion resolves at its call site.
+  * The `Err` instances — one per error type appearing in a `Raise` parameter of
+  * the algebra — arrive the same way, for the same reason.
   */
 object TestAlgReference {
 
-  def referenceRaiseAspect[Dom[_], Cod[_]](implicit
+  def referenceRaiseAspect[Dom[_], Cod[_], Err[_]](implicit
       domInt: Dom[Int],
       domString: Dom[String],
       codString: Cod[String],
       codInt: Cod[Int],
-      codUnit: Cod[Unit]
-  ): RaiseAspect[TestAlg, Dom, Cod] =
-    new RaiseAspect[TestAlg, Dom, Cod] {
+      codUnit: Cod[Unit],
+      errA: Err[ErrA],
+      errB: Err[ErrB]
+  ): RaiseAspect[TestAlg, Dom, Cod, Err] =
+    new RaiseAspect[TestAlg, Dom, Cod, Err] {
 
       def weave[F[_]](af: TestAlg[F])(implicit F: Functor[F]): TestAlg[Aspect.Weave[F, Dom, Cod, *]] = {
         type WF[A] = Aspect.Weave[F, Dom, Cod, A]
 
-        def pull[E](rw: Raise[WF, E]): Raise[F, E] =
-          WeaveArrows.raisePull[F, Dom, Cod].apply(rw)
+        // The `Err[E]` a macro resolves at the derivation site arrives here as
+        // an implicit parameter, exactly as `Dom`/`Cod` instances already do.
+        def pull[E](rw: Raise[WF, E])(implicit ev: Err[E]): Raise[F, E] =
+          WeaveArrows.raisePull[F, Dom, Cod, Err].apply(rw)
 
         new TestAlg[WF] {
           def a(i: Int)(implicit R: Raise[WF, ErrA]): WF[String] =
@@ -84,7 +90,7 @@ object TestAlgReference {
         }
       }
 
-      def mapK[F[_], G[_]](af: TestAlg[F])(arrow: RaiseArrow[F, G]): TestAlg[G] =
+      def mapK[F[_], G[_]](af: TestAlg[F])(arrow: RaiseArrow[F, G, Err]): TestAlg[G] =
         new TestAlg[G] {
           def a(i: Int)(implicit R: Raise[G, ErrA]): G[String] =
             arrow.fk(af.a(i)(arrow.pull(R)))

@@ -22,7 +22,7 @@ class WeaveArrowsSpec extends FunSuite {
     }
 
   private val liftedRaise: Raise[W, TestError] =
-    WeaveArrows.raiseLift[F, Render, Render](F, syntheticRender).apply(raiseF)
+    WeaveArrows.raiseLift[F, Render, Render, Render](F, syntheticRender).apply(raiseF)
 
   private def weaveOf[A: Render](target: F[A]): W[A] =
     Aspect.Weave[F, Render, Render, A](
@@ -37,12 +37,12 @@ class WeaveArrowsSpec extends FunSuite {
   }
 
   test("raisePull uses the ambient Functor[F], not the weave's functor") {
-    val pulled = WeaveArrows.raisePull[F, Render, Render](F).apply(liftedRaise)
+    val pulled = WeaveArrows.raisePull[F, Render, Render, Render](F).apply(liftedRaise)
     assert(pulled.functor eq F, "raisePull must route through the ambient Functor[F] (law L7)")
   }
 
   test("raisePull raises into F by unwrapping the shell weave's codomain target") {
-    val pulled = WeaveArrows.raisePull[F, Render, Render](F).apply(liftedRaise)
+    val pulled = WeaveArrows.raisePull[F, Render, Render, Render](F).apply(liftedRaise)
     val err = NegativeInput(-1)
     assertEquals(pulled.raise[NegativeInput, Int](err), err.asLeft[Int].leftWiden[TestError])
   }
@@ -70,7 +70,7 @@ class WeaveArrowsSpec extends FunSuite {
   test("raisePull after raiseLift is the identity on raised errors (law L5)") {
     val err = NegativeInput(-3)
     val roundTripped = WeaveArrows
-      .raisePull[F, Render, Render](F)
+      .raisePull[F, Render, Render, Render](F)
       .apply(liftedRaise)
       .raise[NegativeInput, Int](err)
 
@@ -78,17 +78,17 @@ class WeaveArrowsSpec extends FunSuite {
   }
 
   test("RaisePull.id returns the capability unchanged") {
-    assert(RaisePull.id[F].apply(raiseF) eq raiseF)
+    assert(RaisePull.id[F, Render].apply(raiseF) eq raiseF)
   }
 
   test("RaiseArrow.id maps values and capabilities unchanged") {
-    val arrow = RaiseArrow.id[F]
+    val arrow = RaiseArrow.id[F, Render]
     assertEquals(arrow.fk(3.asRight[TestError]), 3.asRight[TestError])
     assert(arrow.pull(raiseF) eq raiseF)
   }
 
   test("RaiseArrow.andThen sends values forward and capabilities backward") {
-    val arrow = WeaveArrows.eraseWeave[F, Render, Render].andThen(RaiseArrow.id[F])
+    val arrow = WeaveArrows.eraseWeave[F, Render, Render, Render].andThen(RaiseArrow.id[F, Render])
     val err = NegativeInput(-4)
 
     assertEquals(arrow.fk(weaveOf(5.asRight[TestError])), 5.asRight[TestError])
@@ -99,7 +99,7 @@ class WeaveArrowsSpec extends FunSuite {
   }
 
   test("eraseWeave pairs codomainTarget with raiseLift") {
-    val arrow = WeaveArrows.eraseWeave[F, Render, Render]
+    val arrow = WeaveArrows.eraseWeave[F, Render, Render, Render]
     assertEquals(arrow.fk(weaveOf("x".asRight[TestError])), "x".asRight[TestError])
     assertEquals(arrow.pull(raiseF).raise[NegativeInput, Int](NegativeInput(-5)).codomain.name, "raise")
   }

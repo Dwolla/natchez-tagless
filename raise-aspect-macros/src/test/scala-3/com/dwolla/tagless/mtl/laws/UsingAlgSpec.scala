@@ -53,11 +53,11 @@ object MultiUsingAlg:
 @experimental
 class UsingAlgSpec extends FunSuite:
 
-  private val derived: RaiseAspect[UsingAlg, Render, Render] =
-    DeriveRaise.aspect[UsingAlg, Render, Render]
+  private val derived: RaiseAspect[UsingAlg, Render, Render, Render] =
+    DeriveRaise.aspect[UsingAlg, Render, Render, Render]
 
-  private val multi: RaiseAspect[MultiUsingAlg, Render, Render] =
-    DeriveRaise.aspect[MultiUsingAlg, Render, Render]
+  private val multi: RaiseAspect[MultiUsingAlg, Render, Render, Render] =
+    DeriveRaise.aspect[MultiUsingAlg, Render, Render, Render]
 
   test("a using-based algebra renders exactly like the implicit-based TestAlg") {
     val woven = derived.weave(UsingAlg.either(0))(Functor[Result])
@@ -75,7 +75,8 @@ class UsingAlgSpec extends FunSuite:
 
   test("a using-based algebra survives the erasure round trip, raising included") {
     val impl = UsingAlg.either(1)
-    val erased = derived.mapK(derived.weave(impl)(Functor[Result]))(WeaveArrows.eraseWeave[Result, Render, Render])
+    val erased =
+      derived.mapK(derived.weave(impl)(Functor[Result]))(WeaveArrows.eraseWeave[Result, Render, Render, Render])
 
     assertEquals(erased.a(3), impl.a(3))
     assertEquals(erased.a(-3), impl.a(-3))
@@ -97,7 +98,8 @@ class UsingAlgSpec extends FunSuite:
 
   test("both capabilities from separate using clauses are transported") {
     val impl = MultiUsingAlg.either
-    val erased = multi.mapK(multi.weave(impl)(Functor[Result]))(WeaveArrows.eraseWeave[Result, Render, Render])
+    val erased =
+      multi.mapK(multi.weave(impl)(Functor[Result]))(WeaveArrows.eraseWeave[Result, Render, Render, Render])
 
     assertEquals(erased.m(5), impl.m(5))
     assertEquals(erased.m(-5), NegativeInput(-5).asLeft[String].leftWiden[TestError])

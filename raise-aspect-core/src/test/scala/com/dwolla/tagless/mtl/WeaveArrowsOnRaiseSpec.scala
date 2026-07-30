@@ -37,13 +37,13 @@ class WeaveArrowsOnRaiseSpec extends ScalaCheckSuite {
 
   // -------------------------------------------------- noop equivalence
 
-  private val noHookArrow: RaiseArrow[W, F] =
-    WeaveArrows.eraseWeave[F, Render, Render]
+  private val noHookArrow: RaiseArrow[W, F, Render] =
+    WeaveArrows.eraseWeave[F, Render, Render, Render]
 
-  private val noopHookArrow: RaiseArrow[W, F] =
+  private val noopHookArrow: RaiseArrow[W, F, Render] =
     RaiseArrow(
       WeaveArrows.codomainTarget[F, Render, Render],
-      WeaveArrows.raiseLift[F, Render, Render](OnRaise.noop[F])
+      WeaveArrows.raiseLift[F, Render, Render, Render](OnRaise.noop[F, Render])
     )
 
   property(
@@ -71,11 +71,13 @@ class WeaveArrowsOnRaiseSpec extends ScalaCheckSuite {
       val err = NegativeInput(n)
 
       val pulledNoHook =
-        WeaveArrows.raisePull[F, Render, Render].apply(WeaveArrows.raiseLift[F, Render, Render].apply(raiseF))
+        WeaveArrows
+          .raisePull[F, Render, Render, Render]
+          .apply(WeaveArrows.raiseLift[F, Render, Render, Render].apply(raiseF))
       val pulledNoopHook =
         WeaveArrows
-          .raisePull[F, Render, Render]
-          .apply(WeaveArrows.raiseLift[F, Render, Render](OnRaise.noop[F]).apply(raiseF))
+          .raisePull[F, Render, Render, Render]
+          .apply(WeaveArrows.raiseLift[F, Render, Render, Render](OnRaise.noop[F, Render]).apply(raiseF))
 
       val expected = raiseF.raise[NegativeInput, Int](err)
       assertEquals(pulledNoHook.raise[NegativeInput, Int](err), expected)
@@ -88,7 +90,7 @@ class WeaveArrowsOnRaiseSpec extends ScalaCheckSuite {
   ) {
     forAll { (i: Int, x: String, y: Int, j: Int, eOutcome: Int) =>
       val impl = new EitherTestAlg(eOutcome)
-      val ref = TestAlgReference.referenceRaiseAspect[Render, Render]
+      val ref = TestAlgReference.referenceRaiseAspect[Render, Render, Render]
       val woven = ref.weave(impl)(Functor[F])
 
       val erasedNoHook = ref.mapK(woven)(noHookArrow)
@@ -111,9 +113,9 @@ class WeaveArrowsOnRaiseSpec extends ScalaCheckSuite {
     */
   private type Lazily[A] = EitherT[Eval, TestError, A]
 
-  private def loggingOnRaise(counter: AtomicInteger, log: ListBuffer[String]): OnRaise[Lazily] =
-    new OnRaise[Lazily] {
-      def apply[E](e: E): Lazily[Unit] =
+  private def loggingOnRaise(counter: AtomicInteger, log: ListBuffer[String]): OnRaise[Lazily, Render] =
+    new OnRaise[Lazily, Render] {
+      def apply[E](e: E)(implicit ev: Render[E]): Lazily[Unit] =
         EitherT(Eval.always {
           counter.incrementAndGet()
           log += "hook"
@@ -139,7 +141,7 @@ class WeaveArrowsOnRaiseSpec extends ScalaCheckSuite {
       val err = NegativeInput(n)
 
       val shell =
-        WeaveArrows.raiseLift[Lazily, Render, Render](loggingOnRaise(counter, log))
+        WeaveArrows.raiseLift[Lazily, Render, Render, Render](loggingOnRaise(counter, log))
           .apply(loggingRaise(log))
           .raise[NegativeInput, Int](err)
 
@@ -183,11 +185,11 @@ class WeaveArrowsOnRaiseSpec extends ScalaCheckSuite {
       val counter = new AtomicInteger(0)
       val log = ListBuffer.empty[String]
 
-      val ref = TestAlgReference.referenceRaiseAspect[Render, Render]
+      val ref = TestAlgReference.referenceRaiseAspect[Render, Render, Render]
       val woven = ref.weave(countingLazilyAlg)(Functor[Lazily])
       val arrow = RaiseArrow(
         WeaveArrows.codomainTarget[Lazily, Render, Render],
-        WeaveArrows.raiseLift[Lazily, Render, Render](loggingOnRaise(counter, log))
+        WeaveArrows.raiseLift[Lazily, Render, Render, Render](loggingOnRaise(counter, log))
       )
       val erased = ref.mapK(woven)(arrow)
 
@@ -218,7 +220,8 @@ class WeaveArrowsOnRaiseSpec extends ScalaCheckSuite {
     // compile-time constant, so scalac constant-folds this branch away
     // entirely before the Scala.js linker ever sees it.
     if (Platform.isJvm) {
-      val lifted: RaisePull[F, W] = WeaveArrows.raiseLift[F, Render, Render](OnRaise.noop[F])
+      val lifted: RaisePull[F, W, Render] =
+        WeaveArrows.raiseLift[F, Render, Render, Render](OnRaise.noop[F, Render])
 
       val bytes = {
         val bos = new ByteArrayOutputStream()
@@ -231,7 +234,7 @@ class WeaveArrowsOnRaiseSpec extends ScalaCheckSuite {
       val deserialized = {
         val bis = new ByteArrayInputStream(bytes)
         val ois = new ObjectInputStream(bis)
-        val obj = ois.readObject().asInstanceOf[RaisePull[F, W]]
+        val obj = ois.readObject().asInstanceOf[RaisePull[F, W, Render]]
         ois.close()
         obj
       }

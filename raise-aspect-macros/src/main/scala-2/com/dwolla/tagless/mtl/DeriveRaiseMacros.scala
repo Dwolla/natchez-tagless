@@ -300,6 +300,21 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
       case tree => tree
     }
 
+  /** The `Err[E]` for a capability parameter's error type, or an abort naming
+    * both. Distinct from `inferOrAbort` so the message can say "error type"
+    * rather than "parameter" — the parameter is the `Raise`, not the error.
+    */
+  private def inferErrOrAbort(Err: Type, errorType: Type, method: Method): Tree =
+    c.inferImplicitValue(appliedType(Err, errorType)) match {
+      case EmptyTree =>
+        abort(
+          s"no evidence for the error type $errorType raised by method ${method.displayName}: " +
+            s"an implicit ${Err.typeSymbol.name}[$errorType] is required at the derivation site. " +
+            s"Supply one, or derive at Err = cats.tagless.Trivial to opt out of error evidence."
+        )
+      case tree => tree
+    }
+
   /** Reject every parameter that mentions `F` other than as a capability. */
   private def validateParams(method: Method, f: Symbol): Unit =
     for (ps <- method.paramLists; p <- ps) {
@@ -364,7 +379,7 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
     }
 
   // def weave[F[_]](af: Alg[F])(implicit F: Functor[F]): Alg[Aspect.Weave[F, Dom, Cod, *]]
-  def raiseWeave(Dom: Type, Cod: Type)(algebra: Type): MethodDef = MethodDef("weave") {
+  def raiseWeave(Dom: Type, Cod: Type, Err: Type)(algebra: Type): MethodDef = MethodDef("weave") {
     case PolyType(List(f), MethodType(List(af), MethodType(List(_), _))) =>
       val AspectWeave = symbolOf[Aspect.Weave[Any, Any, Any, Any]]
       val F = f.asType.toTypeConstructor
@@ -383,7 +398,9 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
           val typeArgs = method.returnType.typeArgs
 
           val args = method.transformedArgLists { case Parameter(pn, pt, _) if capabilityError(pt, f).isDefined =>
-            q"$WeaveArrowsRef.raisePull[$F, $Dom, $Cod].apply($pn)"
+            val errorType = capabilityError(pt, f).get
+            val errInstance = inferErrOrAbort(Err, errorType, method)
+            q"$WeaveArrowsRef.raisePull[$F, $Dom, $Cod, $Err].apply($pn)($errInstance)"
           }
 
           val codInstance = inferOrAbort(
@@ -415,8 +432,8 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
       implement(appliedType(algebra, WeaveF))()(types ++ methods)
   }
 
-  // def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G]): Alg[G]
-  def raiseMapK(algebra: Type): MethodDef = MethodDef("mapK") {
+  // def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G, Err]): Alg[G]
+  def raiseMapK(Err: Type)(algebra: Type): MethodDef = MethodDef("mapK") {
     case PolyType(List(f, g), MethodType(List(af), MethodType(List(arrow), _))) =>
       val G = g.asType.toTypeConstructor
       val Af = singleType(NoPrefix, af)
@@ -428,7 +445,9 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
           validateParams(method, f)
 
           val args = method.transformedArgLists { case Parameter(pn, pt, _) if capabilityError(pt, f).isDefined =>
-            q"$arrow.pull($pn)"
+            val errorType = capabilityError(pt, f).get
+            val errInstance = inferErrOrAbort(Err, errorType, method)
+            q"$arrow.pull($pn)($errInstance)"
           }
 
           method.copy(
@@ -451,16 +470,26 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
       implement(algebra)(g)(types ++ methods)
   }
 
-  def aspect[Alg[_[_]], Dom[_], Cod[_]](implicit
+  def aspect[Alg[_[_]], Dom[_], Cod[_], Err[_]](implicit
       tag: WeakTypeTag[Alg[Any]],
       dom: WeakTypeTag[Dom[Any]],
-      cod: WeakTypeTag[Cod[Any]]
+      cod: WeakTypeTag[Cod[Any]],
+      err: WeakTypeTag[Err[Any]]
   ): Tree = {
     val Dom = typeConstructorOf(dom)
     val Cod = typeConstructorOf(cod)
-    instantiate[RaiseAspect[Alg, Dom, Cod]](tag, Dom, Cod)(raiseWeave(Dom, Cod), raiseMapK)
+    val Err = typeConstructorOf(err)
+    instantiate[RaiseAspect[Alg, Dom, Cod, Err]](tag, Dom, Cod, Err)(
+      raiseWeave(Dom, Cod, Err),
+      raiseMapK(Err)
+    )
   }
 
-  def functorK[Alg[_[_]]](implicit tag: WeakTypeTag[Alg[Any]]): Tree =
-    instantiate[RaiseFunctorK[Alg]](tag)(raiseMapK)
+  def functorK[Alg[_[_]], Err[_]](implicit
+      tag: WeakTypeTag[Alg[Any]],
+      err: WeakTypeTag[Err[Any]]
+  ): Tree = {
+    val Err = typeConstructorOf(err)
+    instantiate[RaiseFunctorK[Alg, Err]](tag, Err)(raiseMapK(Err))
+  }
 }

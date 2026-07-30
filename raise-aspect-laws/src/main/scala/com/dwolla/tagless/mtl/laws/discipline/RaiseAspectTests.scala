@@ -10,13 +10,13 @@ import org.scalacheck.Prop._
 /** Discipline `RuleSet` for law L3, extending the `RaiseFunctorK` rule set with
   * the weave-erasure law.
   */
-trait RaiseAspectTests[Alg[_[_]], Dom[_], Cod[_]] extends RaiseFunctorKTests[Alg] {
-  def laws: RaiseAspectLaws[Alg, Dom, Cod]
+trait RaiseAspectTests[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorKTests[Alg, Err] {
+  def laws: RaiseAspectLaws[Alg, Dom, Cod, Err]
 
   def raiseAspect[A[_], B[_], C[_]](implicit
       ArbAlgA: Arbitrary[Alg[A]],
-      ArbArrowAB: Arbitrary[RaiseArrow[A, B]],
-      ArbArrowBC: Arbitrary[RaiseArrow[B, C]],
+      ArbArrowAB: Arbitrary[RaiseArrow[A, B, Err]],
+      ArbArrowBC: Arbitrary[RaiseArrow[B, C, Err]],
       EqAlgA: Eq[Alg[A]],
       EqAlgC: Eq[Alg[C]],
       FunctorA: Functor[A]
@@ -29,9 +29,9 @@ trait RaiseAspectTests[Alg[_[_]], Dom[_], Cod[_]] extends RaiseFunctorKTests[Alg
 }
 
 object RaiseAspectTests {
-  def apply[Alg[_[_]], Dom[_], Cod[_]](implicit
-      ev: RaiseAspect[Alg, Dom, Cod],
+  def apply[Alg[_[_]], Dom[_], Cod[_], Err[_]](implicit
+      ev: RaiseAspect[Alg, Dom, Cod, Err],
       syn: Synthetic[Cod]
-  ): RaiseAspectTests[Alg, Dom, Cod] =
-    new RaiseAspectTests[Alg, Dom, Cod] { val laws = RaiseAspectLaws[Alg, Dom, Cod] }
+  ): RaiseAspectTests[Alg, Dom, Cod, Err] =
+    new RaiseAspectTests[Alg, Dom, Cod, Err] { val laws = RaiseAspectLaws[Alg, Dom, Cod, Err] }
 }

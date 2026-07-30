@@ -22,11 +22,11 @@ import natchez._
   * `InMemory`'s command history doesn't observe.
   *
   * `barRaiseAspect` is abstract so the Scala 2 and Scala 3 concrete specs can each
-  * supply `DeriveRaise.aspect[Bar, TraceableValue, TraceableValue]` at their own,
-  * version-appropriate call site (the Scala 3 one needs `@experimental`).
+  * supply `DeriveRaise.aspect[Bar, TraceableValue, TraceableValue, TraceableValue]`
+  * at their own, version-appropriate call site (the Scala 3 one needs `@experimental`).
   */
 abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
-  implicit def barRaiseAspect: RaiseAspect[Bar, TraceableValue, TraceableValue]
+  implicit def barRaiseAspect: RaiseAspect[Bar, TraceableValue, TraceableValue, TraceableValue]
 
   traceTest(
     "RaiseAspect tracing captures span, input, and output",
@@ -96,7 +96,7 @@ abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
     Root("test") / "Bar.bar" -> Put(
       List(
         RaiseRecorder.ErrorTypeKey -> StringValue(classOf[BarError.Negative].getName),
-        RaiseRecorder.ErrorMessageKey -> StringValue(BarError.Negative(-1).toString)
+        RaiseRecorder.ErrorValueKey -> StringValue("negative:-1")
       )
     ),
     Root("test") -> ReleaseSpan("Bar.bar"),
@@ -143,5 +143,9 @@ abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
         }
       }
       .map(assertRaisingHistory)
+  }
+
+  test("the default recorder renders the error through TraceableValue, not toString") {
+    assertNotEquals("negative:-1", BarError.Negative(-1).toString)
   }
 }

@@ -48,51 +48,66 @@ trait MissingCodAlg[F[_]]:
 class DerivationErrorSpec extends FunSuite:
 
   test("a Handle parameter is rejected, pointing at Raise plus Handle.allow/rescue") {
-    val errors: String = compileErrors("DeriveRaise.aspect[BadAlgebras.HandleAlg, Render, Render]")
+    val errors: String = compileErrors("DeriveRaise.aspect[BadAlgebras.HandleAlg, Render, Render, Render]")
     assert(errors.contains("cats.mtl.Handle"), errors)
     assert(errors.contains("Handle consumes F and cannot be woven"), errors)
     assert(errors.contains("Handle.allow / rescue"), errors)
   }
 
   test("an effectful parameter is rejected as an unsupported position") {
-    val errors: String = compileErrors("DeriveRaise.aspect[BadAlgebras.EffectParamAlg, Render, Render]")
+    val errors: String = compileErrors("DeriveRaise.aspect[BadAlgebras.EffectParamAlg, Render, Render, Render]")
     assert(errors.contains("mentions the effect type F in an unsupported position"), errors)
     assert(errors.contains("Raise[F, E] parameters"), errors)
   }
 
   test("a nested F[F[A]] return type is rejected") {
-    val errors: String = compileErrors("DeriveRaise.aspect[BadAlgebras.NestedReturnAlg, Render, Render]")
+    val errors: String = compileErrors("DeriveRaise.aspect[BadAlgebras.NestedReturnAlg, Render, Render, Render]")
     assert(errors.contains("top-level return type"), errors)
   }
 
   test("an F buried in the return type is rejected") {
-    val errors: String = compileErrors("DeriveRaise.aspect[BadAlgebras.WrappedReturnAlg, Render, Render]")
+    val errors: String = compileErrors("DeriveRaise.aspect[BadAlgebras.WrappedReturnAlg, Render, Render, Render]")
     assert(errors.contains("top-level return type"), errors)
   }
 
   test("a capability parameter on a method that does not return F is rejected") {
-    val errors: String = compileErrors("DeriveRaise.aspect[BadAlgebras.NoEffectReturnAlg, Render, Render]")
+    val errors: String = compileErrors("DeriveRaise.aspect[BadAlgebras.NoEffectReturnAlg, Render, Render, Render]")
     assert(errors.contains("does not return F[?]"), errors)
   }
 
   test("a context-function return type is rejected, suggesting a using parameter") {
-    val errors: String = compileErrors("DeriveRaise.aspect[BadAlgebras.ContextFunctionAlg, Render, Render]")
+    val errors: String = compileErrors("DeriveRaise.aspect[BadAlgebras.ContextFunctionAlg, Render, Render, Render]")
     assert(errors.contains("context function"), errors)
     assert(errors.contains("using parameter"), errors)
   }
 
   test("a missing Dom instance names the parameter") {
-    val errors: String = compileErrors("DeriveRaise.aspect[MissingInstanceAlg, Render, Render]")
+    val errors: String = compileErrors("DeriveRaise.aspect[MissingInstanceAlg, Render, Render, Render]")
     assert(errors.contains("Not found"), errors)
     assert(errors.contains("for parameter flag"), errors)
   }
 
   test("a missing Cod instance names the method") {
-    val errors: String = compileErrors("DeriveRaise.aspect[MissingCodAlg, Render, Render]")
+    val errors: String = compileErrors("DeriveRaise.aspect[MissingCodAlg, Render, Render, Render]")
     assert(errors.contains("Not found"), errors)
     assert(errors.contains("for the result of method m"), errors)
   }
 
+  test("deriving with an Err type class that has no instance for the error type names the method and the type") {
+    val errors: String = compileErrors(
+      """import cats.mtl.Raise
+import com.dwolla.tagless.mtl._
+trait Unrenderable
+trait NoEvidenceAlg[F[_]] {
+  def go(i: Int)(using R: Raise[F, Unrenderable]): F[String]
+}
+DeriveRaise.aspect[NoEvidenceAlg, Render, Render, Render]"""
+    )
+    assert(errors.contains("no evidence for the error type"), errors)
+    assert(errors.contains("go"), errors)
+    assert(errors.contains("Unrenderable"), errors)
+  }
+
   test("a capability behind a type alias is dealiased and derives successfully") {
-    assertNoDiff(compileErrors("DeriveRaise.aspect[BadAlgebras.AliasedCapabilityAlg, Render, Render]"), "")
+    assertNoDiff(compileErrors("DeriveRaise.aspect[BadAlgebras.AliasedCapabilityAlg, Render, Render, Render]"), "")
   }

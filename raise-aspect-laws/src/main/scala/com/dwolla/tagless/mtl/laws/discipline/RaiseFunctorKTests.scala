@@ -9,13 +9,13 @@ import org.scalacheck.Prop._
 import org.typelevel.discipline.Laws
 
 /** Discipline `RuleSet` for laws L1 and L2. */
-trait RaiseFunctorKTests[Alg[_[_]]] extends Laws {
-  def laws: RaiseFunctorKLaws[Alg]
+trait RaiseFunctorKTests[Alg[_[_]], Err[_]] extends Laws {
+  def laws: RaiseFunctorKLaws[Alg, Err]
 
   def raiseFunctorK[A[_], B[_], C[_]](implicit
       ArbAlgA: Arbitrary[Alg[A]],
-      ArbArrowAB: Arbitrary[RaiseArrow[A, B]],
-      ArbArrowBC: Arbitrary[RaiseArrow[B, C]],
+      ArbArrowAB: Arbitrary[RaiseArrow[A, B, Err]],
+      ArbArrowBC: Arbitrary[RaiseArrow[B, C, Err]],
       EqAlgA: Eq[Alg[A]],
       EqAlgC: Eq[Alg[C]]
   ): RuleSet =
@@ -28,6 +28,6 @@ trait RaiseFunctorKTests[Alg[_[_]]] extends Laws {
 }
 
 object RaiseFunctorKTests {
-  def apply[Alg[_[_]]](implicit ev: RaiseFunctorK[Alg]): RaiseFunctorKTests[Alg] =
-    new RaiseFunctorKTests[Alg] { val laws = RaiseFunctorKLaws[Alg] }
+  def apply[Alg[_[_]], Err[_]](implicit ev: RaiseFunctorK[Alg, Err]): RaiseFunctorKTests[Alg, Err] =
+    new RaiseFunctorKTests[Alg, Err] { val laws = RaiseFunctorKLaws[Alg, Err] }
 }
