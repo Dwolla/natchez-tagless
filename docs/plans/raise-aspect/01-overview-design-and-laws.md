@@ -126,6 +126,13 @@ modules/
 
 `raise-aspect-core` depends only on cats, cats-mtl, cats-tagless-core.
 
+> **Amended 2026-07-30 by M10.** `RaisePull`, `RaiseArrow`, `RaiseFunctorK`,
+> `RaiseAspect`, `OnRaise`, and the `WeaveArrows` members carry an `Err[_]`
+> evidence parameter. The paragraph below about there being no `E` parameter
+> still holds — transport remains uniform in the error type — but each
+> application of a pull now carries `Err[E]`. See
+> `03-evidence-carrying-transport-design.md`.
+
 ### 3.2 Core types
 
 Algebras with method-level `Raise` parameters are functorial over a category
@@ -134,32 +141,32 @@ whose morphisms are pairs: values forward, capability backward.
 ```scala
 package com.dwolla.tagless.mtl
 
-/** ∀E. Raise[G, E] => Raise[F, E] — pulls the capability backward. */
-trait RaisePull[G[_], F[_]] extends Serializable {
-  def apply[E](rg: Raise[G, E]): Raise[F, E]
+/** ∀E. Err[E] ?=> Raise[G, E] => Raise[F, E] — pulls the capability backward. */
+trait RaisePull[G[_], F[_], Err[_]] extends Serializable {
+  def apply[E](rg: Raise[G, E])(implicit ev: Err[E]): Raise[F, E]
 }
 object RaisePull {
-  def id[F[_]]: RaisePull[F, F] = new RaisePull[F, F] {
-    def apply[E](r: Raise[F, E]): Raise[F, E] = r
+  def id[F[_], Err[_]]: RaisePull[F, F, Err] = new RaisePull[F, F, Err] {
+    def apply[E](r: Raise[F, E])(implicit ev: Err[E]): Raise[F, E] = r
   }
 }
 
 /** A morphism F ⇒ G: values go forward, Raise capabilities come backward. */
-final case class RaiseArrow[F[_], G[_]](fk: F ~> G, pull: RaisePull[G, F]) {
-  def andThen[H[_]](that: RaiseArrow[G, H]): RaiseArrow[F, H] =
-    RaiseArrow(that.fk.compose(fk), new RaisePull[H, F] {
-      def apply[E](rh: Raise[H, E]): Raise[F, E] = pull(that.pull(rh))
+final case class RaiseArrow[F[_], G[_], Err[_]](fk: F ~> G, pull: RaisePull[G, F, Err]) {
+  def andThen[H[_]](that: RaiseArrow[G, H, Err]): RaiseArrow[F, H, Err] =
+    RaiseArrow(that.fk.compose(fk), new RaisePull[H, F, Err] {
+      def apply[E](rh: Raise[H, E])(implicit ev: Err[E]): Raise[F, E] = pull(that.pull(rh))
     })
 }
 object RaiseArrow {
-  def id[F[_]]: RaiseArrow[F, F] = RaiseArrow(FunctionK.id, RaisePull.id)
+  def id[F[_], Err[_]]: RaiseArrow[F, F, Err] = RaiseArrow(FunctionK.id, RaisePull.id)
 }
 
-trait RaiseFunctorK[Alg[_[_]]] extends Serializable {
-  def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G]): Alg[G]
+trait RaiseFunctorK[Alg[_[_]], Err[_]] extends Serializable {
+  def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G, Err]): Alg[G]
 }
 
-trait RaiseAspect[Alg[_[_]], Dom[_], Cod[_]] extends RaiseFunctorK[Alg] {
+trait RaiseAspect[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorK[Alg, Err] {
   def weave[F[_]](af: Alg[F])(implicit F: Functor[F]): Alg[Aspect.Weave[F, Dom, Cod, *]]
 }
 ```
@@ -167,10 +174,14 @@ trait RaiseAspect[Alg[_[_]], Dom[_], Cod[_]] extends RaiseFunctorK[Alg] {
 There is deliberately **no `E` parameter on the typeclass**: transport is
 uniform in the error type, so each method is handled with whatever error
 type(s) it declares, including multiple `Raise` parameters per method.
-`Aspect.Weave`/`Aspect.Advice` are reused from cats-tagless so
-natchez-tagless's existing `Weave ~> F` interpreters work unchanged. `weave`
-is not expressible via `mapK` (it injects per-call metadata and needs
-`Dom`/`Cod` instances); both are derived.
+`Err[_]` is not that `E` parameter — it is a per-error-type *evidence* type
+class that `RaisePull#apply` demands afresh at each application, so transport
+stays uniform in `E` while an interception point gains something better than
+`toString` to render a raised error with; `cats.tagless.Trivial` is the `Err`
+to use when no evidence is wanted. `Aspect.Weave`/`Aspect.Advice` are reused
+from cats-tagless so natchez-tagless's existing `Weave ~> F` interpreters
+work unchanged. `weave` is not expressible via `mapK` (it injects per-call
+metadata and needs `Dom`/`Cod` instances); both are derived.
 
 ### 3.3 Canonical arrows and synthetic instances
 
@@ -182,6 +193,16 @@ trait Synthetic[Cod[_]] extends Serializable { def apply[A]: Cod[A] }
 object Synthetic {
   implicit val trivial: Synthetic[cats.tagless.Trivial] = ...
 }
+
+/** Invoked with the typed value at the moment a raise crosses a `raiseLift`
+  * interception point. Universally quantified in `E`, with per-`E` evidence
+  * supplied by `Err`. */
+trait OnRaise[F[_], Err[_]] extends Serializable {
+  def apply[E](e: E)(implicit ev: Err[E]): F[Unit]
+}
+object OnRaise {
+  def noop[F[_], Err[_]](implicit F: Applicative[F]): OnRaise[F, Err] = ...
+}
 ```
 
 In a `WeaveArrows` object (names final):
@@ -192,22 +213,34 @@ def codomainTarget[F[_], Dom[_], Cod[_]]: Aspect.Weave[F, Dom, Cod, *] ~> F
   // = _.codomain.target
 
 /** Used INSIDE derived weave methods. */
-def raisePull[F[_], Dom[_], Cod[_]](implicit F: Functor[F]): RaisePull[Aspect.Weave[F, Dom, Cod, *], F] =
-  // apply[E](rw) = new Raise[F, E] {
+def raisePull[F[_], Dom[_], Cod[_], Err[_]](implicit F: Functor[F]): RaisePull[Aspect.Weave[F, Dom, Cod, *], F, Err] =
+  // apply[E](rw)(implicit ev: Err[E]) = new Raise[F, E] {
   //   val functor = F                                  // NOT rw.functor
   //   def raise[E2 <: E, A](e: E2) = rw.raise[E2, A](e).codomain.target
   // }
 
 /** Used on the interpretation side. Shell advice name is "raise". */
-def raiseLift[F[_], Dom[_], Cod[_]](implicit F: Functor[F], syn: Synthetic[Cod]): RaisePull[F, Aspect.Weave[F, Dom, Cod, *]] =
-  // apply[E](r) = new Raise[Weave[F, Dom, Cod, *], E] {
+def raiseLift[F[_], Dom[_], Cod[_], Err[_]](implicit F: Functor[F], syn: Synthetic[Cod]): RaisePull[F, Aspect.Weave[F, Dom, Cod, *], Err] =
+  // apply[E](r)(implicit ev: Err[E]) = new Raise[Weave[F, Dom, Cod, *], E] {
   //   val functor = syntheticWeaveFunctor(F, syn)      // see below
   //   def raise[E2 <: E, A](e: E2) =
   //     Aspect.Weave("raise", Nil, Aspect.Advice("raise", r.raise[E2, A](e))(syn[A]))
   // }
 
+/** As `raiseLift` above, but sequences an `OnRaise[F, Err]` hook's effect
+  * before the raised value crosses the interception point (`Apply[F]`, not
+  * `Functor[F]`, is what sequencing needs) — this is M6/M10's typed-error
+  * span recording. */
+def raiseLift[F[_], Dom[_], Cod[_], Err[_]](onRaise: OnRaise[F, Err])(implicit F: Apply[F], syn: Synthetic[Cod]): RaisePull[F, Aspect.Weave[F, Dom, Cod, *], Err] =
+  // apply[E](r)(implicit ev: Err[E]) = new Raise[Weave[F, Dom, Cod, *], E] {
+  //   val functor = syntheticWeaveFunctor(F, syn)
+  //   def raise[E2 <: E, A](e: E2) =
+  //     Aspect.Weave("raise", Nil,
+  //       Aspect.Advice("raise", onRaise.apply[E](e) *> r.raise[E2, A](e))(syn[A]))
+  // }
+
 /** The full erasure morphism Weave[F, Dom, Cod, *] ⇒ F. */
-def eraseWeave[F[_]: Functor, Dom[_], Cod[_]](implicit syn: Synthetic[Cod]): RaiseArrow[Aspect.Weave[F, Dom, Cod, *], F] =
+def eraseWeave[F[_]: Functor, Dom[_], Cod[_], Err[_]](implicit syn: Synthetic[Cod]): RaiseArrow[Aspect.Weave[F, Dom, Cod, *], F, Err] =
   RaiseArrow(codomainTarget, raiseLift)
 ```
 
@@ -228,7 +261,7 @@ trait Bar[F[_]] {
 }
 ```
 
-`DeriveRaise.aspect[Bar, Dom, Cod]` must produce, for `weave` (modulo
+`DeriveRaise.aspect[Bar, Dom, Cod, Err]` must produce, for `weave` (modulo
 hygiene; confirm `Weave`/`Advice` constructor shapes against the vendored
 `Aspect.scala`):
 
@@ -244,7 +277,7 @@ def weave[F[_]](af: Bar[F])(implicit F: Functor[F]): Bar[Aspect.Weave[F, Dom, Co
           Aspect.Advice("i", cats.Eval.now(i))(Dom[Int]),
           Aspect.Advice("s", cats.Eval.always(s))(Dom[String])
         )),
-        Aspect.Advice("bar", af.bar(i, s)(WeaveArrows.raisePull[F, Dom, Cod].apply(R)))(Cod[String])
+        Aspect.Advice("bar", af.bar(i, s)(WeaveArrows.raisePull[F, Dom, Cod, Err].apply(R)(errBarError)))(Cod[String])
       )
 
     def baz(k: Int): Aspect.Weave[F, Dom, Cod, Int] =
@@ -254,13 +287,19 @@ def weave[F[_]](af: Bar[F])(implicit F: Functor[F]): Bar[Aspect.Weave[F, Dom, Co
   }
 ```
 
+where `errBarError` is the `Err[BarError]` the derivation summons implicitly
+for `bar`'s `Raise` parameter — one summon per capability parameter, at the
+derivation site, per Task 6's macro work; a missing instance is a derivation-
+time diagnostic naming the method, the error type, and `Err`, not a runtime
+failure.
+
 and for `mapK`:
 
 ```scala
-def mapK[F[_], G[_]](af: Bar[F])(arrow: RaiseArrow[F, G]): Bar[G] =
+def mapK[F[_], G[_]](af: Bar[F])(arrow: RaiseArrow[F, G, Err]): Bar[G] =
   new Bar[G] {
     def bar(i: Int, s: => String)(implicit R: Raise[G, BarError]): G[String] =
-      arrow.fk(af.bar(i, s)(arrow.pull(R)))
+      arrow.fk(af.bar(i, s)(arrow.pull(R)(errBarError)))
     def baz(k: Int): G[Int] = arrow.fk(af.baz(k))
   }
 ```
@@ -281,10 +320,14 @@ Derivation rules:
 4. `algebraName` = simple name of `Alg`; advice names = parameter/method
    names (upstream conventions, so span naming is unchanged).
 5. Multiple capability parameters on one method are each transported
-   independently.
+   independently, each summoning its own `Err[e]` instance.
 6. Abstract vals / nullary defs returning `F[A]`: parity with upstream.
 7. Use the declared parameter type verbatim post-dealias (`Raise` is
    contravariant in `E`; do not reconstruct types and risk variance drift).
+8. Each capability parameter's `Err[e]` instance is summoned implicitly at
+   the derivation site, exactly like a `Dom`/`Cod` instance; a missing
+   instance is a derivation-time diagnostic naming the method, the error
+   type, and `Err` (M10, Task 6).
 
 ## 4. Laws
 

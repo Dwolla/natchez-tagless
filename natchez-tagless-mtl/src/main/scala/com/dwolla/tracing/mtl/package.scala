@@ -118,16 +118,14 @@ import natchez.{TraceValue, TraceableValue}
   * falling back to this `Trace`-based recording whenever no more specific hook
   * is in scope.
   *
-  * This default rendering is not redaction-aware, unlike the rest of this
-  * library: `raise.error.value` is the domain error's raw `e.toString`, not
-  * a `TraceableValue[E]` rendering, so none of the newtype-plus-custom-
-  * `TraceableValue` redaction pattern this library uses for sensitive
-  * parameters (see `TraceWeaveCapturingInputs`/
-  * `TraceWeaveCapturingInputsAndOutputs`) applies to it. An error ADT that
-  * carries a token, an email address, or a card number will have that
-  * value's `toString` land in the tracing backend by default. Redacting or
-  * omitting such fields means supplying a custom `OnRaise[F, TraceableValue]` —
-  * the same override mechanism shown next.
+  * This default rendering ''is'' redaction-aware, like the rest of this
+  * library: `raise.error.value` is the error's `TraceableValue[E]` rendering,
+  * so the newtype-plus-custom-`TraceableValue` pattern documented on
+  * `TraceWeaveCapturingInputs`/`TraceWeaveCapturingInputsAndOutputs` applies
+  * to error values too. An error ADT carrying a token or a card number should
+  * declare a `TraceableValue` that omits or masks it, exactly as a sensitive
+  * parameter type would. Note that `raise.error.type` still records the
+  * error's runtime class name unconditionally.
   *
   * ==Overriding the default recording==
   *
@@ -150,7 +148,9 @@ import natchez.{TraceValue, TraceableValue}
   *     new OnRaise[F, TraceableValue] {
   *       def apply[E](e: E)(implicit ev: TraceableValue[E]): F[Unit] = e match {
   *         case TooSmall(i) => T.put("validation.too_small.value" -> i)
-  *         case _ => ().pure[F]
+  *         // Any other error reaching this hook is rendered through the ambient
+  *         // `TraceableValue[E]` rather than ignored — this is what `ev` is for.
+  *         case _ => T.put("validation.other.value" -> ev.toTraceValue(e))
   *       }
   *     }
   *
