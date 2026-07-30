@@ -130,9 +130,21 @@ import natchez.{TraceValue, TraceableValue}
   * ==Overriding the default recording==
   *
   * `RaiseRecorder` resolution is just implicit priority: a user-supplied
-  * `OnRaise[F, TraceableValue]` (`com.dwolla.tagless.mtl.OnRaise`) always
-  * outranks the `Trace`-based default, so overriding it is a matter of
-  * defining one — no separate wiring step:
+  * `OnRaise[F, TraceableValue]` (`com.dwolla.tagless.mtl.OnRaise`) outranks
+  * the `Trace`-based default ''if the compiler's implicit search actually
+  * finds it'' — and that depends on where it's declared. Implicit scope for
+  * `OnRaise[F, TraceableValue]` reaches the companions of `OnRaise`, `F`, and
+  * `TraceableValue`; a user's own error ADT appears in none of those, so
+  * ''declaring the hook in the error type's companion object does not work'' —
+  * unlike a `TraceableValue[MyError]` instance, which does belong there,
+  * because `TraceableValue[MyError]` mentions `MyError` and the hook's type
+  * doesn't. The hook must instead live somewhere ordinary lexical scoping
+  * reaches it: a local `implicit val`/`given` in scope at the call site, or an
+  * import. A hook the compiler doesn't find isn't an error — resolution
+  * quietly falls back to the `Trace`-based default above, which (per the
+  * previous section) still renders through `TraceableValue`, so a missed
+  * override degrades to a redaction-aware default rather than to raw
+  * `toString`.
   *
   * {{{
   *   import cats.Applicative
@@ -142,8 +154,11 @@ import natchez.{TraceValue, TraceableValue}
   *   // Reusing `ValidationError`/`TooSmall` from the worked example above — this
   *   // block shares that scope, so no need to redeclare them.
   *
-  *   // Just having this implicit in scope is the entire override: RaiseRecorder's
-  *   // fromOnRaise instance outranks fromTrace, the default used above.
+  *   // Just having this implicit in lexical scope is the entire override:
+  *   // RaiseRecorder's fromOnRaise instance outranks fromTrace, the default
+  *   // used above — but only because this is a local implicit val, not a
+  *   // member of ValidationError's own companion object, which implicit
+  *   // search for OnRaise[F, TraceableValue] would never look inside.
   *   implicit def onRaiseValidationError[F[_] : Applicative](implicit T: Trace[F]): OnRaise[F, TraceableValue] =
   *     new OnRaise[F, TraceableValue] {
   *       def apply[E](e: E)(implicit ev: TraceableValue[E]): F[Unit] = e match {

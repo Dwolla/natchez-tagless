@@ -31,7 +31,7 @@ implicit val userOnRaise: OnRaise[IO, TraceableValue] = new OnRaise[IO, Traceabl
 }
 implicitly[RaiseRecorder[IO, TraceableValue]]"""
     )
-    assert(!errors.toLowerCase.contains("ambiguous"), errors)
+    assertNoDiff(errors, "")
   }
 
   test("a user-supplied OnRaise wins over the Trace-derived default, and it is the one that runs") {
@@ -46,5 +46,24 @@ implicitly[RaiseRecorder[IO, TraceableValue]]"""
   test("the Trace-derived default is reachable when no OnRaise is in scope") {
     val recorder = implicitly[RaiseRecorder[IO, TraceableValue]]
     recorder.onRaise(42).assertEquals(())
+  }
+
+  test("an OnRaise declared only in an error ADT's companion object is never found, and the Trace-derived default runs instead") {
+    // Deliberately not `import RaiseRecorderPriorityFixtures._` or
+    // `RaiseRecorderPriorityFixtures.CompanionPoisonError._` — the point of this
+    // test is that RaiseRecorderPriorityFixtures.CompanionPoisonError's own
+    // companion object poison hook is reachable *only* by importing it
+    // explicitly. Implicit search for OnRaise[IO, TraceableValue] consults the
+    // companions of OnRaise, IO, and TraceableValue — never the companion of
+    // whatever error type is raised — so a hook parked there (as one might
+    // reasonably try, since that's exactly where a TraceableValue instance for
+    // the same type would work) is silently skipped rather than found. If this
+    // test ever throws AssertionError instead of completing, companion-object
+    // placement started working for OnRaise and the "Overriding the default
+    // recording" scaladoc in mtl/package.scala is wrong again.
+    val recorder = implicitly[RaiseRecorder[IO, TraceableValue]]
+    recorder
+      .onRaise(RaiseRecorderPriorityFixtures.CompanionPoisonError("boom"))
+      .assertEquals(())
   }
 }
