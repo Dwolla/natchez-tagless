@@ -44,6 +44,38 @@ trait MissingInstanceAlg[F[_]]:
 trait MissingCodAlg[F[_]]:
   def m(i: Int): F[Long]
 
+/** M7 Task 1 fixtures. No top-level `Render[Widget]`/`Render[WidgetError]`
+  * instance exists anywhere in this file — their absence at the derivation
+  * site is the entire point.
+  */
+trait Widget
+trait WidgetError
+
+/** Method-local `Dom`: `Render[Widget]` is supplied only by `show`'s own
+  * `using` clause, not at the derivation site.
+  */
+trait WidgetShowAlg[F[_]]:
+  def show(w: Widget)(using R: Render[Widget]): F[String]
+
+/** Method-local `Cod`: same story, but for the codomain advice on `make`'s
+  * `F[Widget]` result.
+  */
+trait WidgetMakeAlg[F[_]]:
+  def make(i: Int)(using R: Render[Widget]): F[Widget]
+
+/** Method-local `Err`: `Render[WidgetError]` is supplied only by `risky`'s
+  * own `using` clause, alongside the `Raise[F, WidgetError]` capability.
+  */
+trait WidgetRiskyAlg[F[_]]:
+  def risky(i: Int)(using RE: Render[WidgetError], R: Raise[F, WidgetError]): F[String]
+
+/** All three method-local instance kinds on one algebra, matching the
+  * overview appendix's motivating example (now with four type arguments per
+  * M10). This is the shape the milestone's acceptance test targets once M7
+  * lands; today it must fail.
+  */
+trait WidgetAlg[F[_]] extends WidgetShowAlg[F], WidgetMakeAlg[F], WidgetRiskyAlg[F]
+
 @experimental
 class DerivationErrorSpec extends FunSuite:
 
@@ -110,4 +142,41 @@ DeriveRaise.aspect[NoEvidenceAlg, Render, Render, Render]"""
 
   test("a capability behind a type alias is dealiased and derives successfully") {
     assertNoDiff(compileErrors("DeriveRaise.aspect[BadAlgebras.AliasedCapabilityAlg, Render, Render, Render]"), "")
+  }
+
+  // --- M7 Task 1: method-local Dom/Cod/Err fixtures (red) -------------------
+  //
+  // `WidgetShowAlg`/`WidgetMakeAlg`/`WidgetRiskyAlg` isolate one failure
+  // apiece — combining them in one algebra would only ever surface whichever
+  // method the macro visits first, masking the other two. `WidgetAlg` is the
+  // combined shape the milestone doc's acceptance test targets; today it is
+  // also red, for whichever one of the three reasons the macro hits first.
+
+  test("M7: a method-local Dom instance is not found at the derivation site") {
+    val errors: String = compileErrors("DeriveRaise.aspect[WidgetShowAlg, Render, Render, Render]")
+    assert(errors.contains("Not found: given"), errors)
+    assert(errors.contains("for parameter w"), errors)
+  }
+
+  test("M7: a method-local Cod instance is not found at the derivation site") {
+    val errors: String = compileErrors("DeriveRaise.aspect[WidgetMakeAlg, Render, Render, Render]")
+    assert(errors.contains("Not found: given"), errors)
+    assert(errors.contains("for the result of method make"), errors)
+  }
+
+  test("M7: a method-local Err instance is not found at the derivation site") {
+    val errors: String = compileErrors("DeriveRaise.aspect[WidgetRiskyAlg, Render, Render, Render]")
+    assert(errors.contains("no evidence for the error type"), errors)
+    assert(errors.contains("risky"), errors)
+    assert(errors.contains("WidgetError"), errors)
+  }
+
+  test("M7: WidgetAlg, combining all three method-local instance kinds, fails to derive today") {
+    val errors: String = compileErrors("DeriveRaise.aspect[WidgetAlg, Render, Render, Render]")
+    // Whichever of the three methods the macro visits first wins (`validate`/
+    // `deriveWeave` abort on the first bad method), so this only pins that
+    // *some* Not-found/no-evidence diagnostic fires, not which one. The
+    // isolated tests above pin all three individually; see the task-1 report
+    // for which one fires here.
+    assert(errors.contains("Not found: given") || errors.contains("no evidence for the error type"), errors)
   }
