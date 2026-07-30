@@ -2,10 +2,94 @@
 
 ## Status
 
-**Not started.** Prerequisites: M5 merged. Independent of M7 — the two can
-run in either order. The Decisions section below was proposed by the planning
-session on 2026-07-29 and has not yet been ratified by Brian; confirm it
-before starting, then treat it as final.
+**Complete** (branch `milestone/m6-typed-error-span-recording`, stacked on
+`milestone/m5-natchez-integration`). The Decisions section below was
+ratified by Brian at kickoff (2026-07-29) and implemented as written.
+
+`raise-aspect-core` gained `OnRaise[F]`/`OnRaise.noop` and an `OnRaise`-hook
+overload of `WeaveArrows.raiseLift`, additive alongside the existing
+no-hook version. `natchez-tagless-mtl` gained `RaiseRecorder` (the same
+sealed low-priority-implicit pattern M5 used for `WithInputsAndOutputsTracer`),
+wired into both `fromRaiseAspect` tracer methods, recording
+`raise.error.type`/`raise.error.message` via `Trace[F].put` by default,
+with a user-supplied `implicit OnRaise[F]` taking priority. `git diff`
+against `7c4a435` (M5's tip) scoped to `raise-aspect-laws` and
+`raise-aspect-macros` is empty. Cross-builds green on 2.12.21/2.13.18/3.3.8,
+JVM tests and Scala.js *linking* (not just compilation) both verified,
+including the full 2×3 module/version linker matrix run during final
+review.
+
+### A real regression, found and fixed mid-milestone: Scala.js linking
+
+Task 1's hand-rolled `Serializable` test (`java.io.ObjectOutputStream`/
+`ObjectInputStream`, needed because `raise-aspect-core` deliberately has no
+`cats-laws`/`discipline-munit` dependency — that's scoped to the frozen
+`raise-aspect-laws` module only) broke Scala.js linking outright: those
+classes don't exist in Scala.js's `java.io` emulation, so the linker fails
+on the reference regardless of any runtime guard. Task 2 replicated the
+same pattern and inherited the break. Fixed (an unplanned "Task 2.5") with
+the exact idiom `cats-kernel-laws` itself uses:
+`cats.platform.Platform.isJvm` as a `final val` — a compile-time constant
+scalac folds away before the Scala.js linker ever sees the eliminated
+branch — with per-platform `Platform.scala` sources added via
+`.jvmSettings`/`.jsSettings` on `raiseAspectCore`'s existing `crossProject`
+(kept scoped to test sources; did not migrate the module off
+`CrossType.Pure`). The JVM-side assertion is byte-identical to before, just
+wrapped; nothing was weakened.
+
+### Task 4 needed no dedicated commit
+
+Task 3's fix to keep `RaiseTraceIntegrationSuite` green (an "unplanned but
+necessary consequence" of wiring `RaiseRecorder` into the default path) already
+added the exact raising-path field assertions Task 4 asked for, with concrete
+expected values, not just presence checks. Combined with the pre-existing
+success-path test's exact-list-equality behavior (which would already fail
+on a spurious `raise.*` field), all three of Task 4's acceptance points were
+independently and fully satisfied before Task 4 was ever dispatched. Verified
+directly rather than assumed; recorded as complete via subsumption with zero
+new commits, both in the working ledger and confirmed again by the final
+whole-branch reviewer.
+
+### One adjudicated (not fixed) finding: the Serializable-test convention
+
+A per-task reviewer flagged Task 1's hand-rolled Serializable test as not
+matching "the repo's existing convention" (`cats-laws`' `SerializableTests`
++ `checkAll`, used in `raise-aspect-laws`). Checked directly:
+`raiseAspectCore`'s `build.sbt` entry has no `cats-laws`/`discipline-munit`
+dependency at all — that tooling is deliberately scoped to the laws module
+only. Adding it to core for one test would be an unrequested new dependency
+and a bigger architectural change than this milestone's footprint. Parked,
+not fixed: the hand-rolled round-trip is the correct, minimal choice given
+the module's existing dependency boundary.
+
+### The one finding from final review: sensitive data in span fields
+
+The final whole-branch reviewer (run on Opus, after independently closing a
+JS-linking evidence gap by running the full 2×3 module/version linker
+matrix — all green) caught something none of the per-task reviews were
+positioned to see: `RaiseRecorder.fromTrace`'s default records the domain
+error's raw `e.toString`, bypassing `TraceableValue` entirely — unlike every
+other value this library traces, and unmentioned by the redaction guidance
+`TraceWeaveCapturingInputs(AndOutputs)` already documents elsewhere. Fixed
+in one follow-up commit: a doc paragraph naming the gap and pointing at a
+custom `OnRaise[F]` as the redaction mechanism, plus two small doc/test-name
+polish items. Scoped re-review: all addressed, no new breakage.
+
+### Verification
+
+`sbt "+raiseAspectCoreJVM/test"` (34/34 × 3 versions),
+`natchezTaglessMtlJVM/test` (13/13 × 3 versions),
+`raiseAspectCoreJS/Test/scalaJSLinkerResult` and
+`natchezTaglessMtlJS/Test/scalaJSLinkerResult` both green on all three
+Scala versions (verified independently during final review, not just
+compile-checked), `natchezTaglessMtlJVM/doc` succeeds. Zero diff in
+`raise-aspect-laws`/`raise-aspect-macros`. Scala.js test *execution*
+remains uncovered locally (no Node), consistent with every prior milestone.
+
+---
+
+The rest of this document is the original task brief, preserved as written
+before implementation began.
 
 ---
 
