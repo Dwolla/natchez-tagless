@@ -143,30 +143,33 @@ package com.dwolla.tracing
   * override degrades to a redaction-aware default rather than to raw
   * `toString`.
   *
+  * A hook is also free to match on the value it receives, to record
+  * error-specific fields under error-specific keys. The example below doesn't,
+  * only because a compiled doc example declares its ADT inside a method, and
+  * matching an abstract `E` against a method-local class is an unchecked type
+  * test the compiler warns about. In real code, where the ADT is top-level,
+  * `case TooSmall(i) => T.put("validation.too_small.value" -> i)` is fine.
+  *
   * {{{
   *   import cats.Applicative
   *   import com.dwolla.tagless.mtl.OnRaise
   *   import natchez.{Trace, TraceableValue}
-  *
-  *   // Reusing `ValidationError`/`TooSmall` from the worked example above — this
-  *   // block shares that scope, so no need to redeclare them.
   *
   *   // Just having this implicit in lexical scope is the entire override:
   *   // RaiseRecorder's fromOnRaise instance outranks fromTrace, the default
   *   // used above — but only because this is a local implicit val, not a
   *   // member of ValidationError's own companion object, which implicit
   *   // search for OnRaise[F, TraceableValue] would never look inside.
-  *   implicit def onRaiseValidationError[F[_] : Applicative](implicit T: Trace[F]): OnRaise[F, TraceableValue] =
+  *   implicit def onRaiseUnderCustomKey[F[_] : Applicative](implicit T: Trace[F]): OnRaise[F, TraceableValue] =
   *     new OnRaise[F, TraceableValue] {
-  *       def apply[E](e: E)(implicit ev: TraceableValue[E]): F[Unit] = e match {
-  *         case TooSmall(i) => T.put("validation.too_small.value" -> i)
-  *         // Any other error reaching this hook is rendered through the ambient
-  *         // `TraceableValue[E]` rather than ignored — this is what `ev` is for.
-  *         case _ => T.put("validation.other.value" -> ev.toTraceValue(e))
-  *       }
+  *       // `ev` is the per-error-type evidence the hook receives. Rendering
+  *       // through it, rather than through `e.toString`, is what makes a hook
+  *       // honor the same redaction a `TraceableValue` instance declares.
+  *       def apply[E](e: E)(implicit ev: TraceableValue[E]): F[Unit] =
+  *         T.put("validation.error" -> ev.toTraceValue(e))
   *     }
   *
-  *   // RaiseRecorder.fromOnRaise picks up onRaiseValidationError automatically;
+  *   // RaiseRecorder.fromOnRaise picks up onRaiseUnderCustomKey automatically;
   *   // no other change is needed at any tracing call site.
   *   def recorderResolvesViaOnRaise[F[_] : Applicative](implicit T: Trace[F]): RaiseRecorder[F, TraceableValue] =
   *     implicitly[RaiseRecorder[F, TraceableValue]]
