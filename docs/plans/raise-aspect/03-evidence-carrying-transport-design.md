@@ -19,11 +19,13 @@ deliberately.
 
 ## Status
 
-**Design draft — not ratified.** Both parts are breaking API changes to types
-published as of M5. Nothing is implemented.
+**Design ratified 2026-07-30. Not implemented.** Both parts are breaking API
+changes to types published as of M5; D7 records that this is deliberate and
+that no compatibility shims are wanted.
 
-Open decisions requiring Brian's ruling are collected in
-"[Decisions requiring ratification](#decisions-requiring-ratification)".
+All seven decisions are settled — see
+"[Decisions](#d-decisions)". Implementation plans are produced separately, one
+per milestone (§C).
 
 ---
 
@@ -155,7 +157,9 @@ each couples error rendering to a knob that exists to control something else.
   a caller weakens to `Trivial` to opt out of *return-value* rendering. Under
   that encoding, asking not to trace return values silently disables typed
   error recording — the feature this whole part exists to fix — with no
-  compile error.
+  compile error. This is not hypothetical: `traceWithInputs[Cod]` keeps a free
+  `Cod` (§B.3, decision D3), so `alg.traceWithInputs[Trivial]` is an ordinary
+  call that would lose error recording under this encoding.
 
 `Err` is also where the parameter structurally belongs: `mapK` has no `Dom` or
 `Cod` at all, so `RaiseFunctorK` would otherwise have to borrow a parameter
@@ -356,6 +360,10 @@ sealed trait WeaveInterpreter[Alg[_[_]], Dom[_], Cod[_], Err[_], F[_]] {
 }
 
 object WeaveInterpreter extends LowPriorityWeaveInterpreter {
+  def apply[Alg[_[_]], Dom[_], Cod[_], Err[_], F[_]](implicit
+      ev: WeaveInterpreter[Alg, Dom, Cod, Err, F]
+  ): WeaveInterpreter[Alg, Dom, Cod, Err, F] = ev
+
   /** Higher priority: a plain `Aspect` wins whenever both instances exist. */
   implicit def fromAspect[Alg[_[_]], Dom[_], Cod[_], Err[_], F[_]](implicit
       F: Functor[F],
@@ -393,23 +401,71 @@ needed becomes false and must go.
 **`onRaise` is an explicit argument, not an implicit constraint.** This keeps
 the backend-specific priority mechanism (`RaiseRecorder`) in the backend
 module, where cross-module implicit ordering is not a problem, while the core
-typeclass stays free of any notion of tracing. The `fromAspect` instance
-ignores the argument: an `Aspect`-woven algebra has no `Raise` parameters, so
-there is no interception point to hook. That is honest but is the one wart in
-this design; it needs a comment at the instance.
+typeclass stays free of any notion of tracing.
+
+The `fromAspect` instance ignores the argument. That is not a hole: an
+`Aspect`-woven algebra has no `Raise` parameters, so the hook's domain is
+empty and it can never fire. It is the same shape as `Synthetic` producing a
+`Cod[A]` for an `A` that is never produced. The priority ordering is
+consistent with this — `fromAspect` outranks `fromRaiseAspect` only for
+algebras that have both instances, which is to say algebras with no `Raise`
+parameters. One comment at the instance covers it.
+
+#### Why both `OnRaise` and `RaiseRecorder` (decision D4)
+
+They are not two spellings of one idea. `OnRaise[F, Err]` *is* the hook, and
+lives in core. `RaiseRecorder[F, Err]` is a resolution strategy, lives in the
+backend module, and exists so that a user-supplied hook reliably outranks the
+backend's default. Collapsing them fails on implicit resolution mechanics.
+
+Suppose the natchez module published its default directly as a low-priority
+`implicit def fromTrace[F: Trace]: OnRaise[F, TraceableValue]`. A user hook
+would then compete with it as a peer:
+
+- A user hook defined as a local `implicit val` wins on lexical precedence — a
+  local definition outranks a wildcard import. Fine.
+- A user hook placed in a **companion object** — of their error ADT or their
+  algebra, which is where this library's own docs teach people to put
+  instances — is found through implicit scope, which is searched only *after*
+  lexical scope fails. The wildcard-imported default is in lexical scope, so
+  the default wins. Silently: no ambiguity error, no compile failure, and the
+  user's redaction hook simply never runs.
+
+`RaiseRecorder` avoids this because `fromOnRaise`'s search for
+`OnRaise[F, Err]` happens *inside* a resolution that has already committed to
+the high-priority branch. A hook anywhere in scope — companion object
+included — wins.
+
+Moving the resolver into core does not help. Core cannot reach `Trace`, so its
+low-priority default could only be `OnRaise.noop`; the natchez default would
+then have to compete with the user's hook as a peer `OnRaise`, reproducing the
+silent-wrong-winner case above or producing outright ambiguity. Passing the
+hook explicitly at the syntax method with a default argument does not help
+either: it needs a second overload (a second way to do the same thing) and
+gives up the "define an implicit and it is picked up" ergonomics the M6 docs
+already teach.
+
+Both types stay. The naming is imperfect — `RaiseRecorder` resolves a hook
+rather than recording anything — but the thing it resolves genuinely is a
+recorder in the tracing context, and renaming it is not worth the churn.
 
 ### B.3 Syntax
 
-Per Brian: neither syntax method takes a type parameter.
+The syntax methods keep exactly the shape they have today, which is also the
+shape `com.dwolla.tracing.syntax.TraceWeaveOps` has in `core`: `Cod` free on
+`traceWithInputs`, nothing free on `traceWithInputsAndOutputs`. Signature
+parity between the two syntax packages is a design goal — they cannot be
+imported together, so switching an import must not break call sites
+(decisions D3 and D6).
 
 ```scala
 class RaiseTraceWeaveOps[Alg[_[_]], F[_]](val alg: Alg[F]) extends AnyVal {
-  def traceWithInputs(implicit
+  def traceWithInputs[Cod[_]](implicit
       F: Apply[F], T: Trace[F],
       R: RaiseRecorder[F, TraceableValue],
-      ev: WeaveInterpreter[Alg, TraceableValue, Trivial, TraceableValue, F]
+      ev: WeaveInterpreter[Alg, TraceableValue, Cod, TraceableValue, F]
   ): Alg[F] =
-    ev(alg)(TraceWeaveCapturingInputs[F, Trivial], R.onRaise)
+    ev(alg)(TraceWeaveCapturingInputs[F, Cod], R.onRaise)
 
   def traceWithInputsAndOutputs(implicit
       F: FlatMap[F], T: Trace[F],
@@ -420,38 +476,27 @@ class RaiseTraceWeaveOps[Alg[_[_]], F[_]](val alg: Alg[F]) extends AnyVal {
 }
 ```
 
+`Err` is pinned to `TraceableValue` in both methods, independently of what the
+caller does with `Cod`. That is the payoff of `Err` being its own parameter
+(§A.4): `alg.traceWithInputs[Trivial]` opts out of return-value rendering
+without touching typed error recording.
+
+`Synthetic[Cod]` is not named here — it is a constraint on
+`WeaveInterpreter.fromRaiseAspect`, resolved when `ev` is. That is one
+constraint fewer at the call site than the current
+`LowPriorityWithInputsTracer.fromRaiseAspect` shape exposes.
+
 A future otel4s module writes the same two methods against its own rendering
 typeclass and its own interpreters, reusing `WeaveInterpreter`, `RaiseArrow`,
 `WeaveArrows`, and `OnRaise` unchanged. Only `Trivial` is shared between the
 two backends' type arguments, which is exactly the split this design creates.
 
-**Consequence of dropping `traceWithInputs`'s `Cod` parameter.** Today
-`traceWithInputs[Cod]` lets one derived instance serve both methods: derive at
-`Cod = TraceableValue`, then call `traceWithInputs[TraceableValue]` on chatty
-methods and `traceWithInputsAndOutputs` elsewhere. Pinning `Cod = Trivial`
-means wanting both methods requires deriving two instances, one per `Cod`.
-
-`Trivial` is nonetheless the right pin. The caller who reaches for
-"inputs only" is either avoiding sensitive/oversized return values or has no
-`TraceableValue` for the return type at all; `Trivial` serves both, while
-`TraceableValue` serves only the first and demands instances the caller is
-explicitly declining to use. The cost is an extra macro expansion, not a
-correctness problem, and the escape hatch for any other combination is to call
-`WeaveInterpreter` directly:
+Any `Dom`/`Cod`/`Err`/interpreter combination the two syntax methods do not
+cover is reachable by calling the typeclass directly:
 
 ```scala
-WeaveInterpreter[Alg, TraceableValue, Cod, TraceableValue, F]
-  .apply(alg)(TraceWeaveCapturingInputs[F, Cod], onRaise)
+WeaveInterpreter[Alg, Dom, Cod, Err, F].apply(alg)(interpreter, onRaise)
 ```
-
-**Divergence from `core`.** `com.dwolla.tracing.syntax.TraceWeaveOps`
-(`core`, non-mtl) keeps `traceWithInputs[Cod]`. After this change the two
-syntax packages — which already cannot be imported together — differ in
-signature, so switching an import from `com.dwolla.tracing.syntax._` to
-`com.dwolla.tracing.mtl.syntax._` breaks any `traceWithInputs[X]` call site.
-Changing `core` to match is out of scope here (it would break non-mtl users
-for no benefit to them); the migration note belongs in the mtl module's docs.
-See decision D6.
 
 ### B.4 Naming
 
@@ -488,17 +533,17 @@ task-level plans produced separately.
 
 ---
 
-## D. Decisions requiring ratification
+## D. Decisions
 
 | # | Decision | Status |
 | --- | --- | --- |
 | D1 | `Err[_]` as a fourth parameter on `RaiseAspect`, second on `RaiseFunctorK` — not a reuse of `Dom` or `Cod` | Ratified 2026-07-30 |
-| D2 | Laws gain the evidence argument; value-level laws instantiated at both `Trivial` and `Render` to preserve the original ∀`E` strength; three `Render` instances added to the frozen fixture | Ratified 2026-07-30, pending the fixture-edit caveat |
-| D3 | Syntax methods take no type parameters; `traceWithInputs` pins `Cod = Trivial`, at the cost of needing a second derived instance to use both methods | Ratified 2026-07-30 in principle; the two-instance consequence is newly surfaced here |
-| D4 | `WeaveInterpreter` lives in `raise-aspect-core` and takes `(fk, onRaise)` explicitly; `RaiseRecorder` stays backend-local; the `Aspect` instance ignores `onRaise` | **Open** |
-| D5 | Rename the `raise.error.message` span field to `raise.error.value` | **Open** |
-| D6 | Accept signature divergence between `core`'s `traceWithInputs[Cod]` and the mtl module's `traceWithInputs` | **Open** |
-| D7 | No compatibility shims for any of §A.9 | **Open** |
+| D2 | Laws gain the evidence argument; value-level laws instantiated at both `Trivial` and `Render` to preserve the original ∀`E` strength | Ratified 2026-07-30. The three added `Render` instances are an additive edit to an otherwise frozen fixture — recorded in §A.7, not a separate decision |
+| D3 | `traceWithInputs[Cod]` keeps its free `Cod`, matching `core`; only `Err` is pinned | Ratified 2026-07-30 |
+| D4 | `WeaveInterpreter` lives in `raise-aspect-core` and takes `(fk, onRaise)` explicitly; `RaiseRecorder` stays backend-local; both `OnRaise` and `RaiseRecorder` are retained, for the resolution-mechanics reasons in §B.2 | Ratified 2026-07-30 |
+| D5 | Rename the `raise.error.message` span field to `raise.error.value` | Ratified 2026-07-30 — nothing consumes it in production yet |
+| D6 | The mtl syntax methods mirror `core`'s signatures exactly; no divergence | Ratified 2026-07-30 |
+| D7 | No compatibility shims for any of §A.9 | Ratified 2026-07-30 — unpublished, and the break is deliberate rather than incidental |
 
 ---
 
@@ -528,8 +573,9 @@ task-level plans produced separately.
 - `AspectPrioritySpec` and `RaiseRecorderPrioritySpec` pass unmodified in
   substance — `Aspect` still outranks `RaiseAspect`, a user `OnRaise` still
   outranks the `Trace` default.
-- Both syntax methods take no type parameters and produce spans identical to
-  today's for the inputs-and-outputs path.
+- Both syntax methods keep the signatures `core`'s `TraceWeaveOps` has, and
+  produce spans identical to today's for the inputs-and-outputs path apart
+  from the D5 field rename.
 - A written note confirms the `Dom`/`Cod`/`Err`/interpreter quadruple is
   sufficient for an otel4s module — no natchez type appears in any signature
   in `raise-aspect-core`.
