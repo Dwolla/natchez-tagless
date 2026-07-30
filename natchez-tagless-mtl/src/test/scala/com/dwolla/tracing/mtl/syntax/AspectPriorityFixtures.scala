@@ -41,12 +41,12 @@ object Foo {
     * priority resolving to this instance fails the test loudly rather than producing
     * a subtly wrong span name.
     */
-  implicit val fooRaiseAspectPoison: RaiseAspect[Foo, TraceableValue, TraceableValue] =
-    new RaiseAspect[Foo, TraceableValue, TraceableValue] {
+  implicit val fooRaiseAspectPoison: RaiseAspect[Foo, TraceableValue, TraceableValue, TraceableValue] =
+    new RaiseAspect[Foo, TraceableValue, TraceableValue, TraceableValue] {
       def weave[F[_]](af: Foo[F])(implicit F: Functor[F]): Foo[Weave[F, TraceableValue, TraceableValue, *]] =
         throw new AssertionError("priority resolved to RaiseAspect instead of Aspect")
 
-      def mapK[F[_], G[_]](af: Foo[F])(arrow: RaiseArrow[F, G]): Foo[G] =
+      def mapK[F[_], G[_]](af: Foo[F])(arrow: RaiseArrow[F, G, TraceableValue]): Foo[G] =
         throw new AssertionError("priority resolved to RaiseAspect instead of Aspect")
     }
 }

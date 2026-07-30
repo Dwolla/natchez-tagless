@@ -15,7 +15,7 @@ import natchez.{TraceValue, TraceableValue}
   *
   * The algebra, its implementation, and how it's traced — version-agnostic, so it's
   * shown once here. Declaring the `RaiseAspect` instance itself
-  * (`DeriveRaise.aspect[Validator, TraceableValue, TraceableValue]`, in
+  * (`DeriveRaise.aspect[Validator, TraceableValue, TraceableValue, TraceableValue]`, in
   * `Validator`'s companion, per cats-tagless convention) is identical on Scala 2 and
   * 3 except for one detail: Scala 3 requires `@experimental` on that declaration. See
   * `Scala3UsageNote` in this package for the complete, compiled Scala 3 declaration.
@@ -44,14 +44,14 @@ import natchez.{TraceValue, TraceableValue}
   *         if (i < 0) R.raise(TooSmall(i)) else ("ok:" + i.toString).pure[F]
   *     }
   *
-  *     // implicit val raiseAspect: RaiseAspect[Validator, TraceableValue, TraceableValue] =
-  *     //   DeriveRaise.aspect[Validator, TraceableValue, TraceableValue]
+  *     // implicit val raiseAspect: RaiseAspect[Validator, TraceableValue, TraceableValue, TraceableValue] =
+  *     //   DeriveRaise.aspect[Validator, TraceableValue, TraceableValue, TraceableValue]
   *     // — declared in the companion per cats-tagless convention, not summoned; one
   *     // instance serves every F, since weave/mapK are separately polymorphic per
   *     // call. The exact declaration is version-specific — see above.
   *   }
   *
-  *   def run(implicit trace: Trace[IO], RA: RaiseAspect[Validator, TraceableValue, TraceableValue]): IO[String] = {
+  *   def run(implicit trace: Trace[IO], RA: RaiseAspect[Validator, TraceableValue, TraceableValue, TraceableValue]): IO[String] = {
   *     val traced: Validator[IO] = Validator[IO].traceWithInputsAndOutputs
   *
   *     // Raise[IO, ValidationError] doesn't exist on its own — Handle.allowF
@@ -108,45 +108,47 @@ import natchez.{TraceValue, TraceableValue}
   * What's no longer true: that the domain error is invisible to the trace. By
   * default, every algebra traced via the `RaiseAspect` path records the typed
   * error as span fields at the moment of the raise — `raise.error.type` and
-  * `raise.error.message`, named as `RaiseRecorder.ErrorTypeKey` and
-  * `RaiseRecorder.ErrorMessageKey` on `RaiseRecorder`'s companion — giving the
-  * domain error's runtime class name and rendered message, even though the
-  * `Throwable` channel above still only shows `Submarine`. This happens with no
-  * action required from the caller: `WithInputsAndOutputsTracer`/
-  * `WithInputsTracer` resolve a `RaiseRecorder[F]` and sequence its `OnRaise[F]`
-  * hook at the `raiseLift` interception point, falling back to this `Trace`-based
-  * recording whenever no more specific hook is in scope.
+  * `raise.error.value`, named as `RaiseRecorder.ErrorTypeKey` and
+  * `RaiseRecorder.ErrorValueKey` on `RaiseRecorder`'s companion — giving the
+  * domain error's runtime class name and its `TraceableValue` rendering, even
+  * though the `Throwable` channel above still only shows `Submarine`. This
+  * happens with no action required from the caller: `WithInputsAndOutputsTracer`/
+  * `WithInputsTracer` resolve a `RaiseRecorder[F, TraceableValue]` and sequence
+  * its `OnRaise[F, TraceableValue]` hook at the `raiseLift` interception point,
+  * falling back to this `Trace`-based recording whenever no more specific hook
+  * is in scope.
   *
   * This default rendering is not redaction-aware, unlike the rest of this
-  * library: `raise.error.message` is the domain error's raw `e.toString`, not
+  * library: `raise.error.value` is the domain error's raw `e.toString`, not
   * a `TraceableValue[E]` rendering, so none of the newtype-plus-custom-
   * `TraceableValue` redaction pattern this library uses for sensitive
   * parameters (see `TraceWeaveCapturingInputs`/
   * `TraceWeaveCapturingInputsAndOutputs`) applies to it. An error ADT that
   * carries a token, an email address, or a card number will have that
   * value's `toString` land in the tracing backend by default. Redacting or
-  * omitting such fields means supplying a custom `OnRaise[F]` — the same
-  * override mechanism shown next.
+  * omitting such fields means supplying a custom `OnRaise[F, TraceableValue]` —
+  * the same override mechanism shown next.
   *
   * ==Overriding the default recording==
   *
   * `RaiseRecorder` resolution is just implicit priority: a user-supplied
-  * `OnRaise[F]` (`com.dwolla.tagless.mtl.OnRaise`) always outranks the `Trace`-based
-  * default, so overriding it is a matter of defining one — no separate wiring step:
+  * `OnRaise[F, TraceableValue]` (`com.dwolla.tagless.mtl.OnRaise`) always
+  * outranks the `Trace`-based default, so overriding it is a matter of
+  * defining one — no separate wiring step:
   *
   * {{{
   *   import cats.Applicative
   *   import com.dwolla.tagless.mtl.OnRaise
-  *   import natchez.Trace
+  *   import natchez.{Trace, TraceableValue}
   *
   *   // Reusing `ValidationError`/`TooSmall` from the worked example above — this
   *   // block shares that scope, so no need to redeclare them.
   *
   *   // Just having this implicit in scope is the entire override: RaiseRecorder's
   *   // fromOnRaise instance outranks fromTrace, the default used above.
-  *   implicit def onRaiseValidationError[F[_] : Applicative](implicit T: Trace[F]): OnRaise[F] =
-  *     new OnRaise[F] {
-  *       def apply[E](e: E): F[Unit] = e match {
+  *   implicit def onRaiseValidationError[F[_] : Applicative](implicit T: Trace[F]): OnRaise[F, TraceableValue] =
+  *     new OnRaise[F, TraceableValue] {
+  *       def apply[E](e: E)(implicit ev: TraceableValue[E]): F[Unit] = e match {
   *         case TooSmall(i) => T.put("validation.too_small.value" -> i)
   *         case _ => ().pure[F]
   *       }
@@ -154,8 +156,8 @@ import natchez.{TraceValue, TraceableValue}
   *
   *   // RaiseRecorder.fromOnRaise picks up onRaiseValidationError automatically;
   *   // no other change is needed at any tracing call site.
-  *   def recorderResolvesViaOnRaise[F[_] : Applicative](implicit T: Trace[F]): RaiseRecorder[F] =
-  *     implicitly[RaiseRecorder[F]]
+  *   def recorderResolvesViaOnRaise[F[_] : Applicative](implicit T: Trace[F]): RaiseRecorder[F, TraceableValue] =
+  *     implicitly[RaiseRecorder[F, TraceableValue]]
   * }}}
   */
 package object mtl {
