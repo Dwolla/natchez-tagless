@@ -2,12 +2,13 @@
 
 ## Status
 
-**Not started. Next up** — Brian set the order on 2026-07-30: M7, then M8.
+**In progress.** Brian set the order on 2026-07-30: M7, then M8, and ratified
+the Decisions below the same day.
 
 Prerequisites: M5 merged (the macros as they landed in M3/M4). Independent of
 M6 — the two can run in either order. The Decisions section below was proposed
-by the planning session on 2026-07-29 and **has not yet been ratified**;
-confirm it before starting, then treat it as final.
+by the planning session on 2026-07-29 and **was ratified by Brian on
+2026-07-30**. Treat the Decisions section as final.
 
 ### What changed under this milestone since it was written
 
@@ -41,7 +42,7 @@ defines this milestone's problem and enumerates the options (a)/(b)/(c).
 This milestone resolves that limitation on **both** macro axes; the overview
 explicitly requires whatever is chosen to apply to both.
 
-## Decisions (proposed — ratify before starting, then final)
+## Decisions (ratified 2026-07-30 — final)
 
 1. **Pursue option (b)** — resolve `Dom`/`Cod` instances inside the
    generated method body, where the method's own `implicit`/`using`
