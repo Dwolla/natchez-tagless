@@ -266,6 +266,20 @@ private class DeriveRaiseMacros[Q <: Quotes](using val q: Q):
       case success: ImplicitSearchSuccess => success.tree
       case _ => report.errorAndAbort(s"Not found: given ${tpe.show} $describe")
 
+  /** As [[summonOrAbort]], but worded for a capability parameter's error type.
+    * Kept textually identical to the Scala 2 axis's message — the two axes are
+    * held to behavioral agreement.
+    */
+  def summonErrOrAbort(Err: TypeRepr, errorType: TypeRepr, methodName: String): Term =
+    Implicits.search(Err.appliedTo(errorType)) match
+      case success: ImplicitSearchSuccess => success.tree
+      case _ =>
+        report.errorAndAbort(
+          s"no evidence for the error type ${errorType.show} raised by method $methodName: " +
+            s"an implicit ${Err.typeSymbol.name}[${errorType.show}] is required at the derivation site. " +
+            s"Supply one, or derive at Err = cats.tagless.Trivial to opt out of error evidence."
+        )
+
   /** Reject every algebra member that uses the effect type in a way the
     * derivation cannot support. Runs against the ''declared'' algebra `Alg[F]`,
     * before any class synthesis, so the messages name the types the user wrote
@@ -372,14 +386,11 @@ private[mtl] object RaiseAspectMacros:
 
     alg.transformTo[Alg[[X] =>> Aspect.Weave[F, Dom, Cod, X]]](
       args = {
-        case (_, tpe, arg) if macros.capabilityError(tpe, Carrier).isDefined =>
+        case (methodSym, tpe, arg) if macros.capabilityError(tpe, Carrier).isDefined =>
           tpe.dealias.typeArgs.last.asType match
             case '[e] =>
               val errEv = macros
-                .summonOrAbort(
-                  TypeRepr.of[Err].appliedTo(tpe.dealias.typeArgs.last),
-                  "for the error type of a Raise parameter"
-                )
+                .summonErrOrAbort(TypeRepr.of[Err], tpe.dealias.typeArgs.last, methodSym.name)
                 .asExprOf[Err[e]]
               '{
                 WeaveArrows
@@ -425,14 +436,11 @@ private[mtl] object RaiseAspectMacros:
 
     alg.transformTo[Alg[G]](
       args = {
-        case (_, tpe, arg) if macros.capabilityError(tpe, G).isDefined =>
+        case (methodSym, tpe, arg) if macros.capabilityError(tpe, G).isDefined =>
           tpe.dealias.typeArgs.last.asType match
             case '[e] =>
               val errEv = macros
-                .summonOrAbort(
-                  TypeRepr.of[Err].appliedTo(tpe.dealias.typeArgs.last),
-                  "for the error type of a Raise parameter"
-                )
+                .summonErrOrAbort(TypeRepr.of[Err], tpe.dealias.typeArgs.last, methodSym.name)
                 .asExprOf[Err[e]]
               '{ $arrow.pull(${ arg.asExprOf[Raise[G, e]] })(using $errEv) }.asTerm
       },

@@ -93,6 +93,21 @@ class DerivationErrorSpec extends FunSuite:
     assert(errors.contains("for the result of method m"), errors)
   }
 
+  test("deriving with an Err type class that has no instance for the error type names the method and the type") {
+    val errors: String = compileErrors(
+      """import cats.mtl.Raise
+import com.dwolla.tagless.mtl._
+trait Unrenderable
+trait NoEvidenceAlg[F[_]] {
+  def go(i: Int)(using R: Raise[F, Unrenderable]): F[String]
+}
+DeriveRaise.aspect[NoEvidenceAlg, Render, Render, Render]"""
+    )
+    assert(errors.contains("no evidence for the error type"), errors)
+    assert(errors.contains("go"), errors)
+    assert(errors.contains("Unrenderable"), errors)
+  }
+
   test("a capability behind a type alias is dealiased and derives successfully") {
     assertNoDiff(compileErrors("DeriveRaise.aspect[BadAlgebras.AliasedCapabilityAlg, Render, Render, Render]"), "")
   }

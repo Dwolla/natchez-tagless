@@ -300,6 +300,21 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
       case tree => tree
     }
 
+  /** The `Err[E]` for a capability parameter's error type, or an abort naming
+    * both. Distinct from `inferOrAbort` so the message can say "error type"
+    * rather than "parameter" — the parameter is the `Raise`, not the error.
+    */
+  private def inferErrOrAbort(Err: Type, errorType: Type, method: Method): Tree =
+    c.inferImplicitValue(appliedType(Err, errorType)) match {
+      case EmptyTree =>
+        abort(
+          s"no evidence for the error type $errorType raised by method ${method.displayName}: " +
+            s"an implicit ${Err.typeSymbol.name}[$errorType] is required at the derivation site. " +
+            s"Supply one, or derive at Err = cats.tagless.Trivial to opt out of error evidence."
+        )
+      case tree => tree
+    }
+
   /** Reject every parameter that mentions `F` other than as a capability. */
   private def validateParams(method: Method, f: Symbol): Unit =
     for (ps <- method.paramLists; p <- ps) {
@@ -384,7 +399,7 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
 
           val args = method.transformedArgLists { case Parameter(pn, pt, _) if capabilityError(pt, f).isDefined =>
             val errorType = capabilityError(pt, f).get
-            val errInstance = inferOrAbort(appliedType(Err, errorType), s"for the error type of parameter $pn")
+            val errInstance = inferErrOrAbort(Err, errorType, method)
             q"$WeaveArrowsRef.raisePull[$F, $Dom, $Cod, $Err].apply($pn)($errInstance)"
           }
 
@@ -431,7 +446,7 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
 
           val args = method.transformedArgLists { case Parameter(pn, pt, _) if capabilityError(pt, f).isDefined =>
             val errorType = capabilityError(pt, f).get
-            val errInstance = inferOrAbort(appliedType(Err, errorType), s"for the error type of parameter $pn")
+            val errInstance = inferErrOrAbort(Err, errorType, method)
             q"$arrow.pull($pn)($errInstance)"
           }
 
