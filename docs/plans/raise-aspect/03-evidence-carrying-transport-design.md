@@ -265,9 +265,26 @@ object RaiseRecorder extends LowPriorityRaiseRecorder {
   implicit def fromOnRaise[F[_], Err[_]](implicit or: OnRaise[F, Err]): RaiseRecorder[F, Err]
 }
 trait LowPriorityRaiseRecorder {
-  implicit def fromTrace[F[_]](implicit T: Trace[F]): RaiseRecorder[F, TraceableValue]
+  implicit def fromTrace[F[_], Err[_]](implicit
+      T: Trace[F],
+      ev: RaiseRecorder.IsTraceableValue[Err]
+  ): RaiseRecorder[F, Err]
 }
 ```
+
+> **Amended 2026-07-30 during M10 implementation.** `fromTrace` was originally
+> specified as `fromTrace[F[_]](implicit T: Trace[F]): RaiseRecorder[F, TraceableValue]`.
+> That signature does not compile on Scala 2.13.18 — and only there; 2.12 and 3
+> accept it. Fixing `Err` in the return type makes `fromTrace`'s result strictly
+> more specific than `fromOnRaise`'s, which exactly offsets `fromOnRaise`'s
+> owner-derivation advantage, and 2.13 reports the two as ambiguous instead of
+> applying the low-priority-trait ordering. The `IsTraceableValue` witness gives
+> both candidates the same type-parameter shape, so owner derivation is the sole
+> tiebreak again and `fromOnRaise` wins as designed. Verified across all four
+> instance-placement scenarios (import, local `implicit val`, companion object,
+> and none) on all three Scala versions; the simpler alternative — a type bound
+> `Err[x] <: TraceableValue[x]` — fails identically on 2.13, because it restores
+> the same specificity asymmetry.
 
 The priority mechanism is unchanged. `fromTrace` is pinned at
 `Err = TraceableValue` — the only `Err` for which it can produce anything —

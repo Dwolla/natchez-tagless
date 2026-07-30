@@ -586,13 +586,21 @@ In `RaiseAspectSuite.scala`, add — after the existing "L4 arrow coherence for
 the identity arrow" property — the strength-preserving block:
 
 ```scala
-  // ------------------------------------------- L4/L5 at Err = Trivial (∀E)
+  // ------------------------- every value-level law at Err = Trivial (∀E)
 
   // Adding `implicit ev: Err[E]` to the laws narrows them from "for all E" to
   // "for all E for which Err[E] exists". `Trivial`'s instance is universal, so
   // this instantiation restores the original quantifier. The `Render`
   // instantiations above cover the evidence-carrying path; these cover the
   // strength the laws had before M10.
+  //
+  // This block covers ALL SEVEN value-level laws — L4, L5, L6a, L6b, L6c, L6d
+  // and L7 — not just L4/L5. Every one of them now takes `implicit ev: Err[E]`,
+  // so every one of them was narrowed: L6a-d reach the evidence through the
+  // private `lifted` helper (`WeaveArrows.raiseLift[F, Dom, Cod, Err].apply`)
+  // and L7 through `WeaveArrows.raisePull[F, Dom, Cod, Err].apply`. Covering
+  // only two of the seven would leave the "unweakened" claim true of 2/7 laws
+  // while reading as though it were true of all of them.
   property("L4 arrow coherence for eraseWeave, at Err = Trivial") {
     forAllErrors { e =>
       val law = RaiseArrowLaws.arrowCoherence[Woven, Result, Trivial, TestError, Int](
@@ -1223,7 +1231,14 @@ The payoff. `RaiseRecorder.fromTrace` stops calling `toString`.
   - `RaiseRecorder.ErrorValueKey: String` — **new name**, `"raise.error.value"`,
     replacing `ErrorMessageKey` / `"raise.error.message"`
   - `RaiseRecorder.fromOnRaise[F[_], Err[_]](implicit or: OnRaise[F, Err]): RaiseRecorder[F, Err]`
-  - `LowPriorityRaiseRecorder.fromTrace[F[_]](implicit T: Trace[F]): RaiseRecorder[F, TraceableValue]`
+  - `LowPriorityRaiseRecorder.fromTrace[F[_], Err[_]](implicit T: Trace[F], ev: RaiseRecorder.IsTraceableValue[Err]): RaiseRecorder[F, Err]`
+    — note the witness. The simpler `fromTrace[F[_]](implicit T: Trace[F]): RaiseRecorder[F, TraceableValue]`
+    does not compile on Scala 2.13.18 (only there): fixing `Err` in the return
+    type makes it strictly more specific than `fromOnRaise`, offsetting
+    `fromOnRaise`'s owner-derivation advantage, and 2.13 reports ambiguity
+    instead of applying the low-priority ordering. A type bound
+    `Err[x] <: TraceableValue[x]` fails the same way. See the design doc's
+    amendment note in Part A §A.8.
   - `BarFixture` gains `implicit val traceableValueBarError: TraceableValue[BarError]`
 
 - [ ] **Step 1: Write the failing test**
@@ -1309,13 +1324,16 @@ trait LowPriorityRaiseRecorder {
     * Pinned at `Err = TraceableValue`: it is the only evidence type class this
     * default can render through.
     */
-  implicit def fromTrace[F[_]](implicit T: Trace[F]): RaiseRecorder[F, TraceableValue] =
-    new RaiseRecorder[F, TraceableValue] {
-      def onRaise: OnRaise[F, TraceableValue] = new OnRaise[F, TraceableValue] {
-        def apply[E](e: E)(implicit ev: TraceableValue[E]): F[Unit] =
+  implicit def fromTrace[F[_], Err[_]](implicit
+      T: Trace[F],
+      isTV: RaiseRecorder.IsTraceableValue[Err]
+  ): RaiseRecorder[F, Err] =
+    new RaiseRecorder[F, Err] {
+      def onRaise: OnRaise[F, Err] = new OnRaise[F, Err] {
+        def apply[E](e: E)(implicit ev: Err[E]): F[Unit] =
           T.put(
             RaiseRecorder.ErrorTypeKey -> e.getClass.getName,
-            RaiseRecorder.ErrorValueKey -> ev.toTraceValue(e)
+            RaiseRecorder.ErrorValueKey -> isTV.widen(ev).toTraceValue(e)
           )
       }
     }
