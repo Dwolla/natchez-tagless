@@ -11,8 +11,9 @@ import natchez.{Trace, TraceableValue}
   *
   * Same sealed-typeclass low-priority-implicit mechanism as
   * `com.dwolla.tagless.mtl.WeaveInterpreter` — see that type class's docs for why
-  * this pattern, rather than a single implicit method with a default argument, is
-  * used to let one instance take priority over another.
+  * a single sealed type class, rather than two separate conversions, is what lets
+  * one instance take priority over the other: there's no supertype relationship
+  * between the two candidates to make one win otherwise.
   */
 sealed trait RaiseRecorder[F[_], Err[_]] {
   def onRaise: OnRaise[F, Err]

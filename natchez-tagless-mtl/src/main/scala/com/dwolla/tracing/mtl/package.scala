@@ -1,8 +1,5 @@
 package com.dwolla.tracing
 
-import com.dwolla.tagless.mtl.Synthetic
-import natchez.{TraceValue, TraceableValue}
-
 /** Traces algebras whose methods take `cats.mtl.Raise` capability parameters —
   * algebras `cats.tagless.aop.Aspect` alone cannot weave, because plain `Aspect`
   * (like `FunctorK`) requires the effect type to appear only as each method's
@@ -25,12 +22,6 @@ import natchez.{TraceValue, TraceableValue}
   *   import cats.mtl.{Handle, Raise}
   *   import cats.syntax.all._
   *   import com.dwolla.tagless.mtl.RaiseAspect
-  *   // WeaveInterpreter.fromRaiseAspect is generic in Cod, so it can't bake in a
-  *   // TraceableValue-specific Synthetic instance the way the old, natchez-only
-  *   // fixed-Cod tracer did; this import supplies it explicitly instead. Code
-  *   // living inside com.dwolla.tracing.mtl itself gets it for free, from the
-  *   // package object, but external callers like this one need the import.
-  *   import com.dwolla.tracing.mtl.syntheticTraceableValue
   *   import com.dwolla.tracing.mtl.syntax._
   *   import natchez.{Trace, TraceableValue}
   *
@@ -182,20 +173,4 @@ import natchez.{TraceValue, TraceableValue}
   *     implicitly[RaiseRecorder[F, TraceableValue]]
   * }}}
   */
-package object mtl {
-
-  /** The `Synthetic[TraceableValue]` the `RaiseAspect` runtime needs to build the
-    * shell `Weave`s inside `raiseLift`.
-    *
-    * Per laws L5–L7 (`raise-aspect-laws`), a synthesized instance's output is never
-    * observable through the public API: the shell is unwrapped immediately via
-    * `codomain.target`, and a raised `F[A]` never yields an `A` for anything to
-    * render. The sentinel string exists only so that, if that soundness claim were
-    * ever violated by a future bug, the value would be immediately recognizable in
-    * a captured span rather than silently indistinguishable from a real one.
-    */
-  implicit val syntheticTraceableValue: Synthetic[TraceableValue] =
-    new Synthetic[TraceableValue] {
-      def apply[A]: TraceableValue[A] = _ => TraceValue.StringValue("«raised»")
-    }
-}
+package object mtl

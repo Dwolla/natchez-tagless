@@ -5,10 +5,12 @@ import cats.effect.IO
 import munit.CatsEffectSuite
 import natchez.{Trace, TraceableValue}
 
-/** Task 3 — when an algebra has both an `Aspect` and a `RaiseAspect` instance in
-  * scope, `.traceWithInputsAndOutputs` must resolve unambiguously to the `Aspect`
-  * path. Both requirements from the task are covered: a compilation check (no
-  * ambiguous-implicit error) and a behavioral check (the `Aspect` path actually ran).
+/** Task 3 (M6) / M11 — when an algebra has both an `Aspect` and a `RaiseAspect`
+  * instance in scope, both `.traceWithInputsAndOutputs` and `.traceWithInputs`
+  * must resolve unambiguously to the `Aspect` path, via the `WeaveInterpreter`
+  * that now backs both. A compilation check (no ambiguous-implicit error) plus a
+  * behavioral check (the `Aspect` path actually ran) cover `traceWithInputsAndOutputs`;
+  * a third test pins the same behavioral property for `traceWithInputs`.
   */
 class AspectPrioritySpec extends CatsEffectSuite {
   private implicit val trace: Trace[IO] = Trace.Implicits.noop[IO]
