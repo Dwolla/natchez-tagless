@@ -25,6 +25,12 @@ import natchez.{TraceValue, TraceableValue}
   *   import cats.mtl.{Handle, Raise}
   *   import cats.syntax.all._
   *   import com.dwolla.tagless.mtl.RaiseAspect
+  *   // WeaveInterpreter.fromRaiseAspect is generic in Cod, so it can't bake in a
+  *   // TraceableValue-specific Synthetic instance the way the old, natchez-only
+  *   // fixed-Cod tracer did; this import supplies it explicitly instead. Code
+  *   // living inside com.dwolla.tracing.mtl itself gets it for free, from the
+  *   // package object, but external callers like this one need the import.
+  *   import com.dwolla.tracing.mtl.syntheticTraceableValue
   *   import com.dwolla.tracing.mtl.syntax._
   *   import natchez.{Trace, TraceableValue}
   *
@@ -112,9 +118,10 @@ import natchez.{TraceValue, TraceableValue}
   * `RaiseRecorder.ErrorValueKey` on `RaiseRecorder`'s companion — giving the
   * domain error's runtime class name and its `TraceableValue` rendering, even
   * though the `Throwable` channel above still only shows `Submarine`. This
-  * happens with no action required from the caller: `WithInputsAndOutputsTracer`/
-  * `WithInputsTracer` resolve a `RaiseRecorder[F, TraceableValue]` and sequence
-  * its `OnRaise[F, TraceableValue]` hook at the `raiseLift` interception point,
+  * happens with no action required from the caller: `traceWithInputs`/
+  * `traceWithInputsAndOutputs` resolve a `WeaveInterpreter` and a
+  * `RaiseRecorder[F, TraceableValue]`, and sequence the latter's
+  * `OnRaise[F, TraceableValue]` hook at the `raiseLift` interception point,
   * falling back to this `Trace`-based recording whenever no more specific hook
   * is in scope.
   *

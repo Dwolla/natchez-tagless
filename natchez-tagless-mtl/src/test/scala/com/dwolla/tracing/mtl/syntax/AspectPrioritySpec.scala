@@ -3,7 +3,7 @@ package syntax
 
 import cats.effect.IO
 import munit.CatsEffectSuite
-import natchez.Trace
+import natchez.{Trace, TraceableValue}
 
 /** Task 3 — when an algebra has both an `Aspect` and a `RaiseAspect` instance in
   * scope, `.traceWithInputsAndOutputs` must resolve unambiguously to the `Aspect`
@@ -24,11 +24,16 @@ import natchez.Trace
 implicit val trace: Trace[IO] = Trace.Implicits.noop[IO]
 com.dwolla.tracing.mtl.syntax.Foo.io.traceWithInputsAndOutputs"""
     )
-    assert(!errors.toLowerCase.contains("ambiguous"), errors)
+    assertNoDiff(errors, "")
   }
 
   test("the Aspect path is used, not the poison RaiseAspect instance, and it produces the expected result") {
     val traced = Foo.io.traceWithInputsAndOutputs
+    traced.foo(3).assertEquals("foo:3")
+  }
+
+  test("the Aspect path is used by traceWithInputs too, not the poison RaiseAspect instance") {
+    val traced = Foo.io.traceWithInputs[TraceableValue]
     traced.foo(3).assertEquals("foo:3")
   }
 }
