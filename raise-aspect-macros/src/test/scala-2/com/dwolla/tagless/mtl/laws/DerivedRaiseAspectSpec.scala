@@ -6,6 +6,6 @@ package laws
   * substitution, and all ten laws come along unchanged.
   */
 class DerivedRaiseAspectSpec extends RaiseAspectSuite {
-  def instance: RaiseAspect[TestAlg, Render, Render] =
-    DeriveRaise.aspect[TestAlg, Render, Render]
+  def instance: RaiseAspect[TestAlg, Render, Render, Render] =
+    DeriveRaise.aspect[TestAlg, Render, Render, Render]
 }

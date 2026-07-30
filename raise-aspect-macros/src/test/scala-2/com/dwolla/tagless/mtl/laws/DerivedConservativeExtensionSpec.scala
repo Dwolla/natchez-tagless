@@ -20,8 +20,8 @@ import LawsInstances._
   */
 class DerivedConservativeExtensionSpec extends FunSuite {
 
-  private val ours: RaiseAspect[PlainAlg, Render, Render] =
-    DeriveRaise.aspect[PlainAlg, Render, Render]
+  private val ours: RaiseAspect[PlainAlg, Render, Render, Render] =
+    DeriveRaise.aspect[PlainAlg, Render, Render, Render]
 
   private val upstream: Aspect[PlainAlg, Render, Render] =
     CatsTaglessDerive.aspect[PlainAlg, Render, Render]
@@ -49,8 +49,8 @@ class DerivedConservativeExtensionSpec extends FunSuite {
 
   test("L9 the derived mapK agrees with upstream's FunctorK.mapK for any pull") {
     // PlainAlg has no capability parameters, so the pull must never be consulted.
-    val unusablePull = new RaisePull[Result, Result] {
-      def apply[E](rg: Raise[Result, E]): Raise[Result, E] =
+    val unusablePull = new RaisePull[Result, Result, Render] {
+      def apply[E](rg: Raise[Result, E])(implicit ev: Render[E]): Raise[Result, E] =
         fail("mapK must not consult the pull for a capability-free algebra")
     }
 
@@ -61,7 +61,7 @@ class DerivedConservativeExtensionSpec extends FunSuite {
   }
 
   test("L9 the derived instance also matches the hand-written PlainAlg reference") {
-    val referenceWoven = PlainAlgReference.referenceRaiseAspect[Render, Render].weave(impl)
+    val referenceWoven = PlainAlgReference.referenceRaiseAspect[Render, Render, Render].weave(impl)
     val ourWoven = ours.weave(impl)
     exhaustiveInt.allValues.foreach { i =>
       assertEquals(WeaveRenderer.render(ourWoven.p(i)), WeaveRenderer.render(referenceWoven.p(i)))

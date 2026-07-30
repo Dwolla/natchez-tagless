@@ -12,7 +12,7 @@ import LawsInstances._
   */
 class CrossVersionAgreementSpec extends FunSuite {
   test("the Scala 2 derivation matches the shared expected weave renderings") {
-    val derived = DeriveRaise.aspect[TestAlg, Render, Render]
+    val derived = DeriveRaise.aspect[TestAlg, Render, Render, Render]
     val woven = derived.weave(new EitherTestAlg(0))(Functor[Result])
     assertEquals(ExpectedWeaves.rendered(woven), ExpectedWeaves.expected)
   }

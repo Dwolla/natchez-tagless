@@ -14,18 +14,25 @@ import scala.language.experimental.macros
   * }
   *
   * object Bar {
-  *   implicit val barRaiseAspect: RaiseAspect[Bar, TraceableValue, TraceableValue] =
-  *     DeriveRaise.aspect[Bar, TraceableValue, TraceableValue]
+  *   implicit val barRaiseAspect: RaiseAspect[Bar, TraceableValue, TraceableValue, TraceableValue] =
+  *     DeriveRaise.aspect[Bar, TraceableValue, TraceableValue, TraceableValue]
   * }
   * }}}
+  *
+  * `Err` is the per-error-type evidence type class: for every `Raise[F, E]`
+  * capability parameter the derived code encounters, it summons an `Err[E]`
+  * at the derivation site and carries it through so a hook observing a raised
+  * error can render it through that type class instead of `toString`. Use
+  * `cats.tagless.Trivial` for `Err` to opt out; its universal instance makes
+  * the constraint vacuous.
   */
 object DeriveRaise {
 
   /** Derive a [[RaiseAspect]], supporting both `weave` and `mapK`. */
-  def aspect[Alg[_[_]], Dom[_], Cod[_]]: RaiseAspect[Alg, Dom, Cod] =
-    macro DeriveRaiseMacros.aspect[Alg, Dom, Cod]
+  def aspect[Alg[_[_]], Dom[_], Cod[_], Err[_]]: RaiseAspect[Alg, Dom, Cod, Err] =
+    macro DeriveRaiseMacros.aspect[Alg, Dom, Cod, Err]
 
   /** Derive just a [[RaiseFunctorK]], when no weaving is needed. */
-  def functorK[Alg[_[_]]]: RaiseFunctorK[Alg] =
-    macro DeriveRaiseMacros.functorK[Alg]
+  def functorK[Alg[_[_]], Err[_]]: RaiseFunctorK[Alg, Err] =
+    macro DeriveRaiseMacros.functorK[Alg, Err]
 }

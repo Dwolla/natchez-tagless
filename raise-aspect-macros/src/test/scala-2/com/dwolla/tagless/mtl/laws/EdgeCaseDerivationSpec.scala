@@ -39,8 +39,8 @@ object EdgeAlg {
 
 class EdgeCaseDerivationSpec extends FunSuite {
 
-  private val derived: RaiseAspect[EdgeAlg, Render, Render] =
-    DeriveRaise.aspect[EdgeAlg, Render, Render]
+  private val derived: RaiseAspect[EdgeAlg, Render, Render, Render] =
+    DeriveRaise.aspect[EdgeAlg, Render, Render, Render]
 
   private val impl = EdgeAlg.either
   private val woven: EdgeAlg[Aspect.Weave[Result, Render, Render, *]] =
@@ -54,7 +54,7 @@ class EdgeCaseDerivationSpec extends FunSuite {
   }
 
   test("the inherited capability is transported, so raises survive erasure") {
-    val erased = derived.mapK(woven)(WeaveArrows.eraseWeave[Result, Render, Render])
+    val erased = derived.mapK(woven)(WeaveArrows.eraseWeave[Result, Render, Render, Render])
     assertEquals(erased.inherited(-4)(raiseResult), NegativeInput(-4).asLeft[String].leftWiden[TestError])
     assertEquals(erased.inherited(-4)(raiseResult), impl.inherited(-4)(raiseResult))
   }
