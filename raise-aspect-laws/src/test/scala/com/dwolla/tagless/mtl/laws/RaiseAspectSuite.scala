@@ -5,6 +5,7 @@ import cats.data.EitherT
 import cats.kernel.laws.discipline.SerializableTests
 import cats.mtl.Raise
 import cats.syntax.all._
+import cats.tagless.Trivial
 import cats.tagless.aop.Aspect
 import cats.{Eval, Functor}
 import laws.discipline.RaiseAspectTests
@@ -14,7 +15,7 @@ import org.scalacheck.{Arbitrary, Gen}
 import LawsInstances._
 import TestError._
 
-/** The complete law suite for a `RaiseAspect[TestAlg, Render, Render]`.
+/** The complete law suite for a `RaiseAspect[TestAlg, Render, Render, Render]`.
   *
   * ==This is the substitution seam.==
   *
@@ -27,9 +28,9 @@ import TestError._
 abstract class RaiseAspectSuite extends DisciplineSuite {
 
   /** The instance under test. Override this and nothing else. */
-  def instance: RaiseAspect[TestAlg, Render, Render]
+  def instance: RaiseAspect[TestAlg, Render, Render, Render]
 
-  private implicit def instanceUnderTest: RaiseAspect[TestAlg, Render, Render] = instance
+  private implicit def instanceUnderTest: RaiseAspect[TestAlg, Render, Render, Render] = instance
 
   private val functorResult: Functor[Result] = Functor[Result]
 
@@ -42,34 +43,34 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
   private implicit val arbTestAlgResult: Arbitrary[TestAlg[Result]] =
     Arbitrary(Gen.oneOf(-1, 0, 1).map(new EitherTestAlg(_)))
 
-  private implicit val arbEraseArrow: Arbitrary[RaiseArrow[Woven, Result]] =
-    Arbitrary(Gen.const(WeaveArrows.eraseWeave[Result, Render, Render]))
+  private implicit val arbEraseArrow: Arbitrary[RaiseArrow[Woven, Result, Render]] =
+    Arbitrary(Gen.const(WeaveArrows.eraseWeave[Result, Render, Render, Render]))
 
-  private implicit val arbIdArrow: Arbitrary[RaiseArrow[Result, Result]] =
-    Arbitrary(Gen.const(RaiseArrow.id[Result]))
+  private implicit val arbIdArrow: Arbitrary[RaiseArrow[Result, Result, Render]] =
+    Arbitrary(Gen.const(RaiseArrow.id[Result, Render]))
 
   // ------------------------------------------------- L1, L2, L3 (discipline)
 
   // L3 lives at the base effect: `weave` needs a `Functor` for the effect it is
   // weaving, and weaving an already-woven algebra is not a thing we support.
   checkAll(
-    "RaiseAspect[TestAlg, Render, Render]",
-    RaiseAspectTests[TestAlg, Render, Render].raiseAspect[Result, Result, Result]
+    "RaiseAspect[TestAlg, Render, Render, Render]",
+    RaiseAspectTests[TestAlg, Render, Render, Render].raiseAspect[Result, Result, Result]
   )
 
   // ...and L1/L2 again over the genuinely non-trivial arrow, `eraseWeave`,
   // which the all-identity instantiation above cannot exercise.
   checkAll(
     "RaiseFunctorK[TestAlg] over erasure arrows",
-    laws.discipline.RaiseFunctorKTests[TestAlg].raiseFunctorK[Woven, Result, Result]
+    laws.discipline.RaiseFunctorKTests[TestAlg, Render].raiseFunctorK[Woven, Result, Result]
   )
 
   // ------------------------------------------------------------ L4, L5, L6, L7
 
   property("L4 arrow coherence for eraseWeave") {
     forAllErrors { e =>
-      val law = RaiseArrowLaws.arrowCoherence[Woven, Result, TestError, Int](
-        WeaveArrows.eraseWeave[Result, Render, Render],
+      val law = RaiseArrowLaws.arrowCoherence[Woven, Result, Render, TestError, Int](
+        WeaveArrows.eraseWeave[Result, Render, Render, Render],
         raiseResult,
         e
       )
@@ -79,8 +80,8 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
 
   property("L4 arrow coherence for the identity arrow") {
     forAllErrors { e =>
-      val law = RaiseArrowLaws.arrowCoherence[Result, Result, TestError, Int](
-        RaiseArrow.id[Result],
+      val law = RaiseArrowLaws.arrowCoherence[Result, Result, Render, TestError, Int](
+        RaiseArrow.id[Result, Render],
         raiseResult,
         e
       )
@@ -90,8 +91,8 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
 
   property("L4 arrow coherence for eraseWeave andThen id") {
     forAllErrors { e =>
-      val law = RaiseArrowLaws.arrowCoherence[Woven, Result, TestError, Int](
-        WeaveArrows.eraseWeave[Result, Render, Render].andThen(RaiseArrow.id[Result]),
+      val law = RaiseArrowLaws.arrowCoherence[Woven, Result, Render, TestError, Int](
+        WeaveArrows.eraseWeave[Result, Render, Render, Render].andThen(RaiseArrow.id[Result, Render]),
         raiseResult,
         e
       )
@@ -101,14 +102,42 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
 
   property("L5 raisePull is a retraction of raiseLift") {
     forAllErrors { e =>
-      val law = RaiseArrowLaws.sectionRetraction[Result, Render, Render, TestError, Int](raiseResult, e)
+      val law = RaiseArrowLaws.sectionRetraction[Result, Render, Render, Render, TestError, Int](raiseResult, e)
+      assertEquals(law.lhs, law.rhs)
+    }
+  }
+
+  // ------------------------------------------- L4/L5 at Err = Trivial (∀E)
+
+  // Adding `implicit ev: Err[E]` to the laws narrows them from "for all E" to
+  // "for all E for which Err[E] exists". `Trivial`'s instance is universal, so
+  // this instantiation restores the original quantifier. The `Render`
+  // instantiations above cover the evidence-carrying path; these cover the
+  // strength the laws had before M10.
+  property("L4 arrow coherence for eraseWeave, at Err = Trivial") {
+    forAllErrors { e =>
+      val law = RaiseArrowLaws.arrowCoherence[Woven, Result, Trivial, TestError, Int](
+        WeaveArrows.eraseWeave[Result, Render, Render, Trivial],
+        raiseResult,
+        e
+      )
+      assertEquals(law.lhs, law.rhs)
+    }
+  }
+
+  property("L5 section/retraction, at Err = Trivial") {
+    forAllErrors { e =>
+      val law = RaiseArrowLaws.sectionRetraction[Result, Render, Render, Trivial, TestError, Int](
+        raiseResult,
+        e
+      )
       assertEquals(law.lhs, law.rhs)
     }
   }
 
   property("L6a the synthesized functor maps the codomain target") {
     forAllInts { i =>
-      val law = RaiseArrowLaws.liftedFunctorMapsTarget[Result, Render, Render, TestError, Int, Int](
+      val law = RaiseArrowLaws.liftedFunctorMapsTarget[Result, Render, Render, Render, TestError, Int, Int](
         raiseResult,
         sampleWeave(i),
         _ + 1
@@ -121,19 +150,19 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
     forAllInts { i =>
       val w = sampleWeave(i)
       val algebraName =
-        RaiseArrowLaws.liftedFunctorPreservesAlgebraName[Result, Render, Render, TestError, Int, Int](
+        RaiseArrowLaws.liftedFunctorPreservesAlgebraName[Result, Render, Render, Render, TestError, Int, Int](
           raiseResult,
           w,
           _ + 1
         )
       val codomainName =
-        RaiseArrowLaws.liftedFunctorPreservesCodomainName[Result, Render, Render, TestError, Int, Int](
+        RaiseArrowLaws.liftedFunctorPreservesCodomainName[Result, Render, Render, Render, TestError, Int, Int](
           raiseResult,
           w,
           _ + 1
         )
       val domain =
-        RaiseArrowLaws.liftedFunctorPreservesDomain[Result, Render, Render, TestError, Int, Int](
+        RaiseArrowLaws.liftedFunctorPreservesDomain[Result, Render, Render, Render, TestError, Int, Int](
           raiseResult,
           w,
           _ + 1
@@ -147,7 +176,7 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
 
   property("L7 the pulled capability reports the ambient Functor[F]") {
     forAllInts { i =>
-      val law = RaiseArrowLaws.pulledFunctorIsAmbient[Result, Render, Render, TestError, Int, Int](
+      val law = RaiseArrowLaws.pulledFunctorIsAmbient[Result, Render, Render, Render, TestError, Int, Int](
         raiseWoven,
         i.asRight[TestError],
         _ + 1
@@ -157,7 +186,7 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
   }
 
   test("L7 the pulled capability uses the ambient Functor instance itself") {
-    val pulled = WeaveArrows.raisePull[Result, Render, Render](functorResult).apply(raiseWoven)
+    val pulled = WeaveArrows.raisePull[Result, Render, Render, Render](functorResult).apply(raiseWoven)
     assert(pulled.functor eq functorResult)
   }
 
@@ -246,11 +275,11 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
   // ----------------------------------------------------------- Serializable
 
   checkAll("Synthetic[Trivial].serializable", SerializableTests.serializable(Synthetic.trivial))
-  checkAll("RaisePull.id.serializable", SerializableTests.serializable(RaisePull.id[Result]))
-  checkAll("RaiseArrow.id.serializable", SerializableTests.serializable(RaiseArrow.id[Result]))
+  checkAll("RaisePull.id.serializable", SerializableTests.serializable(RaisePull.id[Result, Render]))
+  checkAll("RaiseArrow.id.serializable", SerializableTests.serializable(RaiseArrow.id[Result, Render]))
   checkAll(
     "WeaveArrows.eraseWeave.serializable",
-    SerializableTests.serializable(WeaveArrows.eraseWeave[Result, Render, Render])
+    SerializableTests.serializable(WeaveArrows.eraseWeave[Result, Render, Render, Render])
   )
 
   // ------------------------------------------------------------- helpers
@@ -261,7 +290,7 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
   private val raiseLazily: Raise[Lazily, TestError] = Raise[Lazily, TestError]
 
   private val liftedLazily: Raise[Aspect.Weave[Lazily, Render, Render, *], TestError] =
-    WeaveArrows.raiseLift[Lazily, Render, Render].apply(raiseLazily)
+    WeaveArrows.raiseLift[Lazily, Render, Render, Render].apply(raiseLazily)
 
   /** A fixture whose effects are observable only when the `Eval` is forced. */
   private def countingAlg(counter: java.util.concurrent.atomic.AtomicInteger): TestAlg[Lazily] =

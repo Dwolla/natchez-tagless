@@ -16,11 +16,11 @@ import cats.tagless.aop.Aspect
   */
 object PlainAlgReference {
 
-  def referenceRaiseAspect[Dom[_], Cod[_]](implicit
+  def referenceRaiseAspect[Dom[_], Cod[_], Err[_]](implicit
       domInt: Dom[Int],
       codString: Cod[String]
-  ): RaiseAspect[PlainAlg, Dom, Cod] =
-    new RaiseAspect[PlainAlg, Dom, Cod] {
+  ): RaiseAspect[PlainAlg, Dom, Cod, Err] =
+    new RaiseAspect[PlainAlg, Dom, Cod, Err] {
 
       def weave[F[_]](af: PlainAlg[F])(implicit F: Functor[F]): PlainAlg[Aspect.Weave[F, Dom, Cod, *]] = {
         type WF[A] = Aspect.Weave[F, Dom, Cod, A]
@@ -35,7 +35,7 @@ object PlainAlgReference {
         }
       }
 
-      def mapK[F[_], G[_]](af: PlainAlg[F])(arrow: RaiseArrow[F, G]): PlainAlg[G] =
+      def mapK[F[_], G[_]](af: PlainAlg[F])(arrow: RaiseArrow[F, G, Err]): PlainAlg[G] =
         new PlainAlg[G] {
           def p(i: Int): G[String] = arrow.fk(af.p(i))
         }

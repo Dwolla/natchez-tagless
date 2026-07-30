@@ -67,7 +67,7 @@ object LawsInstances {
     * rather than summoning a `Raise[Woven, TestError]`.
     */
   implicit val raiseWoven: Raise[Woven, TestError] =
-    WeaveArrows.raiseLift[Result, Render, Render].apply(raiseResult)
+    WeaveArrows.raiseLift[Result, Render, Render, Render].apply(raiseResult)
 
   /** Structural `Eq` for a woven value.
     *
