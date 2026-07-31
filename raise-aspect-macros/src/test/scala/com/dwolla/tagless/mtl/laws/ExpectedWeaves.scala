@@ -27,13 +27,24 @@ object ExpectedWeaves {
     RenderedWeave("TestAlg", "e", Nil)
   )
 
-  /** The order in which the five calls above reach the interpreter. Weaves are
-    * handed over one per call, so this is call order — but it is worth pinning,
-    * because it is the property the pre-M12 oracle could not see at all and the
-    * one a mis-fused generator (building all weaves eagerly, say) would break.
+  /** The order in which the five calls above reach the interpreter, stated
+    * explicitly.
     *
-    * `EitherTestAlg(0)` never raises for these arguments, so no hook firing is
-    * interleaved and the log is exactly the five arrivals.
+    * ==This adds no coverage over [[expected]], and that is worth knowing.==
+    * Post-M12 [[rendered]] reads the recorder's arrival-ordered buffer instead
+    * of constructing weaves, and `RenderedWeave.methodName` is the same
+    * `codomain.name` the recorder's log line carries, so `expected` is
+    * ''already'' an arrival-order pin and this constant is a re-projection of
+    * it. No derivation can fail one assertion without failing the other. Pre-M12
+    * that was untrue — `rendered` built its list in the order the test called
+    * the methods, which said nothing about the interpreter — and the property is
+    * kept spelled out here so a future reader does not have to rediscover that
+    * `expected` now carries it.
+    *
+    * The spec that asserts this passes `OnRaise.noop`, which cannot write to
+    * the log whatever the arguments are, so the log holds nothing but the five
+    * arrivals. Changing the sample arguments does not change that; changing the
+    * hook would.
     */
   val expectedOrder: List[String] = List(
     "weave:TestAlg.a",

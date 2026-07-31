@@ -56,6 +56,16 @@ class DifferentialOracleSpec extends FunSuite {
       // strict parameter, so a raise is logged before the weave it belongs to
       // reaches `fk` — a fact no value-level comparison can see.
       assertEquals(dRec.events, rRec.events)
+      // The latch on the comparison above, not a test of the hook. With a hook
+      // that writes nothing — `OnRaise.noop`, or a `record` call reduced to a
+      // constant — the two logs still match and the oracle silently returns to
+      // its pre-M12 blindness to a dropped `RaiseAspect.observing`. `a(-2)`,
+      // `a(-1)` and several `d` samples raise for every `eOutcome`, so a log
+      // with no `raise:` line means the fixture stopped observing raises.
+      assert(
+        rRec.events.exists(_.startsWith("raise:")),
+        s"no raise reached the hook for eOutcome $outcome — the events comparison above is vacuous"
+      )
     }
   }
 
