@@ -22,6 +22,70 @@ it as the driving use case, and keep scope to exactly the four verified
 transportable capabilities. Extensible user-registered capabilities stay out of
 scope (question 3 already says so).
 
+### Phase 1 spike outcome and scope ruling (2026-07-30)
+
+Question 2 was spiked before any design was written, and the spike's two
+strongest claims were then independently verified by a second agent that
+reproduced them from scratch. Both confirmed, one with a better argument than
+the spike gave and one at lower severity than the spike implied.
+
+**Scope, ruled by Brian on 2026-07-30: `Tell` and `Ask`. `Stateful` deferred.**
+This supersedes the "keep scope to exactly the four verified transportable
+capabilities" line above, which was written before any of the following was
+known.
+
+- **`Tell` — clean.** Its evidence member is only a `Functor`, so the lift
+  direction reuses the existing `syntheticWeaveFunctor` verbatim. Nearly free.
+- **`Ask` — constructible, with a caveat the design must carry.** The
+  synthesized `Applicative` is lawful at the structural equivalence, but only
+  with a sentinel metadata monoid: a left-biased merge breaks `applicativeMap`,
+  identity and interchange; right-biased breaks interchange. The sentinel is a
+  fragile string and the design must say so.
+- **`Stateful` — not soundly constructible.** `Weave`'s metadata is strict and
+  `A`-independent, so `flatMap(w)(f)`'s metadata can only be a function of
+  `w`'s. Left identity then forces the equivalence to identify *all* metadata
+  and *all* `Cod` instances — that is, to factor through `codomainTarget`. This
+  rules out **every** `flatMap`, not merely every merge policy, and no useful
+  coarser equivalence rescues it. (`ap` escapes because both operands are
+  already-built weaves, which is why `Ask` survives and `Stateful` does not.)
+
+  **The impossibility is relative to reusing cats-tagless's `Weave` verbatim.**
+  Metadata of type `F[M]` would work. §3.2 of the overview forfeited that
+  deliberately, to keep existing `Weave ~> F` interpreters working. So
+  "`Stateful` deferred" means "out unless `Weave` interop is abandoned" — not
+  "out until someone tries harder."
+
+**Question 1 is settled, and favourably.** One arrow suffices, and it is
+simpler than today's `RaiseArrow`: `raisePull` and `raiseLift` are the same
+operation along two different `FunctionK`s, so a single
+`CapabilityK[C, Ev].transport` plus a backward `G ~> F` and the source-carrier
+evidence covers every transportable capability, with `andThen` collapsing to
+plain `FunctionK` composition. Demonstrated on a method taking `Ask` and
+`Raise` together. The spike's caveat that `raiseLift`'s `OnRaise` overload
+breaks the uniformity was **over-stated** — verification showed it factors as a
+pre-transport capability decorator and the uniformity holds. One real gap the
+spike missed: `CapabilityK[C, Ev]` is indexed at the exact evidence class, so a
+mixed-capability arrow needs a subsumption witness.
+
+**Question 2's premise does not survive, and the design must replace it.** The
+milestone states that the section/retraction argument must carry the soundness
+claim alone. It cannot: a synthesized `Cod` is observable through a
+capability's **public evidence member** — `Ask#reader`, `Tell#writer`,
+`Stateful#inspect` are all defaults routed through it, and `Stateful#monad` is
+public outright. What actually holds is narrower and is a property of *the
+derivation*: the expansion invokes nothing but the abstract producing members,
+so nothing escapes along the derived path. The design must state the scoped
+claim, not the general one.
+
+The same substitution already exists in shipped `Raise` code and is
+**unfixable by law** — an L6e comparing `codomain.instance` would be
+unsatisfiable, because a `Functor` cannot derive `Cod[B]` from `Cod[A]`. It is
+not reachable through the derivation or through any cats-mtl 1.7 `Raise`
+default or syntax operation, so it is an API-surface property rather than a
+live defect. Recorded in `Synthetic`'s scaladoc as a constraint on
+implementors: **a `Synthetic` instance must not reveal anything about the value
+it stands in for.**
+
 **Design gate: still shut.** Phase 2 does not begin until Brian ratifies
 `02-capability-aspect-design.md`.
 
