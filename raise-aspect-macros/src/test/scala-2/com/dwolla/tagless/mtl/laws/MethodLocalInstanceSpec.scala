@@ -133,6 +133,14 @@ trait WidgetAmbiguousAlg[F[_]] {
   def ambiguous(w: Widget)(implicit R: Render[Widget], S: Render[Widget]): F[String]
 }
 
+/** Both sources are available for `Render[Int]`: `Render.renderInt` at the
+  * derivation site and the method's own implicit parameter. The hybrid is
+  * derivation-site-first, so the fallback must not fire.
+  */
+trait PrecedenceAlg[F[_]] {
+  def pick(i: Int)(implicit R: Render[Int]): F[String]
+}
+
 object MethodLocal {
   type WidgetResult[A] = Either[WidgetError, A]
   type AliasedRender = Render[Widget]
@@ -178,6 +186,10 @@ object MethodLocal {
     def sub(s: SubThing)(implicit C: Contra[Thing]): WidgetResult[String] = Right(C.describe(s))
   }
 
+  val precedence: PrecedenceAlg[WidgetResult] = new PrecedenceAlg[WidgetResult] {
+    def pick(i: Int)(implicit R: Render[Int]): WidgetResult[String] = Right(R.render(i))
+  }
+
   /** An arrow whose `pull` renders every raised error through the `Err` evidence
     * the ''derivation'' handed it. That evidence is the only observable trace of
     * which `Err[E]` the macro resolved, since `WeaveArrows.raisePull` ignores it.
@@ -220,6 +232,8 @@ class MethodLocalInstanceSpec extends FunSuite {
     DeriveRaise.aspect[WidgetVariationsAlg, Render, Render, Render]
   private val contraAspect: RaiseAspect[ContraAlg, Contra, Render, Render] =
     DeriveRaise.aspect[ContraAlg, Contra, Render, Render]
+  private val precedenceAspect: RaiseAspect[PrecedenceAlg, Render, Render, Render] =
+    DeriveRaise.aspect[PrecedenceAlg, Render, Render, Render]
   private val riskyFunctorK: RaiseFunctorK[WidgetRiskyAlg, Render] =
     DeriveRaise.functorK[WidgetRiskyAlg, Render]
 
@@ -329,6 +343,15 @@ class MethodLocalInstanceSpec extends FunSuite {
     )
   }
 
+  test("resolution is derivation-site first: a method-local instance does not override one in scope") {
+    val woven: PrecedenceAlg[Woven] = precedenceAspect.weave(precedence)(Functor[WidgetResult])
+    val shouty: Render[Int] = (i: Int) => s"shouty:$i"
+
+    // `Render.renderInt` renders "7"; the method-local `shouty` would render
+    // "shouty:7". The fallback only fires when derivation-site search fails.
+    assertEquals(WeaveRenderer.render(woven.pick(7)(shouty)).domain, List(List("i" -> "7")))
+  }
+
   // --- rejections ----------------------------------------------------------
 
   test("deriving an instance from a method-local one is out of scope and says so") {
@@ -339,6 +362,21 @@ DeriveRaise.aspect[WidgetListAlg, Render, Render, Render]"""
     )
     assert(errors.contains("Not found: implicit"), errors)
     assert(errors.contains("for parameter ws of method listy"), errors)
+  }
+
+  test("the same derivation succeeds once the element instance is at the derivation site") {
+    // The control for the test above: it proves `renderList` really is in scope
+    // there, so the rejection is about `Render[Widget]` being method-local and
+    // nothing else.
+    assertNoDiff(
+      compileErrors(
+        """implicit def renderList[A](implicit R: Render[A]): Render[List[A]] =
+  (as: List[A]) => as.map(R.render).mkString(",")
+implicit val renderWidget: Render[Widget] = (w: Widget) => "widget:" + w.id
+DeriveRaise.aspect[WidgetListAlg, Render, Render, Render]"""
+      ),
+      ""
+    )
   }
 
   test("an invariant type class does not accept a supertype's instance") {
