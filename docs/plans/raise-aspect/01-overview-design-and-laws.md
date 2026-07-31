@@ -420,6 +420,44 @@ M6 and M7 are independent of each other; M8 and M9 carry explicit gates
 recorded in their documents. As ever: do not do work belonging to milestones
 other than your own.
 
+Third round (2026-07-31):
+
+- M12 fused derivation — replaces `weave` + `mapK` with a single `instrument`,
+  removing the `Weave`-as-effect-type carrier and with it the unlawful
+  synthesized `Functor` →
+  `22-milestone-M12-fused-derivation.md`
+
+**Why M12 exists.** §3.2's decision to make `Weave` the woven algebra's effect
+type forces the woven methods to take `Raise[Weave[F, Dom, Cod, *], E]`, and
+`cats.mtl.Raise` declares an abstract `functor`, so a `Functor[Weave[…]]` must
+be synthesized. That instance was demonstrated to **fail the functor identity
+law**, and `Raise#functor` is public precisely so external generic code can
+recover the bundled algebra — so a generic `R.functor.map(fa)(f)` on a real
+weave silently substitutes a fabricated `Cod`, corrupting a *successful*
+call's rendering. With a user-authored rendering `Synthetic` it becomes a
+redaction hole.
+
+Fusing the two operations removes the cause rather than documenting the
+symptom: the caller's `Raise[F, E]` is handed straight to the underlying
+implementation, so no capability ever crosses a carrier boundary, no
+`Functor[Weave]` is needed, and `Synthetic` deletes. `Weave` survives as
+*data* passed to the interpreter, so `TraceWeaveCapturingInputs(AndOutputs)`
+keep their exact types.
+
+Three spikes established this, each reverting its code: behavioural
+equivalence including end-to-end natchez span histories; the macro merge on
+both axes and all three Scala versions, with `ExpectedWeaves.expected`
+reproduced byte for byte; and the negative result that no lawful
+`Functor[Weave[F, Dom, TraceableValue, *]]` exists, because a lawful one needs
+`Functor[Cod]` and `TraceableValue`'s parameter is negative-only.
+
+**Consequence for M8, which stays paused.** Because nothing crosses a boundary
+in the fused form, the four-of-nine transportable classification ceases to
+govern method parameters — `Handle`, `Local`, `Listen`, `Censor` and
+`Stateful` were all demonstrated working. That classification still governs
+`mapK`, which keeps real transport. Whether to admit further capabilities is a
+separate decision the owner has not made; M12 keeps `Raise`-only recognition.
+
 ### Method-local `Dom`/`Cod`/`Err` instances (found in M4, resolved in M7)
 
 Originally, `Dom` and `Cod` instances (later joined by `Err`, added in M10) were
