@@ -1,7 +1,6 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.Functor
 import munit.FunSuite
 
 import LawsInstances._
@@ -13,7 +12,9 @@ import LawsInstances._
 class CrossVersionAgreementSpec extends FunSuite {
   test("the Scala 2 derivation matches the shared expected weave renderings") {
     val derived = DeriveRaise.aspect[TestAlg, Render, Render, Render]
-    val woven = derived.weave(new EitherTestAlg(0))(Functor[Result])
-    assertEquals(ExpectedWeaves.rendered(woven), ExpectedWeaves.expected)
+    val recorder = new RecordingFk[Result, Render, Render]
+    val instrumented = derived.intercept(new EitherTestAlg(0))(recorder.fk, OnRaise.noop[Result, Render])
+
+    assertEquals(ExpectedWeaves.rendered(instrumented, recorder), ExpectedWeaves.expected)
   }
 }

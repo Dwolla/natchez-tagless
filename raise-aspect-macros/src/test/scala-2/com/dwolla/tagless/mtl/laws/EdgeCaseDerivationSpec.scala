@@ -1,10 +1,8 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.Functor
 import cats.mtl.Raise
 import cats.syntax.all._
-import cats.tagless.aop.Aspect
 import munit.FunSuite
 
 import LawsInstances._
@@ -43,38 +41,47 @@ class EdgeCaseDerivationSpec extends FunSuite {
     DeriveRaise.aspect[EdgeAlg, Render, Render, Render]
 
   private val impl = EdgeAlg.either
-  private val woven: EdgeAlg[Aspect.Weave[Result, Render, Render, *]] =
-    derived.weave(impl)(Functor[Result])
+  private val recorder = new RecordingFk[Result, Render, Render]
+  private val instrumented: EdgeAlg[Result] =
+    derived.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
 
   test("a capability method inherited from a parent trait is woven") {
-    assertEquals(WeaveRenderer.render(woven.inherited(2)(raiseWoven)).algebraName, "EdgeAlg")
-    assertEquals(WeaveRenderer.render(woven.inherited(2)(raiseWoven)).methodName, "inherited")
-    assertEquals(WeaveRenderer.render(woven.inherited(2)(raiseWoven)).domain, List(List("i" -> "2")))
-    assertEquals(woven.inherited(2)(raiseWoven).codomain.target, impl.inherited(2)(raiseResult))
+    val out = instrumented.inherited(2)(raiseResult)
+    val rendered = WeaveRenderer.render(recorder.weaves.last.weave)
+    assertEquals(rendered.algebraName, "EdgeAlg")
+    assertEquals(rendered.methodName, "inherited")
+    assertEquals(rendered.domain, List(List("i" -> "2")))
+    assertEquals(out, impl.inherited(2)(raiseResult))
   }
 
   test("the inherited capability is transported, so raises survive erasure") {
-    val erased = derived.mapK(woven)(WeaveArrows.eraseWeave[Result, Render, Render, Render])
-    assertEquals(erased.inherited(-4)(raiseResult), NegativeInput(-4).asLeft[String].leftWiden[TestError])
-    assertEquals(erased.inherited(-4)(raiseResult), impl.inherited(-4)(raiseResult))
+    assertEquals(instrumented.inherited(-4)(raiseResult), NegativeInput(-4).asLeft[String].leftWiden[TestError])
+    assertEquals(instrumented.inherited(-4)(raiseResult), impl.inherited(-4)(raiseResult))
   }
 
   test("a nullary def returning F[A] is woven with an empty domain") {
-    val rendered = WeaveRenderer.render(woven.nullary)
+    val out = instrumented.nullary
+    val rendered = WeaveRenderer.render(recorder.weaves.last.weave)
     assertEquals(rendered.methodName, "nullary")
     assertEquals(rendered.domain, List.empty[List[(String, String)]])
-    assertEquals(woven.nullary.codomain.target, 42.asRight[TestError])
+    assertEquals(out, 42.asRight[TestError])
   }
 
   test("overloads are woven independently, each keeping its own parameter type") {
-    assertEquals(WeaveRenderer.render(woven.overloaded(7)).domain, List(List("i" -> "7")))
-    assertEquals(WeaveRenderer.render(woven.overloaded("z")).domain, List(List("s" -> "z")))
-    assertEquals(woven.overloaded(7).codomain.target, "int:7".asRight[TestError])
-    assertEquals(woven.overloaded("z").codomain.target, "string:z".asRight[TestError])
+    val outInt = instrumented.overloaded(7)
+    val renderedInt = WeaveRenderer.render(recorder.weaves.last.weave)
+    val outString = instrumented.overloaded("z")
+    val renderedString = WeaveRenderer.render(recorder.weaves.last.weave)
+
+    assertEquals(renderedInt.domain, List(List("i" -> "7")))
+    assertEquals(renderedString.domain, List(List("s" -> "z")))
+    assertEquals(outInt, "int:7".asRight[TestError])
+    assertEquals(outString, "string:z".asRight[TestError])
   }
 
   test("a capability-free method on the same algebra is woven unchanged") {
-    assertEquals(WeaveRenderer.render(woven.own(5)).domain, List(List("i" -> "5")))
-    assertEquals(woven.own(5).codomain.target, 15.asRight[TestError])
+    val out = instrumented.own(5)
+    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("i" -> "5")))
+    assertEquals(out, 15.asRight[TestError])
   }
 }

@@ -431,6 +431,10 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
   /** Substitute the effect inside capability parameter types, leaving the error
     * type exactly as declared (`Raise` is contravariant in `E`; reconstructing the
     * error type risks variance drift).
+    *
+    * `raiseInstrument` no longer needs this — the capability is decorated at the
+    * ''same'' carrier — but `raiseMapK` still retypes `Raise[F, E]` to
+    * `Raise[G, E]` for the genuine carrier change `mapK` performs, so this stays.
     */
   private def substituteCapabilities(method: Method, f: Symbol, newEffect: Type): List[List[ValDef]] =
     method.transformedParamLists {
@@ -438,29 +442,31 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
         appliedType(RaiseSymbol, newEffect :: capabilityError(tpe, f).toList)
     }
 
-  // def weave[F[_]](af: Alg[F])(implicit F: Functor[F]): Alg[Aspect.Weave[F, Dom, Cod, *]]
-  def raiseWeave(Dom: Type, Cod: Type, Err: Type)(algebra: Type): MethodDef = MethodDef("weave") {
-    case PolyType(List(f), MethodType(List(af), MethodType(List(_), _))) =>
-      val AspectWeave = symbolOf[Aspect.Weave[Any, Any, Any, Any]]
+  // def intercept[F[_]](af: Alg[F])(fk: Aspect.Weave[F, Dom, Cod, *] ~> F, onRaise: OnRaise[F, Err])
+  //                     (implicit F: Apply[F]): Alg[F]
+  def raiseInstrument(Dom: Type, Cod: Type, Err: Type)(algebra: Type): MethodDef = MethodDef("intercept") {
+    case PolyType(List(f), MethodType(List(af), MethodType(List(fk, onRaise), MethodType(List(applyF), _)))) =>
       val F = f.asType.toTypeConstructor
       val Af = singleType(NoPrefix, af)
       val members = overridableMembersOf(Af)
       val types = delegateAbstractTypes(Af, members, Af)
       val algebraName = typeNameOf(algebra)
-      val WeaveF = polyType(F.typeParams, appliedType(AspectWeave, F :: Dom :: Cod :: F.typeParams.map(_.asType.toType)))
 
       val methods = delegateMethods(Af, members, af) {
         case method if returnsEffectDirectly(method, f) =>
           validateParams(method, f)
 
           val AspectAdvice = reify(Aspect.Advice)
-          val WeaveArrowsRef = reify(WeaveArrows)
+          val RaiseAspectRef = reify(RaiseAspect)
           val typeArgs = method.returnType.typeArgs
 
+          // The capability is decorated *in place*: same carrier, same declared
+          // type, so there is no parameter-type substitution to do and the
+          // generated method's parameter lists are the algebra's own.
           val args = method.transformedArgLists { case Parameter(pn, pt, _) if capabilityError(pt, f).isDefined =>
             val errorType = capabilityError(pt, f).get
             val errInstance = inferErrOrAbort(Err, errorType, method)
-            q"$WeaveArrowsRef.raisePull[$F, $Dom, $Cod, $Err].apply($pn)($errInstance)"
+            q"$RaiseAspectRef.observing[$F, $errorType, $Err]($pn, $onRaise)($applyF, $errInstance)"
           }
 
           val codInstance = inferOrAbort(
@@ -470,14 +476,10 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
           )
           val codomain =
             q"$AspectAdvice[$F, $Cod, ..$typeArgs](${method.displayName}, ${method.delegate(Ident(af), args)})($codInstance)"
-          val body =
+          val weave =
             q"${reify(Aspect.Weave)}[$F, $Dom, $Cod, ..$typeArgs]($algebraName, ${domainOf(method, f, Dom)}, $codomain)"
 
-          method.copy(
-            paramLists = substituteCapabilities(method, f, WeaveF),
-            body = body,
-            returnType = appliedType(AspectWeave, F :: Dom :: Cod :: typeArgs)
-          )
+          method.copy(body = q"$fk.apply[..$typeArgs]($weave)")
         case method if method.occursInReturn(f) =>
           abort(
             s"method ${method.displayName} returns ${method.returnType}; RaiseAspect supports F only as the " +
@@ -490,7 +492,7 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
           )
       }
 
-      implement(appliedType(algebra, WeaveF))()(types ++ methods)
+      implement(algebra)(f)(types ++ methods)
   }
 
   // def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G, Err]): Alg[G]
@@ -541,7 +543,7 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
     val Cod = typeConstructorOf(cod)
     val Err = typeConstructorOf(err)
     instantiate[RaiseAspect[Alg, Dom, Cod, Err]](tag, Dom, Cod, Err)(
-      raiseWeave(Dom, Cod, Err),
+      raiseInstrument(Dom, Cod, Err),
       raiseMapK(Err)
     )
   }

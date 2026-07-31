@@ -28,23 +28,31 @@ class DerivedConservativeExtensionSpec extends FunSuite {
 
   private val impl: PlainAlg[Result] = EitherPlainAlg
 
-  test("L9 the derived woven structure matches upstream's, rendered") {
-    val ourWoven = ours.weave(impl)
-    val theirWoven = upstream.weave(impl)
+  /** Upstream's `Aspect` still returns an `Alg[Weave[…]]`; our fused derivation
+    * hands each weave to `fk` instead. The comparison runs through a recorder on
+    * our side, and renders inside the helper so no test needs a cast to line up
+    * the existentially-quantified result type the recorder holds.
+    */
+  private def ourRendered(inputs: List[Int]): List[RenderedWeave] = {
+    val recorder = new RecordingFk[Result, Render, Render]
+    val instrumented = ours.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
+    inputs.foreach(i => { val _ = instrumented.p(i) })
+    recorder.weaves.map(r => WeaveRenderer.render(r.weave))
+  }
 
-    exhaustiveInt.allValues.foreach { i =>
-      assertEquals(
-        WeaveRenderer.render(ourWoven.p(i)),
-        WeaveRenderer.render(theirWoven.p(i)),
-        s"rendered weave differs for input $i"
-      )
-    }
+  test("L9 the derived woven structure matches upstream's, rendered") {
+    val theirWoven = upstream.weave(impl)
+    val inputs = exhaustiveInt.allValues.toList
+
+    assertEquals(ourRendered(inputs), inputs.map(i => WeaveRenderer.render(theirWoven.p(i))))
   }
 
   test("L9 the derived woven codomain targets match upstream's") {
-    val ourWoven = ours.weave(impl)
+    val recorder = new RecordingFk[Result, Render, Render]
+    val instrumented = ours.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
     val theirWoven = upstream.weave(impl)
-    exhaustiveInt.allValues.foreach(i => assertEquals(ourWoven.p(i).codomain.target, theirWoven.p(i).codomain.target))
+
+    exhaustiveInt.allValues.foreach(i => assertEquals(instrumented.p(i), theirWoven.p(i).codomain.target))
   }
 
   test("L9 the derived mapK agrees with upstream's FunctorK.mapK for any pull") {
@@ -61,10 +69,13 @@ class DerivedConservativeExtensionSpec extends FunSuite {
   }
 
   test("L9 the derived instance also matches the hand-written PlainAlg reference") {
-    val referenceWoven = PlainAlgReference.referenceRaiseAspect[Render, Render, Render].weave(impl)
-    val ourWoven = ours.weave(impl)
-    exhaustiveInt.allValues.foreach { i =>
-      assertEquals(WeaveRenderer.render(ourWoven.p(i)), WeaveRenderer.render(referenceWoven.p(i)))
-    }
+    val inputs = exhaustiveInt.allValues.toList
+    val referenceRecorder = new RecordingFk[Result, Render, Render]
+    val referenceInstrumented = PlainAlgReference
+      .referenceRaiseAspect[Render, Render, Render]
+      .intercept(impl)(referenceRecorder.fk, OnRaise.noop[Result, Render])
+    inputs.foreach(i => { val _ = referenceInstrumented.p(i) })
+
+    assertEquals(ourRendered(inputs), referenceRecorder.weaves.map(r => WeaveRenderer.render(r.weave)))
   }
 }

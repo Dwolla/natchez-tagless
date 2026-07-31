@@ -1,7 +1,6 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.{Eq, Functor}
 import cats.arrow.FunctionK
 import munit.FunSuite
 
@@ -24,25 +23,28 @@ class DifferentialOracleSpec extends FunSuite {
 
   private val outcomes = List(-1, 0, 1)
 
-  private def agree[A](d: Woven[A], r: Woven[A])(implicit ev: Eq[Result[A]], loc: munit.Location): Unit = {
-    assertEquals(WeaveRenderer.render(d), WeaveRenderer.render(r))
-    assert(ev.eqv(d.codomain.target, r.codomain.target), "codomain targets differ")
-  }
+  private def instrumented(
+      instance: RaiseAspect[TestAlg, Render, Render, Render],
+      outcome: Int
+  ): (TestAlg[Result], RecordingFk[Result, Render, Render]) =
+    LawsInstances.instrumented(instance, outcome)
 
-  test("the derived weave is structurally identical to the reference, for every method and sample") {
+  test("the derived instance is structurally identical to the reference, for every method and sample") {
     outcomes.foreach { outcome =>
-      val impl = new EitherTestAlg(outcome)
-      val d = derived.weave(impl)(Functor[Result])
-      val r = reference.weave(impl)(Functor[Result])
+      val (d, dRec) = instrumented(derived, outcome)
+      val (r, rRec) = instrumented(reference, outcome)
 
       exhaustiveInt.allValues.foreach { i =>
-        agree(d.a(i)(raiseWoven), r.a(i)(raiseWoven))
-        agree(d.c(i), r.c(i))
-        agree(d.e(raiseWoven, raiseWoven), r.e(raiseWoven, raiseWoven))
+        assertEquals(d.a(i)(raiseResult), r.a(i)(raiseResult))
+        assertEquals(d.c(i), r.c(i))
+        assertEquals(d.e(raiseResult, raiseResult), r.e(raiseResult, raiseResult))
 
-        exhaustiveInt.allValues.foreach(j => agree(d.d(i)(j)(raiseWoven), r.d(i)(j)(raiseWoven)))
-        exhaustiveString.allValues.foreach(s => agree(d.b(s, i)(raiseWoven), r.b(s, i)(raiseWoven)))
+        exhaustiveInt.allValues.foreach(j => assertEquals(d.d(i)(j)(raiseResult), r.d(i)(j)(raiseResult)))
+        exhaustiveString.allValues.foreach(s => assertEquals(d.b(s, i)(raiseResult), r.b(s, i)(raiseResult)))
       }
+
+      assertEquals(LawsInstances.renderedWeaves(dRec), LawsInstances.renderedWeaves(rRec))
+      assertEquals(dRec.events, rRec.events)
     }
   }
 
@@ -57,17 +59,17 @@ class DifferentialOracleSpec extends FunSuite {
     }
   }
 
-  test("the derived mapK agrees with the reference under the erasure arrow") {
+  test("the derived intercept agrees with the reference under the forgetful interpreter") {
     val eqAlg = eqTestAlg[Result]
-    val erase = WeaveArrows.eraseWeave[Result, Render, Render, Render]
+    val erase = WeaveArrows.codomainTarget[Result, Render, Render]
     outcomes.foreach { outcome =>
       val impl = new EitherTestAlg(outcome)
       assert(
         eqAlg.eqv(
-          derived.mapK(derived.weave(impl)(Functor[Result]))(erase),
-          reference.mapK(reference.weave(impl)(Functor[Result]))(erase)
+          derived.intercept(impl)(erase, OnRaise.noop[Result, Render]),
+          reference.intercept(impl)(erase, OnRaise.noop[Result, Render])
         ),
-        s"mapK under the erasure arrow differs for eOutcome $outcome"
+        s"intercept under the forgetful interpreter differs for eOutcome $outcome"
       )
     }
   }

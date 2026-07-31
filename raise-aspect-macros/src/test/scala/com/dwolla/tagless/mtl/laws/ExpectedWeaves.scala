@@ -1,6 +1,8 @@
 package com.dwolla.tagless.mtl
 package laws
 
+import cats.mtl.Raise
+
 import LawsInstances._
 
 /** Task 5 — the cross-compiler agreement data.
@@ -25,12 +27,26 @@ object ExpectedWeaves {
     RenderedWeave("TestAlg", "e", Nil)
   )
 
-  /** The same calls, rendered from an actual woven algebra. */
-  def rendered(woven: TestAlg[Woven]): List[RenderedWeave] = List(
-    WeaveRenderer.render(woven.a(7)(raiseWoven)),
-    WeaveRenderer.render(woven.b("ab", 2)(raiseWoven)),
-    WeaveRenderer.render(woven.c(3)),
-    WeaveRenderer.render(woven.d(4)(5)(raiseWoven)),
-    WeaveRenderer.render(woven.e(raiseWoven, raiseWoven))
-  )
+  /** The same calls, rendered from what the interpreter saw.
+    *
+    * `expected` is unchanged from M2: fusion changes who holds the weave, not
+    * what a woven call produces. Only the way a test gets hold of the weaves
+    * moved, from inspecting an `Alg[Weave[…]]` to reading a recording `fk`.
+    */
+  def rendered(
+      instrumented: TestAlg[Result],
+      recorder: RecordingFk[Result, Render, Render]
+  ): List[RenderedWeave] = {
+    // Bare calls rather than `val _ = ...`: 2.12 treats `_` as a real value
+    // name, so only one `val _` may appear per block (see `RecordingFk`).
+    // These are method calls performed for effect, not pure expressions in
+    // statement position, so they warn under neither axis.
+    instrumented.a(7)(Raise[Result, ErrA])
+    instrumented.b("ab", 2)(Raise[Result, ErrB])
+    instrumented.c(3)
+    instrumented.d(4)(5)(Raise[Result, ErrA])
+    instrumented.e(Raise[Result, ErrA], Raise[Result, ErrB])
+
+    recorder.weaves.map(r => WeaveRenderer.render(r.weave))
+  }
 }
