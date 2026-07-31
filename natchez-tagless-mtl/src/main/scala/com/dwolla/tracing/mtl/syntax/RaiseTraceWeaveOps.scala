@@ -27,12 +27,18 @@ trait ToRaiseTraceWeaveOps {
   /** The `Synthetic[TraceableValue]` the `RaiseAspect` runtime needs to build the
     * shell `Weave`s inside `raiseLift`.
     *
-    * Per laws L5–L7 (`raise-aspect-laws`), a synthesized instance's output is never
-    * observable through the public API: the shell is unwrapped immediately via
+    * Per laws L5–L7 (`raise-aspect-laws`), no synthesized instance reaches an
+    * interpreter along the derived path: the shell is unwrapped immediately via
     * `codomain.target`, and a raised `F[A]` never yields an `A` for anything to
-    * render. The sentinel string exists only so that, if that soundness claim were
-    * ever violated by a future bug, the value would be immediately recognizable in
-    * a captured span rather than silently indistinguishable from a real one.
+    * render. That guarantee is about the derivation, not about the type — see
+    * `Synthetic`'s scaladoc for the one public route by which a synthesized
+    * instance ''can'' be obtained, and why no law can forbid it.
+    *
+    * This instance is a constant sentinel rather than a rendering of anything,
+    * which is what makes that route harmless here: the worst it can produce is a
+    * recognizably wrong span attribute, never a leaked value. Keep it that way —
+    * a `Synthetic[TraceableValue]` that rendered its argument would turn an API
+    * wart into a redaction hole.
     *
     * Lives here, on the syntax trait, rather than in the package object: `syn` is
     * a formal implicit parameter of `WeaveInterpreter.fromRaiseAspect`
