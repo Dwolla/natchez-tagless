@@ -71,6 +71,35 @@ object LawsInstances {
     (instance.intercept(new EitherTestAlg(eOutcome))(recorder.fk, OnRaise.noop[Result, Render]), recorder)
   }
 
+  /** Intercept the algebra under test with a recording interpreter ''and'' a
+    * hook that appends to the same log, so one buffer holds weave arrivals and
+    * hook firings in the order they happened.
+    *
+    * The differential oracle uses this rather than [[instrumented]]. With
+    * `OnRaise.noop` the hook contributes nothing observable — `noop`'s
+    * `Right(())` left-sequenced onto a raise gives the identical result — so an
+    * oracle built on `instrumented` accepts a derivation that never wrapped a
+    * capability in `RaiseAspect.observing` at all. Rendering each firing
+    * through the `Err[E]` the derivation resolved also pins ''which'' evidence
+    * each capability got: `errA:` and `errB:` are distinguishable from each
+    * other and from `toString`.
+    */
+  def observed(
+      instance: RaiseAspect[TestAlg, Render, Render, Render],
+      eOutcome: Int
+  ): (TestAlg[Result], RecordingFk[Result, Render, Render]) = {
+    val recorder = new RecordingFk[Result, Render, Render]
+
+    val hook: OnRaise[Result, Render] = new OnRaise[Result, Render] {
+      def apply[E](e: E)(implicit ev: Render[E]): Result[Unit] = {
+        recorder.record(s"raise:${ev.render(e)}")
+        Right(())
+      }
+    }
+
+    (instance.intercept(new EitherTestAlg(eOutcome))(recorder.fk, hook), recorder)
+  }
+
   /** What the interpreter saw, rendered — the fused analogue of mapping
     * `WeaveRenderer.render` over a list of returned weaves, and stricter,
     * because the list is in arrival order.

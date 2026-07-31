@@ -23,16 +23,22 @@ class DifferentialOracleSpec extends FunSuite {
 
   private val outcomes = List(-1, 0, 1)
 
-  private def instrumented(
+  /** `observed`, not `instrumented`: the recorder's hook fires into the same
+    * log as the weave arrivals, so the comparison below covers whether each
+    * capability was decorated at all and with which `Err` evidence. Under
+    * `OnRaise.noop` a derivation that dropped `RaiseAspect.observing` entirely
+    * is indistinguishable from a correct one.
+    */
+  private def observed(
       instance: RaiseAspect[TestAlg, Render, Render, Render],
       outcome: Int
   ): (TestAlg[Result], RecordingFk[Result, Render, Render]) =
-    LawsInstances.instrumented(instance, outcome)
+    LawsInstances.observed(instance, outcome)
 
   test("the derived instance is structurally identical to the reference, for every method and sample") {
     outcomes.foreach { outcome =>
-      val (d, dRec) = instrumented(derived, outcome)
-      val (r, rRec) = instrumented(reference, outcome)
+      val (d, dRec) = observed(derived, outcome)
+      val (r, rRec) = observed(reference, outcome)
 
       exhaustiveInt.allValues.foreach { i =>
         assertEquals(d.a(i)(raiseResult), r.a(i)(raiseResult))
@@ -44,6 +50,11 @@ class DifferentialOracleSpec extends FunSuite {
       }
 
       assertEquals(LawsInstances.renderedWeaves(dRec), LawsInstances.renderedWeaves(rRec))
+      // Weave arrivals and hook firings in one log: the derived instance and
+      // the reference must agree on *when* things happen, not only on what
+      // they produce. `Result` is eager and `Aspect.Advice`'s target is a
+      // strict parameter, so a raise is logged before the weave it belongs to
+      // reaches `fk` — a fact no value-level comparison can see.
       assertEquals(dRec.events, rRec.events)
     }
   }
@@ -55,6 +66,25 @@ class DifferentialOracleSpec extends FunSuite {
       assert(
         eqAlg.eqv(derived.mapK(impl)(RaiseArrow.id[Result, Render]), reference.mapK(impl)(RaiseArrow.id[Result, Render])),
         s"mapK under the identity arrow differs for eOutcome $outcome"
+      )
+    }
+  }
+
+  /** The successor to the pre-M12 "mapK under the erasure arrow" comparison.
+    * `eraseWeave` went from the woven carrier to `Result` and both endpoints
+    * are gone, but the row it filled — the two `mapK`s compared over an arrow
+    * that is not the identity — has to stay filled. `RaiseArrow.id`'s `pull`
+    * is the identity too, so at that arrow the comparison cannot see a `pull`
+    * that was composed wrongly.
+    */
+  test("the derived mapK agrees with the reference under a genuine carrier change") {
+    val eqAlg = eqTestAlg[Lazily]
+    val arrow = CarrierArrows.resultToLazily[Render]
+    outcomes.foreach { outcome =>
+      val impl = new EitherTestAlg(outcome)
+      assert(
+        eqAlg.eqv(derived.mapK(impl)(arrow), reference.mapK(impl)(arrow)),
+        s"mapK under the carrier-change arrow differs for eOutcome $outcome"
       )
     }
   }

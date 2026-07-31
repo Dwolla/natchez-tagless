@@ -27,6 +27,22 @@ object ExpectedWeaves {
     RenderedWeave("TestAlg", "e", Nil)
   )
 
+  /** The order in which the five calls above reach the interpreter. Weaves are
+    * handed over one per call, so this is call order — but it is worth pinning,
+    * because it is the property the pre-M12 oracle could not see at all and the
+    * one a mis-fused generator (building all weaves eagerly, say) would break.
+    *
+    * `EitherTestAlg(0)` never raises for these arguments, so no hook firing is
+    * interleaved and the log is exactly the five arrivals.
+    */
+  val expectedOrder: List[String] = List(
+    "weave:TestAlg.a",
+    "weave:TestAlg.b",
+    "weave:TestAlg.c",
+    "weave:TestAlg.d",
+    "weave:TestAlg.e"
+  )
+
   /** The same calls, rendered from what the interpreter saw.
     *
     * `expected` is unchanged from M2: fusion changes who holds the weave, not
