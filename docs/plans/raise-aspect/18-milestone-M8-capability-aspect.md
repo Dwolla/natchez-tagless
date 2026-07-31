@@ -2,8 +2,49 @@
 
 ## Status
 
-**Phase 1 in progress** on branch `milestone/m8-capability-aspect`, stacked on
-the unmerged M6, M10, M11 and M7. Prerequisites met: M5 merged; M6 and M7 both
+**Phase 1 complete; milestone paused. Brian, 2026-07-31.** Branch
+`milestone/m8-capability-aspect`, stacked on the unmerged M6, M10, M11 and M7.
+
+Phase 1 ran to completion and produced
+`02-capability-aspect-design.md` — the full design, resolving all six points,
+with three questions for Brian and five unverified assumptions quarantined as
+blocking spikes. **It was never ratified, and Phase 2 never started.**
+
+Brian's decision: `Raise` alone is enough for now. The milestone taught us a
+great deal — including that `Raise`'s own soundness story was overstated — and
+the right next step is to ship what exists and see how it behaves in practice
+before generalizing. That is a YAGNI call on a milestone whose need gate was
+opened on "extend the concept as far as we can", which is the honest place for
+such a call to land.
+
+**What was produced and kept** (all committed; none of it expires):
+
+- The capability classification, verified against cats-mtl 1.7.0 sources with
+  file and line for every member — four of nine transport. Two corrections to
+  this document's original list: `Listen` was missing entirely, and
+  `Chronicle`'s disqualifier is `materialize`, not `confess`/`dictate`.
+- Those sources, vendored with provenance under `reference/upstream/cats-mtl/`.
+- The structural proof that `Stateful` cannot work while `Weave` carries
+  strict, `A`-independent metadata — and that this is a consequence of overview
+  §3.2's interop decision, not a limit of effort.
+- A correction to shipped code: `Synthetic`'s and `RaiseTraceWeaveOps`'s
+  scaladoc claimed a synthesized instance is never observable through the
+  public API. It is; `raiseLift(rf).functor.map(w)(identity)` demonstrates it.
+  Not reachable through the derivation or through any cats-mtl 1.7 `Raise`
+  default or syntax operation, and bounded by the shipped `Synthetic` being a
+  constant sentinel — so an API-surface property, not a live defect, and
+  unfixable by law. Now recorded as a constraint on implementors instead.
+- `02-capability-aspect-design.md` itself.
+
+**If M8 resumes**, start at that document's §11 (the five spikes) and §12 (the
+three unanswered questions), not at its §13 milestone map. The first spike —
+whether three different capability variances conform to one invariant
+higher-kinded slot on Scala 2.12 — has an escalation clause rather than a
+fallback, and would need Brian before anything else proceeds.
+
+The **need gate**, opened 2026-07-30, is closed again. Reopening it should
+require what it required the first time: a concrete algebra, or upstream
+interest — and now, additionally, evidence from `Raise` in practice. Prerequisites met: M5 merged; M6 and M7 both
 complete (their shapes constrain this design — see "Interactions" below).
 
 **Need gate: opened by Brian, 2026-07-30.** Recorded honestly, because neither

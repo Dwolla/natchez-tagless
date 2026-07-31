@@ -12,11 +12,25 @@ parameter and `WeaveInterpreter` are live inputs here.
 
 ## Status
 
-**Not ratified. This is the design gate.** Phase 2 does not begin until Brian
-ratifies this document. It resolves M8's six numbered points; each is marked
-**DECIDED** (with rationale) or **QUESTION FOR BRIAN**. Three of the six carry
-a subsidiary question even where the main point is decided; §12 collects them
-in one table.
+**Not ratified, and deliberately parked. Brian, 2026-07-31: pause M8 and defer
+the additional capabilities — `Raise` is enough for now; ship it and see how it
+behaves in practice first.**
+
+This document is therefore a *finished Phase 1 artifact for a milestone that is
+not proceeding*, not a plan awaiting a start date. It is preserved in full
+because its research cost real effort and none of it expires: the capability
+classification is a fact about cats-mtl 1.7.0, and the `Stateful` impossibility
+argument is a fact about `Aspect.Weave`'s shape. Anyone resuming M8 should
+start here and re-read §11 first.
+
+**Do not treat any of it as ratified.** The three questions in §12 were never
+answered, and the five `[SPIKE-n]` assumptions were never discharged. If M8
+resumes, that is where it resumes — not at §13's milestone map.
+
+It resolves M8's six numbered points; each is marked **DECIDED** (with
+rationale) or **QUESTION FOR BRIAN**. Three of the six carry a subsidiary
+question even where the main point is decided; §12 collects them in one
+table.
 
 **Five assumptions in this design have never been put in front of a compiler.**
 They are marked `[SPIKE-n]` where they appear and collected in §11. Each is a
