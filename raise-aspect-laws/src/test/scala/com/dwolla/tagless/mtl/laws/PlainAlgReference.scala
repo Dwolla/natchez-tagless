@@ -1,8 +1,9 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.Functor
+import cats.Apply
 import cats.tagless.aop.Aspect
+import cats.~>
 
 /** The hand-written `RaiseAspect[PlainAlg, Dom, Cod]`, written by following the
   * same §3.4 expansion spec as M1's `TestAlgReference`.
@@ -22,18 +23,20 @@ object PlainAlgReference {
   ): RaiseAspect[PlainAlg, Dom, Cod, Err] =
     new RaiseAspect[PlainAlg, Dom, Cod, Err] {
 
-      def weave[F[_]](af: PlainAlg[F])(implicit F: Functor[F]): PlainAlg[Aspect.Weave[F, Dom, Cod, *]] = {
-        type WF[A] = Aspect.Weave[F, Dom, Cod, A]
-
-        new PlainAlg[WF] {
-          def p(i: Int): WF[String] =
-            Aspect.Weave[F, Dom, Cod, String](
-              "PlainAlg",
-              List(List(Aspect.Advice.byValue[Dom, Int]("i", i))),
-              Aspect.Advice[F, Cod, String]("p", af.p(i))
+      def intercept[F[_]](af: PlainAlg[F])(
+          fk: Aspect.Weave[F, Dom, Cod, *] ~> F,
+          onRaise: OnRaise[F, Err]
+      )(implicit F: Apply[F]): PlainAlg[F] =
+        new PlainAlg[F] {
+          def p(i: Int): F[String] =
+            fk(
+              Aspect.Weave[F, Dom, Cod, String](
+                "PlainAlg",
+                List(List(Aspect.Advice.byValue[Dom, Int]("i", i))),
+                Aspect.Advice[F, Cod, String]("p", af.p(i))
+              )
             )
         }
-      }
 
       def mapK[F[_], G[_]](af: PlainAlg[F])(arrow: RaiseArrow[F, G, Err]): PlainAlg[G] =
         new PlainAlg[G] {

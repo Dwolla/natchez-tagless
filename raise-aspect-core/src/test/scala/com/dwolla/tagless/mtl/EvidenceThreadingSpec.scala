@@ -14,30 +14,12 @@ import TestError._
 class EvidenceThreadingSpec extends FunSuite {
   private type F[A] = Either[TestError, A]
 
-  private implicit val syntheticRender: Synthetic[Render] =
-    new Synthetic[Render] {
-      def apply[A]: Render[A] = (_: A) => "<synthetic>"
-    }
-
-  test("the OnRaise hook renders the raised error through its Err evidence") {
-    val rendered = ListBuffer.empty[String]
-
-    val hook: OnRaise[F, Render] = new OnRaise[F, Render] {
-      def apply[E](e: E)(implicit ev: Render[E]): F[Unit] = {
-        rendered += ev.render(e)
-        Right(())
-      }
-    }
-
-    val lifted =
-      WeaveArrows.raiseLift[F, Render, Render, Render](hook).apply(Raise[F, ErrA])
-
-    val out = lifted.raise[ErrA, Int](NegativeInput(-3))
-
-    assertEquals(out.codomain.target, Left(NegativeInput(-3)): F[Int])
-    assertEquals(rendered.toList, List("errA:NegativeInput(-3)"))
-  }
-
+  // The single-error-type case (`observing` decorates `Raise[F, ErrA]`, the
+  // hook renders `NegativeInput(-3)` as `"errA:NegativeInput(-3)"`) is covered
+  // by `ObservingCapabilitySpec`'s "the hook renders the raised error through
+  // its Err evidence, exactly once", assertion for assertion. This spec keeps
+  // only the case that test doesn't cover: two error types on the same
+  // carrier, each resolving its own `Err` evidence.
   test("a second error type on the same carrier gets its own evidence") {
     val rendered = ListBuffer.empty[String]
 
@@ -48,11 +30,11 @@ class EvidenceThreadingSpec extends FunSuite {
       }
     }
 
-    val liftA = WeaveArrows.raiseLift[F, Render, Render, Render](hook).apply(Raise[F, ErrA])
-    val liftB = WeaveArrows.raiseLift[F, Render, Render, Render](hook).apply(Raise[F, ErrB])
+    val decoratedA = RaiseAspect.observing[F, ErrA, Render](Raise[F, ErrA], hook)
+    val decoratedB = RaiseAspect.observing[F, ErrB, Render](Raise[F, ErrB], hook)
 
-    liftA.raise[ErrA, Int](NegativeInput(-1))
-    liftB.raise[ErrB, Int](EmptyInput("f"))
+    decoratedA.raise[ErrA, Int](NegativeInput(-1))
+    decoratedB.raise[ErrB, Int](EmptyInput("f"))
 
     assertEquals(rendered.toList, List("errA:NegativeInput(-1)", "errB:EmptyInput(f)"))
   }

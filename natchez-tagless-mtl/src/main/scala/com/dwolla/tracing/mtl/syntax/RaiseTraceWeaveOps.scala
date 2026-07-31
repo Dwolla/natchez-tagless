@@ -2,9 +2,9 @@ package com.dwolla.tracing.mtl
 package syntax
 
 import cats.{Apply, FlatMap}
-import com.dwolla.tagless.mtl.{Synthetic, WeaveInterpreter}
+import com.dwolla.tagless.mtl.WeaveInterpreter
 import com.dwolla.tracing.{TraceWeaveCapturingInputs, TraceWeaveCapturingInputsAndOutputs}
-import natchez.{Trace, TraceValue, TraceableValue}
+import natchez.{Trace, TraceableValue}
 
 /** Mirrors `com.dwolla.tracing.syntax.ToTraceWeaveOps`/`TraceWeaveOps`, but
   * resolves either an `Aspect` or a `RaiseAspect` instance for the algebra via
@@ -23,33 +23,6 @@ import natchez.{Trace, TraceValue, TraceableValue}
 trait ToRaiseTraceWeaveOps {
   implicit def toRaiseTraceWeaveOps[Alg[_[_]], F[_]](alg: Alg[F]): RaiseTraceWeaveOps[Alg, F] =
     new RaiseTraceWeaveOps(alg)
-
-  /** The `Synthetic[TraceableValue]` the `RaiseAspect` runtime needs to build the
-    * shell `Weave`s inside `raiseLift`.
-    *
-    * Per laws L5–L7 (`raise-aspect-laws`), a synthesized instance's output is never
-    * observable through the public API: the shell is unwrapped immediately via
-    * `codomain.target`, and a raised `F[A]` never yields an `A` for anything to
-    * render. The sentinel string exists only so that, if that soundness claim were
-    * ever violated by a future bug, the value would be immediately recognizable in
-    * a captured span rather than silently indistinguishable from a real one.
-    *
-    * Lives here, on the syntax trait, rather than in the package object: `syn` is
-    * a formal implicit parameter of `WeaveInterpreter.fromRaiseAspect`
-    * (`raise-aspect-core`, generic in `Cod` since that module can't know about
-    * `TraceableValue`), so it's resolved fresh at every call to `traceWithInputs`/
-    * `traceWithInputsAndOutputs`, using that call site's own implicit scope — not
-    * baked in once at library-compile time the way the old fixed-`Cod` tracer's
-    * internal call to `raiseLift` was. Declaring it in the package object would
-    * only reach callers lexically inside `com.dwolla.tracing.mtl`; declaring it
-    * here means a single `import com.dwolla.tracing.mtl.syntax._` is sufficient
-    * for both syntax methods, from any package — the ergonomic this milestone
-    * would otherwise have regressed.
-    */
-  implicit val syntheticTraceableValue: Synthetic[TraceableValue] =
-    new Synthetic[TraceableValue] {
-      def apply[A]: TraceableValue[A] = _ => TraceValue.StringValue("«raised»")
-    }
 }
 
 class RaiseTraceWeaveOps[Alg[_[_]], F[_]](val alg: Alg[F]) extends AnyVal {

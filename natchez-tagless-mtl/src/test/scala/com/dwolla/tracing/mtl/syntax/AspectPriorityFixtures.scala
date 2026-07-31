@@ -4,8 +4,8 @@ package syntax
 import cats.effect.IO
 import cats.tagless.aop.Aspect
 import cats.tagless.aop.Aspect.Weave
-import cats.{Functor, ~>}
-import com.dwolla.tagless.mtl.{RaiseArrow, RaiseAspect}
+import cats.{Apply, ~>}
+import com.dwolla.tagless.mtl.{OnRaise, RaiseArrow, RaiseAspect}
 import natchez.TraceableValue
 
 /** Task 3's fixture: an algebra with both an `Aspect` and a `RaiseAspect` instance in
@@ -37,13 +37,16 @@ object Foo {
         }
     }
 
-  /** The poison instance: throws immediately if `weave` or `mapK` is ever invoked, so
-    * priority resolving to this instance fails the test loudly rather than producing
+  /** The poison instance: throws immediately if `intercept` or `mapK` is ever invoked,
+    * so priority resolving to this instance fails the test loudly rather than producing
     * a subtly wrong span name.
     */
   implicit val fooRaiseAspectPoison: RaiseAspect[Foo, TraceableValue, TraceableValue, TraceableValue] =
     new RaiseAspect[Foo, TraceableValue, TraceableValue, TraceableValue] {
-      def weave[F[_]](af: Foo[F])(implicit F: Functor[F]): Foo[Weave[F, TraceableValue, TraceableValue, *]] =
+      def intercept[F[_]](af: Foo[F])(
+          fk: Weave[F, TraceableValue, TraceableValue, *] ~> F,
+          onRaise: OnRaise[F, TraceableValue]
+      )(implicit F: Apply[F]): Foo[F] =
         throw new AssertionError("priority resolved to RaiseAspect instead of Aspect")
 
       def mapK[F[_], G[_]](af: Foo[F])(arrow: RaiseArrow[F, G, TraceableValue]): Foo[G] =

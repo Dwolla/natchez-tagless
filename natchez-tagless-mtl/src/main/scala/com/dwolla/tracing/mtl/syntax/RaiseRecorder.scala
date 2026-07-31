@@ -5,7 +5,7 @@ import com.dwolla.tagless.mtl.OnRaise
 import natchez.{Trace, TraceableValue}
 
 /** Resolves the [[com.dwolla.tagless.mtl.OnRaise]] hook that the `RaiseAspect`-based tracing strategy in
-  * `RaiseTraceWeaveOps` sequences at a `raiseLift` interception point: a user-supplied
+  * `RaiseTraceWeaveOps` sequences via `RaiseAspect.observing`: a user-supplied
   * `OnRaise[F, Err]` if one is in scope, or else a default that records the typed
   * error as span fields via the ambient `Trace[F]`.
   *

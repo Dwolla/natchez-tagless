@@ -30,25 +30,33 @@ abstract class ConservativeExtensionSuite extends FunSuite {
 
   private val impl: PlainAlg[Result] = EitherPlainAlg
 
-  test("L9 our woven structure matches upstream's, rendered") {
-    val ourWoven = ours.weave(impl)
-    val theirWoven = upstream.weave(impl)
-
-    exhaustiveInt.allValues.foreach { i =>
-      assertEquals(
-        WeaveRenderer.render(ourWoven.p(i)),
-        WeaveRenderer.render(theirWoven.p(i)),
-        s"rendered weave differs for input $i"
-      )
-    }
+  /** Upstream `Aspect` still returns an `Alg[Weave[…]]`; our fused derivation
+    * hands each weave to `fk` instead. The comparison therefore runs through a
+    * recorder on our side, and renders inside the helper so neither test needs
+    * a cast to line up the existentially-quantified result types the recorder
+    * necessarily holds.
+    */
+  private def ourRendered(inputs: List[Int]): List[RenderedWeave] = {
+    val recorder = new RecordingFk[Result, Render, Render]
+    val instrumented = ours.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
+    inputs.foreach(i => { val _ = instrumented.p(i) })
+    recorder.weaves.map(r => WeaveRenderer.render(r.weave))
   }
 
-  test("L9 our woven codomain targets match upstream's") {
-    val ourWoven = ours.weave(impl)
+  test("L9 our woven structure matches upstream's, rendered") {
+    val theirWoven = upstream.weave(impl)
+    val inputs = exhaustiveInt.allValues.toList
+
+    assertEquals(ourRendered(inputs), inputs.map(i => WeaveRenderer.render(theirWoven.p(i))))
+  }
+
+  test("L9 our intercepted results match upstream's woven codomain targets") {
+    val recorder = new RecordingFk[Result, Render, Render]
+    val instrumented = ours.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
     val theirWoven = upstream.weave(impl)
 
     exhaustiveInt.allValues.foreach { i =>
-      assertEquals(ourWoven.p(i).codomain.target, theirWoven.p(i).codomain.target)
+      assertEquals(instrumented.p(i), theirWoven.p(i).codomain.target)
     }
   }
 

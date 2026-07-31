@@ -1,12 +1,12 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.Functor
 import cats.mtl.Raise
 import cats.syntax.all._
 import munit.FunSuite
 
 import scala.annotation.experimental
+import scala.collection.mutable.ListBuffer
 
 import LawsInstances._
 import TestError._
@@ -60,36 +60,41 @@ class UsingAlgSpec extends FunSuite:
     DeriveRaise.aspect[MultiUsingAlg, Render, Render, Render]
 
   test("a using-based algebra renders exactly like the implicit-based TestAlg") {
-    val woven = derived.weave(UsingAlg.either(0))(Functor[Result])
-    val rendered = List(
-      WeaveRenderer.render(woven.a(7)),
-      WeaveRenderer.render(woven.b("ab", 2)),
-      WeaveRenderer.render(woven.c(3)),
-      WeaveRenderer.render(woven.d(4)(5)),
-      WeaveRenderer.render(woven.e)
-    )
+    val recorder = new RecordingFk[Result, Render, Render]
+    val instrumented = derived.intercept(UsingAlg.either(0))(recorder.fk, OnRaise.noop[Result, Render])
+
+    instrumented.a(7)(using raiseResult)
+    instrumented.b("ab", 2)(using raiseResult)
+    instrumented.c(3)
+    instrumented.d(4)(5)(using raiseResult)
+    instrumented.e(using raiseResult, raiseResult)
+
+    val rendered = recorder.weaves.map(r => WeaveRenderer.render(r.weave))
     // the same expected values TestAlg produces, modulo the algebra name
     assertEquals(rendered.map(_.copy(algebraName = "TestAlg")), ExpectedWeaves.expected)
     assert(rendered.forall(_.algebraName == "UsingAlg"))
   }
 
-  test("a using-based algebra survives the erasure round trip, raising included") {
+  test("a using-based algebra transports every capability, raising included") {
+    val recorder = new RecordingFk[Result, Render, Render]
     val impl = UsingAlg.either(1)
-    val erased =
-      derived.mapK(derived.weave(impl)(Functor[Result]))(WeaveArrows.eraseWeave[Result, Render, Render, Render])
+    val instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
 
-    assertEquals(erased.a(3), impl.a(3))
-    assertEquals(erased.a(-3), impl.a(-3))
-    assertEquals(erased.b("", 1), impl.b("", 1))
-    assertEquals(erased.c(4), impl.c(4))
-    assertEquals(erased.d(-2)(-3), impl.d(-2)(-3))
-    assertEquals(erased.e, impl.e)
-    assertEquals(erased.e, EmptyInput("e").asLeft[Unit].leftWiden[TestError])
+    assertEquals(instrumented.a(3)(using raiseResult), impl.a(3)(using raiseResult))
+    assertEquals(instrumented.a(-3)(using raiseResult), impl.a(-3)(using raiseResult))
+    assertEquals(instrumented.b("", 1)(using raiseResult), impl.b("", 1)(using raiseResult))
+    assertEquals(instrumented.c(4), impl.c(4))
+    assertEquals(instrumented.d(-2)(-3)(using raiseResult), impl.d(-2)(-3)(using raiseResult))
+    assertEquals(instrumented.e(using raiseResult, raiseResult), impl.e(using raiseResult, raiseResult))
+    assertEquals(instrumented.e(using raiseResult, raiseResult), EmptyInput("e").asLeft[Unit].leftWiden[TestError])
   }
 
   test("two separate using clauses are both dropped from the domain") {
-    val woven = multi.weave(MultiUsingAlg.either)(Functor[Result])
-    val rendered = WeaveRenderer.render(woven.m(7))
+    val recorder = new RecordingFk[Result, Render, Render]
+    val instrumented = multi.intercept(MultiUsingAlg.either)(recorder.fk, OnRaise.noop[Result, Render])
+
+    instrumented.m(7)(using raiseResult)(using raiseResult)
+    val rendered = WeaveRenderer.render(recorder.weaves.last.weave)
 
     assertEquals(rendered.algebraName, "MultiUsingAlg")
     assertEquals(rendered.methodName, "m")
@@ -97,10 +102,37 @@ class UsingAlgSpec extends FunSuite:
   }
 
   test("both capabilities from separate using clauses are transported") {
+    val recorder = new RecordingFk[Result, Render, Render]
     val impl = MultiUsingAlg.either
-    val erased =
-      multi.mapK(multi.weave(impl)(Functor[Result]))(WeaveArrows.eraseWeave[Result, Render, Render, Render])
+    val instrumented = multi.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
 
-    assertEquals(erased.m(5), impl.m(5))
-    assertEquals(erased.m(-5), NegativeInput(-5).asLeft[String].leftWiden[TestError])
+    assertEquals(instrumented.m(5)(using raiseResult)(using raiseResult), impl.m(5)(using raiseResult)(using raiseResult))
+    assertEquals(
+      instrumented.m(-5)(using raiseResult)(using raiseResult),
+      NegativeInput(-5).asLeft[String].leftWiden[TestError]
+    )
+  }
+
+  test("a raise through R1 and a raise through R2 each reach the hook rendered through their own Err instance") {
+    // `e` takes two capability clauses with different error types on one
+    // method. Before M12 the two capabilities were transported and this
+    // evidence was invisible from the test's side; `intercept` decorates each
+    // one in place, so a hook watching both sees which capability actually
+    // fired, rendered through *that* capability's own `Err[E]` — never
+    // `toString`, and never the other error type's instance.
+    val log = ListBuffer.empty[String]
+    val hook: OnRaise[Result, Render] = new OnRaise[Result, Render]:
+      def apply[E](e: E)(implicit ev: Render[E]): Result[Unit] =
+        log += ev.render(e)
+        Right(())
+
+    val recorderA = new RecordingFk[Result, Render, Render]
+    val viaR1 = derived.intercept(UsingAlg.either(-9))(recorderA.fk, hook)
+    viaR1.e(using raiseResult, raiseResult)
+    assertEquals(log.toList, List("errA:NegativeInput(-9)"))
+
+    val recorderB = new RecordingFk[Result, Render, Render]
+    val viaR2 = derived.intercept(UsingAlg.either(9))(recorderB.fk, hook)
+    viaR2.e(using raiseResult, raiseResult)
+    assertEquals(log.toList, List("errA:NegativeInput(-9)", "errB:EmptyInput(e)"))
   }

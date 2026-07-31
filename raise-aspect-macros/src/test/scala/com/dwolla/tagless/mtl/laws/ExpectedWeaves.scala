@@ -1,6 +1,8 @@
 package com.dwolla.tagless.mtl
 package laws
 
+import cats.mtl.Raise
+
 import LawsInstances._
 
 /** Task 5 — the cross-compiler agreement data.
@@ -15,7 +17,23 @@ import LawsInstances._
   */
 object ExpectedWeaves {
 
-  /** Fixed arguments, chosen so every rendered value is distinguishable. */
+  /** Fixed arguments, chosen so every rendered value is distinguishable.
+    *
+    * ==This is already an arrival-order pin, not just a content pin.==
+    * Post-M12 [[rendered]] reads the recorder's arrival-ordered buffer instead
+    * of constructing weaves, and `RenderedWeave.methodName` is the same
+    * `codomain.name` the recorder's log line carries, so no derivation can
+    * reorder the five calls below without this list's order failing too — a
+    * separate `expectedOrder` constant asserting `recorder.events` would add
+    * no coverage over this one. Pre-M12 that was untrue — `rendered` built its
+    * list in the order the test called the methods, which said nothing about
+    * the interpreter — and the property is spelled out here so a future
+    * reader does not have to rediscover that `expected` now carries it.
+    *
+    * The spec that asserts this passes `OnRaise.noop`, which cannot write to
+    * the recorder's log whatever the arguments are, so nothing about the hook
+    * complicates this reasoning.
+    */
   val expected: List[RenderedWeave] = List(
     RenderedWeave("TestAlg", "a", List(List("i" -> "7"))),
     RenderedWeave("TestAlg", "b", List(List("x" -> "ab", "y" -> "2"))),
@@ -25,12 +43,26 @@ object ExpectedWeaves {
     RenderedWeave("TestAlg", "e", Nil)
   )
 
-  /** The same calls, rendered from an actual woven algebra. */
-  def rendered(woven: TestAlg[Woven]): List[RenderedWeave] = List(
-    WeaveRenderer.render(woven.a(7)(raiseWoven)),
-    WeaveRenderer.render(woven.b("ab", 2)(raiseWoven)),
-    WeaveRenderer.render(woven.c(3)),
-    WeaveRenderer.render(woven.d(4)(5)(raiseWoven)),
-    WeaveRenderer.render(woven.e(raiseWoven, raiseWoven))
-  )
+  /** The same calls, rendered from what the interpreter saw.
+    *
+    * `expected` is unchanged from M2: fusion changes who holds the weave, not
+    * what a woven call produces. Only the way a test gets hold of the weaves
+    * moved, from inspecting an `Alg[Weave[…]]` to reading a recording `fk`.
+    */
+  def rendered(
+      instrumented: TestAlg[Result],
+      recorder: RecordingFk[Result, Render, Render]
+  ): List[RenderedWeave] = {
+    // Bare calls rather than `val _ = ...`: 2.12 treats `_` as a real value
+    // name, so only one `val _` may appear per block (see `RecordingFk`).
+    // These are method calls performed for effect, not pure expressions in
+    // statement position, so they warn under neither axis.
+    instrumented.a(7)(Raise[Result, ErrA])
+    instrumented.b("ab", 2)(Raise[Result, ErrB])
+    instrumented.c(3)
+    instrumented.d(4)(5)(Raise[Result, ErrA])
+    instrumented.e(Raise[Result, ErrA], Raise[Result, ErrB])
+
+    recorder.weaves.map(r => WeaveRenderer.render(r.weave))
+  }
 }

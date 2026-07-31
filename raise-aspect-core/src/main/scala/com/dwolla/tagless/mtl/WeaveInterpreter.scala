@@ -56,26 +56,20 @@ object WeaveInterpreter extends LowPriorityWeaveInterpreter {
 
 trait LowPriorityWeaveInterpreter {
 
-  /** Lower priority: used only when no `Aspect` instance is available. Pairs
-    * the caller's interpreter with `WeaveArrows.raiseLift`, so the hook runs
-    * at the interception point where a raised value crosses back into `F`.
+  /** Lower priority: used only when no `Aspect` instance is available. The
+    * caller's interpreter and hook go straight to `RaiseAspect#intercept` —
+    * this type class's `apply` and `intercept` are the same signature.
     *
-    * `Apply[F]` rather than `Functor[F]` because `raiseLift`'s hook overload
-    * sequences the hook's effect before the raise; `Apply` extends `Functor`,
-    * which is what `weave` needs.
+    * `Apply[F]` is `intercept`'s own constraint, needed to sequence the hook.
     */
   implicit def fromRaiseAspect[Alg[_[_]], Dom[_], Cod[_], Err[_], F[_]](implicit
       F: Apply[F],
-      A: RaiseAspect[Alg, Dom, Cod, Err],
-      syn: Synthetic[Cod]
+      A: RaiseAspect[Alg, Dom, Cod, Err]
   ): WeaveInterpreter[Alg, Dom, Cod, Err, F] =
     new WeaveInterpreter[Alg, Dom, Cod, Err, F] {
       def apply(alg: Alg[F])(
           fk: Aspect.Weave[F, Dom, Cod, *] ~> F,
           onRaise: OnRaise[F, Err]
-      ): Alg[F] =
-        A.mapK(A.weave(alg))(
-          RaiseArrow(fk, WeaveArrows.raiseLift[F, Dom, Cod, Err](onRaise))
-        )
+      ): Alg[F] = A.intercept(alg)(fk, onRaise)
     }
 }

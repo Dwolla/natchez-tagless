@@ -1,13 +1,12 @@
 package com.dwolla.tagless.mtl
 package laws
 
+import cats.Eval
 import cats.data.EitherT
 import cats.kernel.laws.discipline.SerializableTests
 import cats.mtl.Raise
 import cats.syntax.all._
 import cats.tagless.Trivial
-import cats.tagless.aop.Aspect
-import cats.{Eval, Functor}
 import laws.discipline.RaiseAspectTests
 import munit.DisciplineSuite
 import org.scalacheck.{Arbitrary, Gen}
@@ -32,49 +31,47 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
 
   private implicit def instanceUnderTest: RaiseAspect[TestAlg, Render, Render, Render] = instance
 
-  private val functorResult: Functor[Result] = Functor[Result]
-
-  private def wovenAlg(eOutcome: Int): TestAlg[Woven] =
-    instance.weave(new EitherTestAlg(eOutcome))(functorResult)
-
-  private implicit val arbTestAlgWoven: Arbitrary[TestAlg[Woven]] =
-    Arbitrary(Gen.oneOf(-1, 0, 1).map(wovenAlg))
+  private val raiseLazily: Raise[Lazily, TestError] = Raise[Lazily, TestError]
 
   private implicit val arbTestAlgResult: Arbitrary[TestAlg[Result]] =
     Arbitrary(Gen.oneOf(-1, 0, 1).map(new EitherTestAlg(_)))
 
-  private implicit val arbEraseArrow: Arbitrary[RaiseArrow[Woven, Result, Render]] =
-    Arbitrary(Gen.const(WeaveArrows.eraseWeave[Result, Render, Render, Render]))
-
   private implicit val arbIdArrow: Arbitrary[RaiseArrow[Result, Result, Render]] =
     Arbitrary(Gen.const(RaiseArrow.id[Result, Render]))
 
-  // ------------------------------------------------- L1, L2, L3 (discipline)
+  private implicit val arbIdArrowLazily: Arbitrary[RaiseArrow[Lazily, Lazily, Render]] =
+    Arbitrary(Gen.const(RaiseArrow.id[Lazily, Render]))
 
-  // L3 lives at the base effect: `weave` needs a `Functor` for the effect it is
-  // weaving, and weaving an already-woven algebra is not a thing we support.
+  // ------------------------------------------------ L1, L2, L3′ (discipline)
+
+  // L3′ lives at the base effect: `intercept` is carrier-preserving, so the
+  // effect it erases into is the one the algebra already speaks.
   checkAll(
     "RaiseAspect[TestAlg, Render, Render, Render]",
     RaiseAspectTests[TestAlg, Render, Render, Render].raiseAspect[Result, Result, Result]
   )
 
-  // ...and L1/L2 again over the genuinely non-trivial arrow, `eraseWeave`,
-  // which the all-identity instantiation above cannot exercise.
+  // ...and L1/L2 again over a genuinely non-trivial arrow. Before M12 that was
+  // `eraseWeave`, between the woven carrier and `Result`; fusion deletes both
+  // ends of it. `CarrierArrows.resultToLazily` is a real change of effect —
+  // `Either[TestError, *]` to `EitherT[Eval, TestError, *]` — with a real pull
+  // in the opposite direction. Testing mapK only at the identity arrow would
+  // be a coverage loss disguised as a deletion.
   checkAll(
-    "RaiseFunctorK[TestAlg] over erasure arrows",
-    laws.discipline.RaiseFunctorKTests[TestAlg, Render].raiseFunctorK[Woven, Result, Result]
+    "RaiseFunctorK[TestAlg] over a genuine carrier change",
+    laws.discipline.RaiseFunctorKTests[TestAlg, Render].raiseFunctorK[Result, Lazily, Lazily]
   )
 
-  // ------------------------------------------------------------ L4, L5, L6, L7
+  // ----------------------------------------------------------------- L4, L7
 
-  property("L4 arrow coherence for eraseWeave") {
+  property("L4 arrow coherence for the carrier-change arrow") {
     forAllErrors { e =>
-      val law = RaiseArrowLaws.arrowCoherence[Woven, Result, Render, TestError, Int](
-        WeaveArrows.eraseWeave[Result, Render, Render, Render],
-        raiseResult,
+      val law = RaiseArrowLaws.arrowCoherence[Result, Lazily, Render, TestError, Int](
+        CarrierArrows.resultToLazily[Render],
+        raiseLazily,
         e
       )
-      assertEquals(law.lhs, law.rhs)
+      assertEquals(law.lhs.value.value, law.rhs.value.value)
     }
   }
 
@@ -89,261 +86,155 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
     }
   }
 
-  property("L4 arrow coherence for eraseWeave andThen id") {
+  property("L4 arrow coherence for the carrier-change arrow andThen id") {
     forAllErrors { e =>
-      val law = RaiseArrowLaws.arrowCoherence[Woven, Result, Render, TestError, Int](
-        WeaveArrows.eraseWeave[Result, Render, Render, Render].andThen(RaiseArrow.id[Result, Render]),
-        raiseResult,
+      val law = RaiseArrowLaws.arrowCoherence[Result, Lazily, Render, TestError, Int](
+        CarrierArrows.resultToLazily[Render].andThen(RaiseArrow.id[Lazily, Render]),
+        raiseLazily,
         e
       )
-      assertEquals(law.lhs, law.rhs)
+      assertEquals(law.lhs.value.value, law.rhs.value.value)
     }
   }
 
-  property("L5 raisePull is a retraction of raiseLift") {
+  // L7 used to be an extensional property about the functor `raisePull`
+  // synthesized for the woven carrier. The fused derivation never puts a
+  // capability on that carrier: `RaiseAspect.observing` decorates the caller's
+  // own `Raise[F, E]` and takes `functor` straight off it. What was a property
+  // to check is now an identity to assert.
+  test("L7 the decorated capability reports the caller's own Functor instance") {
+    val caller = raiseResult
+    val decorated = RaiseAspect.observing[Result, TestError, Render](caller, OnRaise.noop[Result, Render])
+    assert(decorated.functor eq caller.functor)
+  }
+
+  // ------------------------------------------------- L4 at Err = Trivial (∀E)
+
+  // `arrowCoherence` takes `implicit ev: Err[E]`, which narrows it from "for
+  // all E" to "for all E for which Err[E] exists". `Trivial`'s instance is
+  // universal, so instantiating at `Err = Trivial` restores the original
+  // quantifier. The `Render` instantiations above cover the evidence-carrying
+  // path; this one covers the strength the law had before M10.
+  //
+  // It must run over a ''non-identity'' arrow to say anything at all: at
+  // `RaiseArrow.id` the law reduces to `FunctionK.id(rg.raise(e)) <-> rg.raise(e)`,
+  // the same expression on both sides, which holds for every instance and would
+  // still hold if the derivation were `???`. Before M12 this slot ran over
+  // `eraseWeave`, which was parametric in `Err`; `CarrierArrows.resultToLazily`
+  // is parametric for the same reason — its pull never consults the evidence —
+  // so it fills the slot with the same strength.
+  property("L4 arrow coherence for the carrier-change arrow, at Err = Trivial") {
     forAllErrors { e =>
-      val law = RaiseArrowLaws.sectionRetraction[Result, Render, Render, Render, TestError, Int](raiseResult, e)
-      assertEquals(law.lhs, law.rhs)
-    }
-  }
-
-  property("L6a the synthesized functor maps the codomain target") {
-    forAllInts { i =>
-      val law = RaiseArrowLaws.liftedFunctorMapsTarget[Result, Render, Render, Render, TestError, Int, Int](
-        raiseResult,
-        sampleWeave(i),
-        _ + 1
-      )
-      assertEquals(law.lhs, law.rhs)
-    }
-  }
-
-  property("L6b/c/d the synthesized functor preserves the weave metadata") {
-    forAllInts { i =>
-      val w = sampleWeave(i)
-      val algebraName =
-        RaiseArrowLaws.liftedFunctorPreservesAlgebraName[Result, Render, Render, Render, TestError, Int, Int](
-          raiseResult,
-          w,
-          _ + 1
-        )
-      val codomainName =
-        RaiseArrowLaws.liftedFunctorPreservesCodomainName[Result, Render, Render, Render, TestError, Int, Int](
-          raiseResult,
-          w,
-          _ + 1
-        )
-      val domain =
-        RaiseArrowLaws.liftedFunctorPreservesDomain[Result, Render, Render, Render, TestError, Int, Int](
-          raiseResult,
-          w,
-          _ + 1
-        )
-
-      assertEquals(algebraName.lhs, algebraName.rhs)
-      assertEquals(codomainName.lhs, codomainName.rhs)
-      assertEquals(domain.lhs, domain.rhs)
-    }
-  }
-
-  property("L7 the pulled capability reports the ambient Functor[F]") {
-    forAllInts { i =>
-      val law = RaiseArrowLaws.pulledFunctorIsAmbient[Result, Render, Render, Render, TestError, Int, Int](
-        raiseWoven,
-        i.asRight[TestError],
-        _ + 1
-      )
-      assertEquals(law.lhs, law.rhs)
-    }
-  }
-
-  test("L7 the pulled capability uses the ambient Functor instance itself") {
-    val pulled = WeaveArrows.raisePull[Result, Render, Render, Render](functorResult).apply(raiseWoven)
-    assert(pulled.functor eq functorResult)
-  }
-
-  // ------------------------- L4/L5/L6a-d/L7 at Err = Trivial (∀E)
-
-  // All seven value-level laws above take `implicit ev: Err[E]`, which
-  // narrows each from "for all E" to "for all E for which Err[E] exists" —
-  // L6a-d and L7 reach the evidence through `lifted`/`raiseLift`/`raisePull`
-  // just as L4/L5 do, even though their bodies don't call `.raise` directly.
-  // `Trivial`'s instance is universal, so instantiating all seven at
-  // `Err = Trivial` restores the original quantifier for each. The `Render`
-  // instantiations above cover the evidence-carrying path; these cover the
-  // strength the laws had before M10.
-  property("L4 arrow coherence for eraseWeave, at Err = Trivial") {
-    forAllErrors { e =>
-      val law = RaiseArrowLaws.arrowCoherence[Woven, Result, Trivial, TestError, Int](
-        WeaveArrows.eraseWeave[Result, Render, Render, Trivial],
-        raiseResult,
+      val law = RaiseArrowLaws.arrowCoherence[Result, Lazily, Trivial, TestError, Int](
+        CarrierArrows.resultToLazily[Trivial],
+        raiseLazily,
         e
       )
-      assertEquals(law.lhs, law.rhs)
-    }
-  }
-
-  property("L5 section/retraction, at Err = Trivial") {
-    forAllErrors { e =>
-      val law = RaiseArrowLaws.sectionRetraction[Result, Render, Render, Trivial, TestError, Int](
-        raiseResult,
-        e
-      )
-      assertEquals(law.lhs, law.rhs)
-    }
-  }
-
-  property("L6a the synthesized functor maps the codomain target, at Err = Trivial") {
-    forAllInts { i =>
-      val law = RaiseArrowLaws.liftedFunctorMapsTarget[Result, Render, Render, Trivial, TestError, Int, Int](
-        raiseResult,
-        sampleWeave(i),
-        _ + 1
-      )
-      assertEquals(law.lhs, law.rhs)
-    }
-  }
-
-  property("L6b/c/d the synthesized functor preserves the weave metadata, at Err = Trivial") {
-    forAllInts { i =>
-      val w = sampleWeave(i)
-      val algebraName =
-        RaiseArrowLaws.liftedFunctorPreservesAlgebraName[Result, Render, Render, Trivial, TestError, Int, Int](
-          raiseResult,
-          w,
-          _ + 1
-        )
-      val codomainName =
-        RaiseArrowLaws.liftedFunctorPreservesCodomainName[Result, Render, Render, Trivial, TestError, Int, Int](
-          raiseResult,
-          w,
-          _ + 1
-        )
-      val domain =
-        RaiseArrowLaws.liftedFunctorPreservesDomain[Result, Render, Render, Trivial, TestError, Int, Int](
-          raiseResult,
-          w,
-          _ + 1
-        )
-
-      assertEquals(algebraName.lhs, algebraName.rhs)
-      assertEquals(codomainName.lhs, codomainName.rhs)
-      assertEquals(domain.lhs, domain.rhs)
-    }
-  }
-
-  property("L7 the pulled capability reports the ambient Functor[F], at Err = Trivial") {
-    forAllInts { i =>
-      val law = RaiseArrowLaws.pulledFunctorIsAmbient[Result, Render, Render, Trivial, TestError, Int, Int](
-        raiseWoven,
-        i.asRight[TestError],
-        _ + 1
-      )
-      assertEquals(law.lhs, law.rhs)
+      assertEquals(law.lhs.value.value, law.rhs.value.value)
     }
   }
 
   // ------------------------------------------ L8 weave structure fidelity
 
-  test("L8 the woven algebra reports the algebra name and method names") {
-    val w = wovenAlg(0)
-    assertEquals(WeaveRenderer.render(w.a(1)(raiseWoven)).algebraName, "TestAlg")
-    assertEquals(WeaveRenderer.render(w.a(1)(raiseWoven)).methodName, "a")
-    assertEquals(WeaveRenderer.render(w.b("x", 1)(raiseWoven)).methodName, "b")
-    assertEquals(WeaveRenderer.render(w.c(1)).methodName, "c")
-    assertEquals(WeaveRenderer.render(w.d(1)(2)(raiseWoven)).methodName, "d")
-    assertEquals(WeaveRenderer.render(w.e(raiseWoven, raiseWoven)).methodName, "e")
+  // After M12 there is no `Alg[Weave[…]]` value to reach into: `intercept`
+  // hands each weave to `fk` and returns `F[A]`. What the interpreter receives
+  // is therefore the whole observable surface of weaving, and these tests read
+  // it off a recorder — which additionally pins arrival order, something
+  // inspecting a returned value could not do.
+
+  test("L8 the interpreter receives one weave per call, naming the algebra and the method") {
+    val (w, recorder) = LawsInstances.instrumented(instance, 0)
+
+    w.a(1)(raiseResult)
+    w.b("x", 1)(raiseResult)
+    w.c(1)
+    w.d(1)(2)(raiseResult)
+    w.e(raiseResult, raiseResult)
+
+    assertEquals(recorder.weaves.map(_.weave.algebraName), List.fill(5)("TestAlg"))
+    assertEquals(LawsInstances.renderedWeaves(recorder).map(_.methodName), List("a", "b", "c", "d", "e"))
   }
 
   test("L8 the domain matches the declared parameter lists, capabilities absent") {
-    val w = wovenAlg(0)
-    assertEquals(WeaveRenderer.render(w.a(7)(raiseWoven)).domain, List(List("i" -> "7")))
-    assertEquals(WeaveRenderer.render(w.b("ab", 2)(raiseWoven)).domain, List(List("x" -> "ab", "y" -> "2")))
-    assertEquals(WeaveRenderer.render(w.c(3)).domain, List(List("i" -> "3")))
-    assertEquals(WeaveRenderer.render(w.d(4)(5)(raiseWoven)).domain, List(List("i" -> "4"), List("j" -> "5")))
-    // every parameter of `e` is a capability, so it contributes no clause
-    assertEquals(WeaveRenderer.render(w.e(raiseWoven, raiseWoven)).domain, List.empty[List[(String, String)]])
+    val (w, recorder) = LawsInstances.instrumented(instance, 0)
+
+    w.a(7)(raiseResult)
+    w.b("ab", 2)(raiseResult)
+    w.c(3)
+    w.d(4)(5)(raiseResult)
+    w.e(raiseResult, raiseResult)
+
+    assertEquals(
+      LawsInstances.renderedWeaves(recorder).map(_.domain),
+      List(
+        List(List("i" -> "7")),
+        List(List("x" -> "ab", "y" -> "2")),
+        List(List("i" -> "3")),
+        List(List("i" -> "4"), List("j" -> "5")),
+        // every parameter of `e` is a capability, so it contributes no clause
+        List.empty[List[(String, String)]]
+      )
+    )
   }
 
-  test("L8 weaving does not force a by-name argument") {
-    val w = wovenAlg(0)
+  test("L8 intercepting does not force a by-name argument") {
+    val (w, recorder) = LawsInstances.instrumented(instance, 0)
+
     // the empty string makes the underlying implementation raise without
     // touching `y`, so nothing but the weaving itself could force it
-    val weave = w.b("", throw new RuntimeException("by-name argument was forced"))(raiseWoven)
+    val out = w.b("", throw new RuntimeException("by-name argument was forced"))(raiseResult)
 
-    assertEquals(weave.codomain.target, EmptyInput("x").asLeft[Int].leftWiden[TestError])
-    intercept[RuntimeException](weave.domain.head(1).target.value)
+    assertEquals(out, EmptyInput("x").asLeft[Int].leftWiden[TestError])
+    intercept[RuntimeException](recorder.weaves.head.weave.domain.head(1).target.value)
   }
 
-  test("L8 the codomain target is the underlying call with the capability pulled") {
+  test("L8 an intercepted method returns what the underlying call returns") {
     val impl = new EitherTestAlg(0)
-    val w = instance.weave(impl)(functorResult)
+    val (w, _) = LawsInstances.instrumented(instance, 0)
 
     exhaustiveInt.allValues.foreach { i =>
-      assertEquals(w.a(i)(raiseWoven).codomain.target, impl.a(i)(raiseResult))
-      assertEquals(w.c(i).codomain.target, impl.c(i))
+      assertEquals(w.a(i)(raiseResult), impl.a(i)(raiseResult))
+      assertEquals(w.c(i), impl.c(i))
     }
-  }
-
-  test("L8 the synthesized Cod instance never appears in a woven method's domain") {
-    val w = wovenAlg(0)
-    val rendered = List(
-      WeaveRenderer.render(w.a(1)(raiseWoven)),
-      WeaveRenderer.render(w.b("x", 1)(raiseWoven)),
-      WeaveRenderer.render(w.d(1)(2)(raiseWoven))
-    )
-    assert(!rendered.flatMap(_.domain.flatten.map(_._2)).contains("<synthetic>"))
   }
 
   // ------------------------------------------------- L10 laziness parity
 
-  test("L10 weaving performs no effects until the result is run") {
+  test("L10 intercepting performs no effects until the result is run") {
     val counter = new java.util.concurrent.atomic.AtomicInteger(0)
-    val impl = countingAlg(counter)
+    val recorder = new RecordingFk[Lazily, Render, Render]
 
-    val woven = instance.weave(impl)(Functor[Lazily])
-    val weave = woven.a(1)(liftedLazily)
-    assertEquals(counter.get(), 0, "weaving must not run the underlying effect")
+    val inst = instance.intercept(countingAlg(counter))(recorder.fk, OnRaise.noop[Lazily, Render])
+    val out = inst.a(1)(raiseLazily)
+    assertEquals(counter.get(), 0, "intercepting must not run the underlying effect")
 
-    val _ = weave.codomain.target.value.value
-    assertEquals(counter.get(), 1, "running the woven result must run the effect exactly once")
+    val _ = out.value.value
+    assertEquals(counter.get(), 1, "running the instrumented result must run the effect exactly once")
   }
 
-  test("L10 the woven path runs the same number of effects as the unwoven one") {
-    val wovenCounter = new java.util.concurrent.atomic.AtomicInteger(0)
+  test("L10 the intercepted path runs the same number of effects as the plain one") {
+    val interceptedCounter = new java.util.concurrent.atomic.AtomicInteger(0)
     val plainCounter = new java.util.concurrent.atomic.AtomicInteger(0)
 
-    val woven = instance.weave(countingAlg(wovenCounter))(Functor[Lazily])
+    val recorder = new RecordingFk[Lazily, Render, Render]
+    val inst = instance.intercept(countingAlg(interceptedCounter))(recorder.fk, OnRaise.noop[Lazily, Render])
     val plain = countingAlg(plainCounter)
 
     exhaustiveInt.allValues.foreach { i =>
-      val throughWoven = woven.a(i)(liftedLazily).codomain.target.value.value
+      val throughIntercepted = inst.a(i)(raiseLazily).value.value
       val throughPlain = plain.a(i)(raiseLazily).value.value
-      assertEquals(throughWoven, throughPlain, s"woven and unwoven results differ for input $i")
+      assertEquals(throughIntercepted, throughPlain, s"intercepted and plain results differ for input $i")
     }
 
-    assertEquals(wovenCounter.get(), plainCounter.get())
+    assertEquals(interceptedCounter.get(), plainCounter.get())
   }
 
   // ----------------------------------------------------------- Serializable
 
-  checkAll("Synthetic[Trivial].serializable", SerializableTests.serializable(Synthetic.trivial))
   checkAll("RaisePull.id.serializable", SerializableTests.serializable(RaisePull.id[Result, Render]))
   checkAll("RaiseArrow.id.serializable", SerializableTests.serializable(RaiseArrow.id[Result, Render]))
-  checkAll(
-    "WeaveArrows.eraseWeave.serializable",
-    SerializableTests.serializable(WeaveArrows.eraseWeave[Result, Render, Render, Render])
-  )
 
   // ------------------------------------------------------------- helpers
-
-  private def sampleWeave(i: Int): Aspect.Weave[Result, Render, Render, Int] =
-    wovenAlg(0).c(i)
-
-  private val raiseLazily: Raise[Lazily, TestError] = Raise[Lazily, TestError]
-
-  private val liftedLazily: Raise[Aspect.Weave[Lazily, Render, Render, *], TestError] =
-    WeaveArrows.raiseLift[Lazily, Render, Render, Render].apply(raiseLazily)
 
   /** A fixture whose effects are observable only when the `Eval` is forced. */
   private def countingAlg(counter: java.util.concurrent.atomic.AtomicInteger): TestAlg[Lazily] =
@@ -371,7 +262,4 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
     org.scalacheck.Prop.forAll(Gen.oneOf[TestError](NegativeInput(-1), EmptyInput("boom")))(e => {
       f(e); true
     })
-
-  private def forAllInts(f: Int => Unit): org.scalacheck.Prop =
-    org.scalacheck.Prop.forAll(Gen.oneOf(exhaustiveInt.allValues))(i => { f(i); true })
 }

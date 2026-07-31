@@ -1,7 +1,6 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.{Eq, Functor}
 import cats.arrow.FunctionK
 import munit.FunSuite
 
@@ -24,25 +23,49 @@ class DifferentialOracleSpec extends FunSuite {
 
   private val outcomes = List(-1, 0, 1)
 
-  private def agree[A](d: Woven[A], r: Woven[A])(implicit ev: Eq[Result[A]], loc: munit.Location): Unit = {
-    assertEquals(WeaveRenderer.render(d), WeaveRenderer.render(r))
-    assert(ev.eqv(d.codomain.target, r.codomain.target), "codomain targets differ")
-  }
+  /** `observed`, not `instrumented`: the recorder's hook fires into the same
+    * log as the weave arrivals, so the comparison below covers whether each
+    * capability was decorated at all and with which `Err` evidence. Under
+    * `OnRaise.noop` a derivation that dropped `RaiseAspect.observing` entirely
+    * is indistinguishable from a correct one.
+    */
+  private def observed(
+      instance: RaiseAspect[TestAlg, Render, Render, Render],
+      outcome: Int
+  ): (TestAlg[Result], RecordingFk[Result, Render, Render]) =
+    LawsInstances.observed(instance, outcome)
 
-  test("the derived weave is structurally identical to the reference, for every method and sample") {
+  test("the derived instance is structurally identical to the reference, for every method and sample") {
     outcomes.foreach { outcome =>
-      val impl = new EitherTestAlg(outcome)
-      val d = derived.weave(impl)(Functor[Result])
-      val r = reference.weave(impl)(Functor[Result])
+      val (d, dRec) = observed(derived, outcome)
+      val (r, rRec) = observed(reference, outcome)
 
       exhaustiveInt.allValues.foreach { i =>
-        agree(d.a(i)(raiseWoven), r.a(i)(raiseWoven))
-        agree(d.c(i), r.c(i))
-        agree(d.e(raiseWoven, raiseWoven), r.e(raiseWoven, raiseWoven))
+        assertEquals(d.a(i)(raiseResult), r.a(i)(raiseResult))
+        assertEquals(d.c(i), r.c(i))
+        assertEquals(d.e(raiseResult, raiseResult), r.e(raiseResult, raiseResult))
 
-        exhaustiveInt.allValues.foreach(j => agree(d.d(i)(j)(raiseWoven), r.d(i)(j)(raiseWoven)))
-        exhaustiveString.allValues.foreach(s => agree(d.b(s, i)(raiseWoven), r.b(s, i)(raiseWoven)))
+        exhaustiveInt.allValues.foreach(j => assertEquals(d.d(i)(j)(raiseResult), r.d(i)(j)(raiseResult)))
+        exhaustiveString.allValues.foreach(s => assertEquals(d.b(s, i)(raiseResult), r.b(s, i)(raiseResult)))
       }
+
+      assertEquals(LawsInstances.renderedWeaves(dRec), LawsInstances.renderedWeaves(rRec))
+      // Weave arrivals and hook firings in one log: the derived instance and
+      // the reference must agree on *when* things happen, not only on what
+      // they produce. `Result` is eager and `Aspect.Advice`'s target is a
+      // strict parameter, so a raise is logged before the weave it belongs to
+      // reaches `fk` — a fact no value-level comparison can see.
+      assertEquals(dRec.events, rRec.events)
+      // The latch on the comparison above, not a test of the hook. With a hook
+      // that writes nothing — `OnRaise.noop`, or a `record` call reduced to a
+      // constant — the two logs still match and the oracle silently returns to
+      // its pre-M12 blindness to a dropped `RaiseAspect.observing`. `a(-2)`,
+      // `a(-1)` and several `d` samples raise for every `eOutcome`, so a log
+      // with no `raise:` line means the fixture stopped observing raises.
+      assert(
+        rRec.events.exists(_.startsWith("raise:")),
+        s"no raise reached the hook for eOutcome $outcome — the events comparison above is vacuous"
+      )
     }
   }
 
@@ -57,17 +80,36 @@ class DifferentialOracleSpec extends FunSuite {
     }
   }
 
-  test("the derived mapK agrees with the reference under the erasure arrow") {
+  /** The successor to the pre-M12 "mapK under the erasure arrow" comparison.
+    * `eraseWeave` went from the woven carrier to `Result` and both endpoints
+    * are gone, but the row it filled — the two `mapK`s compared over an arrow
+    * that is not the identity — has to stay filled. `RaiseArrow.id`'s `pull`
+    * is the identity too, so at that arrow the comparison cannot see a `pull`
+    * that was composed wrongly.
+    */
+  test("the derived mapK agrees with the reference under a genuine carrier change") {
+    val eqAlg = eqTestAlg[Lazily]
+    val arrow = CarrierArrows.resultToLazily[Render]
+    outcomes.foreach { outcome =>
+      val impl = new EitherTestAlg(outcome)
+      assert(
+        eqAlg.eqv(derived.mapK(impl)(arrow), reference.mapK(impl)(arrow)),
+        s"mapK under the carrier-change arrow differs for eOutcome $outcome"
+      )
+    }
+  }
+
+  test("the derived intercept agrees with the reference under the forgetful interpreter") {
     val eqAlg = eqTestAlg[Result]
-    val erase = WeaveArrows.eraseWeave[Result, Render, Render, Render]
+    val erase = WeaveArrows.codomainTarget[Result, Render, Render]
     outcomes.foreach { outcome =>
       val impl = new EitherTestAlg(outcome)
       assert(
         eqAlg.eqv(
-          derived.mapK(derived.weave(impl)(Functor[Result]))(erase),
-          reference.mapK(reference.weave(impl)(Functor[Result]))(erase)
+          derived.intercept(impl)(erase, OnRaise.noop[Result, Render]),
+          reference.intercept(impl)(erase, OnRaise.noop[Result, Render])
         ),
-        s"mapK under the erasure arrow differs for eOutcome $outcome"
+        s"intercept under the forgetful interpreter differs for eOutcome $outcome"
       )
     }
   }

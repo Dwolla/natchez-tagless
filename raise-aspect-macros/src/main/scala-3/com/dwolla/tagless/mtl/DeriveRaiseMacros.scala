@@ -22,19 +22,20 @@
  * limitations under the License.
  *
  * MODIFICATIONS: the reflection machinery is upstream's `DeriveMacros`, reduced
- * to the subset the `RaiseAspect` derivation needs. The `weave` and `mapK`
- * generators are rewritten from `MacroAspect`/`MacroFunctorK` to transport
- * `cats.mtl.Raise` capability parameters instead of rejecting methods whose
- * signatures mention the effect type. Upstream's `addToGivenScope` block is
- * deliberately omitted; see the future-work note in
- * docs/plans/raise-aspect/01-overview-design-and-laws.md §5.
+ * to the subset the `RaiseAspect` derivation needs. `deriveIntercept` (the
+ * fused `intercept` generator, rewritten from `MacroAspect`) and `deriveMapK`
+ * (rewritten from `MacroFunctorK`) transport `cats.mtl.Raise` capability
+ * parameters instead of rejecting methods whose signatures mention the effect
+ * type. Upstream's `addToGivenScope` block is deliberately omitted; see the
+ * future-work note in docs/plans/raise-aspect/01-overview-design-and-laws.md §5.
  */
 
 package com.dwolla.tagless.mtl
 
+import cats.arrow.FunctionK
 import cats.mtl.{Handle, Raise}
 import cats.tagless.aop.Aspect
-import cats.{Eval, Functor}
+import cats.{Apply, Eval}
 
 import scala.annotation.experimental
 import scala.quoted.*
@@ -401,8 +402,11 @@ private[mtl] object RaiseAspectMacros:
   def aspect[Alg[_[_]]: Type, Dom[_]: Type, Cod[_]: Type, Err[_]: Type](using Quotes)
       : Expr[RaiseAspect[Alg, Dom, Cod, Err]] = '{
     new RaiseAspect[Alg, Dom, Cod, Err]:
-      def weave[F[_]](af: Alg[F])(implicit F: Functor[F]): Alg[[X] =>> Aspect.Weave[F, Dom, Cod, X]] =
-        ${ deriveWeave[Alg, Dom, Cod, Err, F]('af, 'F) }
+      def intercept[F[_]](af: Alg[F])(
+          fk: FunctionK[[X] =>> Aspect.Weave[F, Dom, Cod, X], F],
+          onRaise: OnRaise[F, Err]
+      )(implicit F: Apply[F]): Alg[F] =
+        ${ deriveIntercept[Alg, Dom, Cod, Err, F]('af, 'fk, 'onRaise, 'F) }
 
       def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G, Err]): Alg[G] =
         ${ deriveMapK[Alg, F, G, Err]('af, 'arrow) }
@@ -414,16 +418,19 @@ private[mtl] object RaiseAspectMacros:
         ${ deriveMapK[Alg, F, G, Err]('af, 'arrow) }
   }
 
-  private def deriveWeave[Alg[_[_]]: Type, Dom[_]: Type, Cod[_]: Type, Err[_]: Type, F[_]: Type](
+  private def deriveIntercept[Alg[_[_]]: Type, Dom[_]: Type, Cod[_]: Type, Err[_]: Type, F[_]: Type](
       alg: Expr[Alg[F]],
-      functor: Expr[Functor[F]]
-  )(using Type[Aspect.Weave[F, Dom, Cod, ?]])(using q: Quotes): Expr[Alg[[X] =>> Aspect.Weave[F, Dom, Cod, X]]] =
+      fk: Expr[FunctionK[[X] =>> Aspect.Weave[F, Dom, Cod, X], F]],
+      onRaise: Expr[OnRaise[F, Err]],
+      apply: Expr[Apply[F]]
+  )(using q: Quotes): Expr[Alg[F]] =
     import quotes.reflect.*
     val macros = new DeriveRaiseMacros[q.type]
     import macros.*
 
-    val WeaveF = TypeRepr.of[Aspect.Weave[F, Dom, Cod, ?]]
-    val Carrier = TypeRepr.of[[X] =>> Aspect.Weave[F, Dom, Cod, X]]
+    // The carrier never changes: source and target of the transform are both
+    // `Alg[F]`, so this is the same `TypeRepr` the parameters already mention.
+    val Carrier = TypeRepr.of[F]
     val Alg = TypeRepr.of[Alg]
     val algebraName = Expr(Alg.classSymbol.getOrElse(Alg.typeSymbol).name)
 
@@ -447,7 +454,7 @@ private[mtl] object RaiseAspectMacros:
           else if tpe.isRepeated then '{ ${ value.asExprOf[Seq[t]] }.map(Aspect.Advice.byValue($name, _)(using $dom)) }
           else '{ Aspect.Advice.byValue($name, ${ value.asExprOf[t] })(using $dom) :: Nil }
 
-    alg.transformTo[Alg[[X] =>> Aspect.Weave[F, Dom, Cod, X]]](
+    alg.transformTo[Alg[F]](
       args = {
         case (methodSym, tpe, arg) if macros.capabilityError(tpe, Carrier).isDefined =>
           tpe.dealias.typeArgs.last.asType match
@@ -456,13 +463,11 @@ private[mtl] object RaiseAspectMacros:
                 .summonErrOrAbort(TypeRepr.of[Err], tpe.dealias.typeArgs.last, methodSym)
                 .asExprOf[Err[e]]
               '{
-                WeaveArrows
-                  .raisePull[F, Dom, Cod, Err](using $functor)
-                  .apply(${ arg.asExprOf[Raise[[X] =>> Aspect.Weave[F, Dom, Cod, X], e]] })(using $errEv)
+                RaiseAspect.observing[F, e, Err](${ arg.asExprOf[Raise[F, e]] }, $onRaise)(using $apply, $errEv)
               }.asTerm
       },
       body = {
-        case (sym, tpe, body) if tpe <:< WeaveF =>
+        case (sym, tpe, body) if tpe.typeSymbol == Carrier.typeSymbol =>
           val clauses = sym.tree match
             case method: DefDef => method.termParamss.filterNot(c => c.isGiven || c.isImplicit)
             case _ => Nil
@@ -485,7 +490,7 @@ private[mtl] object RaiseAspectMacros:
                 '{ List.concat(${ Varargs(kept.map(paramAdvice)) }*) }
               })
               val codomain = '{ Aspect.Advice($methodName, ${ body.asExprOf[F[t]] })(using $cod) }
-              '{ Aspect.Weave($algebraName, $domain, $codomain) }.asTerm
+              '{ $fk.apply[t](Aspect.Weave[F, Dom, Cod, t]($algebraName, $domain, $codomain)) }.asTerm
       }
     )
 

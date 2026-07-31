@@ -46,7 +46,7 @@ import scala.language.experimental.macros
   */
 object DeriveRaise {
 
-  /** Derive a [[RaiseAspect]], supporting both `weave` and `mapK`. */
+  /** Derive a [[RaiseAspect]], supporting both `intercept` and `mapK`. */
   def aspect[Alg[_[_]], Dom[_], Cod[_], Err[_]]: RaiseAspect[Alg, Dom, Cod, Err] =
     macro DeriveRaiseMacros.aspect[Alg, Dom, Cod, Err]
 

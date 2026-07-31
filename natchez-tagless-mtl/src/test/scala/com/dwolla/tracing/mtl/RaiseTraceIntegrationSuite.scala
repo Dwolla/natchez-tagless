@@ -28,9 +28,8 @@ import natchez._
   *
   * `barRaiseAspectTrivialCod` supplies the same derivation at `Cod = Trivial`, so
   * `traceWithInputs[Trivial]` (M11) has a `RaiseAspect[Bar, TraceableValue, Trivial,
-  * TraceableValue]` to resolve `WeaveInterpreter.fromRaiseAspect` against — the
-  * `Synthetic[Cod]` constraint that mechanism added is otherwise untested with a
-  * `Cod` other than `Err`.
+  * TraceableValue]` to resolve `WeaveInterpreter.fromRaiseAspect` against, exercising
+  * that resolution at a `Cod` other than `Err`.
   */
 abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
   implicit def barRaiseAspect: RaiseAspect[Bar, TraceableValue, TraceableValue, TraceableValue]
@@ -104,7 +103,7 @@ abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
   /** The raise path's history minus its `AttachError` entry: the input `Put` runs
     * before the codomain target raises, so there is no `Put` for the return value —
     * but M6's `RaiseRecorder` default now records the typed error itself as a second
-    * `Put`, sequenced (per `WeaveArrows.raiseLift(onRaise)`) before the raise actually
+    * `Put`, sequenced (per `RaiseAspect.observing`) before the raise actually
     * happens. Both variants below additionally record an `AttachError` for the
     * escaping `Submarine` exception, between that `Put` and `ReleaseSpan`;
     * [[assertRaisingHistory]] checks that entry structurally and this list around it.
