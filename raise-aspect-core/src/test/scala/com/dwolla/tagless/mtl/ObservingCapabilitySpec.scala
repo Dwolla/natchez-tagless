@@ -7,6 +7,7 @@ import cats.{Eval, Functor}
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
 
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream, ObjectInputStream, ObjectOutputStream}
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.mutable.ListBuffer
 
@@ -169,6 +170,45 @@ class ObservingCapabilitySpec extends ScalaCheckSuite {
         assertEquals(counter.get(), 0, s"the hook must not run on the success path for i=$i")
         assertEquals(result, s"a:$i".asRight[TestError])
       }
+    }
+  }
+
+  // ------------------------------------------------------- Serializable
+
+  /** `cats.mtl.Raise` extends `Serializable`, and `WeaveArrowsOnRaiseSpec`
+    * pinned that property for `WeaveArrows.raiseLift(onRaise)`'s result before
+    * M12 deleted both the method and the spec. `observing` is now the only
+    * place that builds a decorated `Raise`, so the assertion moves here.
+    * Following `OnRaiseSpec`'s hand-rolled round trip (no cats-laws dependency
+    * in this module) rather than letting the property go untested.
+    */
+  test("the observing result is Serializable") {
+    // Only meaningful on the JVM: java.io.ObjectOutputStream/ObjectInputStream
+    // don't exist in Scala.js's java.io emulation, and Platform.isJvm is a
+    // compile-time constant, so scalac constant-folds this branch away
+    // entirely before the Scala.js linker ever sees it.
+    if (Platform.isJvm) {
+      val decorated: Raise[F, ErrA] =
+        RaiseAspect.observing[F, ErrA, Render](Raise[F, ErrA], OnRaise.noop[F, Render])
+
+      val bytes = {
+        val bos = new ByteArrayOutputStream()
+        val oos = new ObjectOutputStream(bos)
+        oos.writeObject(decorated)
+        oos.close()
+        bos.toByteArray
+      }
+
+      val deserialized = {
+        val bis = new ByteArrayInputStream(bytes)
+        val ois = new ObjectInputStream(bis)
+        val obj = ois.readObject().asInstanceOf[Raise[F, ErrA]]
+        ois.close()
+        obj
+      }
+
+      val err = NegativeInput(-9)
+      assertEquals(deserialized.raise[NegativeInput, Int](err), err.asLeft[Int].leftWiden[TestError])
     }
   }
 }
