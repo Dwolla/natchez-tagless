@@ -17,18 +17,27 @@ import cats.{Eval, ~>}
   * `Eval` is total, so the pull can transport a `Raise[Lazily, E]` back to
   * `Raise[Result, E]` by running it — the canonical construction of a pull
   * from a `G ~> F`.
+  *
+  * Polymorphic in `Err` because the pull genuinely does not consult the
+  * evidence: transport here is uniform in `E`. That is what lets the law suite
+  * instantiate arrow coherence at `Err = Trivial` over a ''non-identity''
+  * arrow, which is the only way that instantiation says anything — it is there
+  * to show coherence does not secretly depend on having `Err[E]` in hand, and
+  * at `RaiseArrow.id` both sides of the law are literally the same expression.
+  * `eraseWeave` was parametric in `Err` for the same reason before M12 deleted
+  * it.
   */
 object CarrierArrows {
   type Result[A] = Either[TestError, A]
   type Lazily[A] = EitherT[Eval, TestError, A]
 
-  val resultToLazily: RaiseArrow[Result, Lazily, Render] =
+  def resultToLazily[Err[_]]: RaiseArrow[Result, Lazily, Err] =
     RaiseArrow(
       new (Result ~> Lazily) {
         def apply[A](fa: Result[A]): Lazily[A] = EitherT(Eval.now(fa))
       },
-      new RaisePull[Lazily, Result, Render] {
-        def apply[E](rg: Raise[Lazily, E])(implicit ev: Render[E]): Raise[Result, E] =
+      new RaisePull[Lazily, Result, Err] {
+        def apply[E](rg: Raise[Lazily, E])(implicit ev: Err[E]): Raise[Result, E] =
           new Raise[Result, E] {
             val functor: Functor[Result] = Functor[Result]
 

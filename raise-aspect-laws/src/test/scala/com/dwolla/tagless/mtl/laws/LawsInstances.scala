@@ -56,7 +56,7 @@ object LawsInstances {
     * something other than the identity.
     */
   implicit val arbResultToLazily: Arbitrary[RaiseArrow[Result, Lazily, Render]] =
-    Arbitrary(Gen.const(CarrierArrows.resultToLazily))
+    Arbitrary(Gen.const(CarrierArrows.resultToLazily[Render]))
 
   /** Intercept the algebra under test with a recording interpreter. The pair
     * is the fused replacement for `weave` — the algebra behaves as though it

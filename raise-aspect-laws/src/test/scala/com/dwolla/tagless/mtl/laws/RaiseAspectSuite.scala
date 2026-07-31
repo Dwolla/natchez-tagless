@@ -67,7 +67,7 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
   property("L4 arrow coherence for the carrier-change arrow") {
     forAllErrors { e =>
       val law = RaiseArrowLaws.arrowCoherence[Result, Lazily, Render, TestError, Int](
-        CarrierArrows.resultToLazily,
+        CarrierArrows.resultToLazily[Render],
         raiseLazily,
         e
       )
@@ -89,7 +89,7 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
   property("L4 arrow coherence for the carrier-change arrow andThen id") {
     forAllErrors { e =>
       val law = RaiseArrowLaws.arrowCoherence[Result, Lazily, Render, TestError, Int](
-        CarrierArrows.resultToLazily.andThen(RaiseArrow.id[Lazily, Render]),
+        CarrierArrows.resultToLazily[Render].andThen(RaiseArrow.id[Lazily, Render]),
         raiseLazily,
         e
       )
@@ -116,19 +116,21 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
   // quantifier. The `Render` instantiations above cover the evidence-carrying
   // path; this one covers the strength the law had before M10.
   //
-  // It runs at the identity arrow because that is the only arrow the library
-  // offers at an arbitrary `Err`: `CarrierArrows.resultToLazily` is fixed at
-  // `Err = Render` (as `eraseWeave` never was, being parametric). The
-  // non-identity coverage therefore lives entirely in the `Render`
-  // instantiations above.
-  property("L4 arrow coherence for the identity arrow, at Err = Trivial") {
+  // It must run over a ''non-identity'' arrow to say anything at all: at
+  // `RaiseArrow.id` the law reduces to `FunctionK.id(rg.raise(e)) <-> rg.raise(e)`,
+  // the same expression on both sides, which holds for every instance and would
+  // still hold if the derivation were `???`. Before M12 this slot ran over
+  // `eraseWeave`, which was parametric in `Err`; `CarrierArrows.resultToLazily`
+  // is parametric for the same reason — its pull never consults the evidence —
+  // so it fills the slot with the same strength.
+  property("L4 arrow coherence for the carrier-change arrow, at Err = Trivial") {
     forAllErrors { e =>
-      val law = RaiseArrowLaws.arrowCoherence[Result, Result, Trivial, TestError, Int](
-        RaiseArrow.id[Result, Trivial],
-        raiseResult,
+      val law = RaiseArrowLaws.arrowCoherence[Result, Lazily, Trivial, TestError, Int](
+        CarrierArrows.resultToLazily[Trivial],
+        raiseLazily,
         e
       )
-      assertEquals(law.lhs, law.rhs)
+      assertEquals(law.lhs.value.value, law.rhs.value.value)
     }
   }
 

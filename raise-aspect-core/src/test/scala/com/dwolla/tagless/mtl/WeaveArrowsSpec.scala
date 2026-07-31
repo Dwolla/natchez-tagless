@@ -36,7 +36,7 @@ class WeaveArrowsSpec extends FunSuite {
   }
 
   test("RaiseArrow.andThen sends values forward and capabilities backward") {
-    val arrow = CarrierArrows.resultToLazily.andThen(RaiseArrow.id[CarrierArrows.Lazily, Render])
+    val arrow = CarrierArrows.resultToLazily[Render].andThen(RaiseArrow.id[CarrierArrows.Lazily, Render])
     val err = NegativeInput(-4)
 
     assertEquals(arrow.fk(5.asRight[TestError]).value.value, 5.asRight[TestError])
