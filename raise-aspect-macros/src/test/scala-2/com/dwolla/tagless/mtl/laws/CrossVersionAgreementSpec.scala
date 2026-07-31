@@ -16,6 +16,5 @@ class CrossVersionAgreementSpec extends FunSuite {
     val instrumented = derived.intercept(new EitherTestAlg(0))(recorder.fk, OnRaise.noop[Result, Render])
 
     assertEquals(ExpectedWeaves.rendered(instrumented, recorder), ExpectedWeaves.expected)
-    assertEquals(recorder.events, ExpectedWeaves.expectedOrder)
   }
 }

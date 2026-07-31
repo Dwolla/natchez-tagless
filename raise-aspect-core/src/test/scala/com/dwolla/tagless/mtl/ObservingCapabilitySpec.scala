@@ -145,9 +145,13 @@ class ObservingCapabilitySpec extends ScalaCheckSuite {
 
   /** Rescued from `WeaveArrowsOnRaiseSpec`, which M12 deletes along with the
     * `raiseLift(onRaise)` overload it was written against. The decorator tests
-    * above exercise `observing` in isolation; only this one proves the hook
-    * stays silent on a ''success'' path, because only here is there a real
-    * method with a branch that never raises.
+    * above exercise `observing` in isolation; this one instead proves the
+    * property through a full `intercept` round trip, over a whole `Int`
+    * domain rather than one fixed input. `WeaveInterpreterSpec`'s
+    * `"a RaiseAspect-only algebra resolves to the RaiseAspect instance and runs
+    * the hook"` test makes the same success-path-is-silent point on fixed
+    * inputs, through the public `WeaveInterpreter` entry point rather than
+    * `RaiseAspect.intercept` directly.
     */
   property("the hook never runs on a success path, and runs exactly once per raise, through a full intercept round trip") {
     forAll { (i: Int) =>

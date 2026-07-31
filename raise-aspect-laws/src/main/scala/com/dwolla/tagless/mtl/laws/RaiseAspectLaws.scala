@@ -22,7 +22,7 @@ trait RaiseAspectLaws[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorKLa
     * `Applicative[A]` rather than `Functor[A]`: `intercept` needs `Apply` to
     * sequence the hook and `OnRaise.noop` needs `Applicative` to produce one.
     */
-  def instrumentErasure[A[_]](af: Alg[A])(implicit A: Applicative[A]): IsEq[Alg[A]] =
+  def interceptErasure[A[_]](af: Alg[A])(implicit A: Applicative[A]): IsEq[Alg[A]] =
     F.intercept(af)(WeaveArrows.codomainTarget[A, Dom, Cod], OnRaise.noop[A, Err]) <-> af
 }
 

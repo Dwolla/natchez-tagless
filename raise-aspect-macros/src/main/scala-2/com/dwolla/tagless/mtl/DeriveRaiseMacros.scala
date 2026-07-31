@@ -21,7 +21,7 @@
  *
  * MODIFICATIONS: the reification and code-generation machinery below is taken
  * from upstream's `DeriveMacros`, reduced to what the `RaiseAspect` derivation
- * needs. `raiseInstrument` (the fused `intercept` generator) and `raiseMapK`
+ * needs. `raiseIntercept` (the fused `intercept` generator) and `raiseMapK`
  * transport `cats.mtl.Raise` capability parameters instead of rejecting every
  * method whose signature mentions the effect type. See docs/plans/raise-aspect/
  * for the expansion specification.
@@ -432,7 +432,7 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
     * type exactly as declared (`Raise` is contravariant in `E`; reconstructing the
     * error type risks variance drift).
     *
-    * `raiseInstrument` no longer needs this — the capability is decorated at the
+    * `raiseIntercept` no longer needs this — the capability is decorated at the
     * ''same'' carrier — but `raiseMapK` still retypes `Raise[F, E]` to
     * `Raise[G, E]` for the genuine carrier change `mapK` performs, so this stays.
     */
@@ -444,7 +444,7 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
 
   // def intercept[F[_]](af: Alg[F])(fk: Aspect.Weave[F, Dom, Cod, *] ~> F, onRaise: OnRaise[F, Err])
   //                     (implicit F: Apply[F]): Alg[F]
-  def raiseInstrument(Dom: Type, Cod: Type, Err: Type)(algebra: Type): MethodDef = MethodDef("intercept") {
+  def raiseIntercept(Dom: Type, Cod: Type, Err: Type)(algebra: Type): MethodDef = MethodDef("intercept") {
     case PolyType(List(f), MethodType(List(af), MethodType(List(fk, onRaise), MethodType(List(applyF), _)))) =>
       val F = f.asType.toTypeConstructor
       val Af = singleType(NoPrefix, af)
@@ -543,7 +543,7 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
     val Cod = typeConstructorOf(cod)
     val Err = typeConstructorOf(err)
     instantiate[RaiseAspect[Alg, Dom, Cod, Err]](tag, Dom, Cod, Err)(
-      raiseInstrument(Dom, Cod, Err),
+      raiseIntercept(Dom, Cod, Err),
       raiseMapK(Err)
     )
   }

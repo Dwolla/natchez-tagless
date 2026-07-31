@@ -22,7 +22,7 @@
  * limitations under the License.
  *
  * MODIFICATIONS: the reflection machinery is upstream's `DeriveMacros`, reduced
- * to the subset the `RaiseAspect` derivation needs. `deriveInstrument` (the
+ * to the subset the `RaiseAspect` derivation needs. `deriveIntercept` (the
  * fused `intercept` generator, rewritten from `MacroAspect`) and `deriveMapK`
  * (rewritten from `MacroFunctorK`) transport `cats.mtl.Raise` capability
  * parameters instead of rejecting methods whose signatures mention the effect
@@ -406,7 +406,7 @@ private[mtl] object RaiseAspectMacros:
           fk: FunctionK[[X] =>> Aspect.Weave[F, Dom, Cod, X], F],
           onRaise: OnRaise[F, Err]
       )(implicit F: Apply[F]): Alg[F] =
-        ${ deriveInstrument[Alg, Dom, Cod, Err, F]('af, 'fk, 'onRaise, 'F) }
+        ${ deriveIntercept[Alg, Dom, Cod, Err, F]('af, 'fk, 'onRaise, 'F) }
 
       def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G, Err]): Alg[G] =
         ${ deriveMapK[Alg, F, G, Err]('af, 'arrow) }
@@ -418,7 +418,7 @@ private[mtl] object RaiseAspectMacros:
         ${ deriveMapK[Alg, F, G, Err]('af, 'arrow) }
   }
 
-  private def deriveInstrument[Alg[_[_]]: Type, Dom[_]: Type, Cod[_]: Type, Err[_]: Type, F[_]: Type](
+  private def deriveIntercept[Alg[_[_]]: Type, Dom[_]: Type, Cod[_]: Type, Err[_]: Type, F[_]: Type](
       alg: Expr[Alg[F]],
       fk: Expr[FunctionK[[X] =>> Aspect.Weave[F, Dom, Cod, X], F]],
       onRaise: Expr[OnRaise[F, Err]],

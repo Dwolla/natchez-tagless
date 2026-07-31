@@ -24,7 +24,7 @@ trait RaiseAspectTests[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorKT
     new DefaultRuleSet(
       name = "raiseAspect",
       parent = Some(raiseFunctorK[A, B, C]),
-      "intercept erasure" -> forAll((af: Alg[A]) => laws.instrumentErasure[A](af)(ApplicativeA))
+      "intercept erasure" -> forAll((af: Alg[A]) => laws.interceptErasure[A](af)(ApplicativeA))
     )
 }
 

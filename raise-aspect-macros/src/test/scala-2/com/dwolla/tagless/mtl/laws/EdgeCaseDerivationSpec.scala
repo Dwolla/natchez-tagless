@@ -41,11 +41,11 @@ class EdgeCaseDerivationSpec extends FunSuite {
     DeriveRaise.aspect[EdgeAlg, Render, Render, Render]
 
   private val impl = EdgeAlg.either
-  private val recorder = new RecordingFk[Result, Render, Render]
-  private val instrumented: EdgeAlg[Result] =
-    derived.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
 
   test("a capability method inherited from a parent trait is woven") {
+    val recorder = new RecordingFk[Result, Render, Render]
+    val instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
+
     val out = instrumented.inherited(2)(raiseResult)
     val rendered = WeaveRenderer.render(recorder.weaves.last.weave)
     assertEquals(rendered.algebraName, "EdgeAlg")
@@ -55,11 +55,17 @@ class EdgeCaseDerivationSpec extends FunSuite {
   }
 
   test("the inherited capability's raise survives intercept unchanged") {
+    val recorder = new RecordingFk[Result, Render, Render]
+    val instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
+
     assertEquals(instrumented.inherited(-4)(raiseResult), NegativeInput(-4).asLeft[String].leftWiden[TestError])
     assertEquals(instrumented.inherited(-4)(raiseResult), impl.inherited(-4)(raiseResult))
   }
 
   test("a nullary def returning F[A] is woven with an empty domain") {
+    val recorder = new RecordingFk[Result, Render, Render]
+    val instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
+
     val out = instrumented.nullary
     val rendered = WeaveRenderer.render(recorder.weaves.last.weave)
     assertEquals(rendered.methodName, "nullary")
@@ -68,6 +74,9 @@ class EdgeCaseDerivationSpec extends FunSuite {
   }
 
   test("overloads are woven independently, each keeping its own parameter type") {
+    val recorder = new RecordingFk[Result, Render, Render]
+    val instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
+
     val outInt = instrumented.overloaded(7)
     val renderedInt = WeaveRenderer.render(recorder.weaves.last.weave)
     val outString = instrumented.overloaded("z")
@@ -80,6 +89,9 @@ class EdgeCaseDerivationSpec extends FunSuite {
   }
 
   test("a capability-free method on the same algebra is woven unchanged") {
+    val recorder = new RecordingFk[Result, Render, Render]
+    val instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
+
     val out = instrumented.own(5)
     assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("i" -> "5")))
     assertEquals(out, 15.asRight[TestError])

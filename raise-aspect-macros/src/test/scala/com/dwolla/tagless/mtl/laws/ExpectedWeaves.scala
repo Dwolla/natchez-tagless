@@ -17,7 +17,23 @@ import LawsInstances._
   */
 object ExpectedWeaves {
 
-  /** Fixed arguments, chosen so every rendered value is distinguishable. */
+  /** Fixed arguments, chosen so every rendered value is distinguishable.
+    *
+    * ==This is already an arrival-order pin, not just a content pin.==
+    * Post-M12 [[rendered]] reads the recorder's arrival-ordered buffer instead
+    * of constructing weaves, and `RenderedWeave.methodName` is the same
+    * `codomain.name` the recorder's log line carries, so no derivation can
+    * reorder the five calls below without this list's order failing too — a
+    * separate `expectedOrder` constant asserting `recorder.events` would add
+    * no coverage over this one. Pre-M12 that was untrue — `rendered` built its
+    * list in the order the test called the methods, which said nothing about
+    * the interpreter — and the property is spelled out here so a future
+    * reader does not have to rediscover that `expected` now carries it.
+    *
+    * The spec that asserts this passes `OnRaise.noop`, which cannot write to
+    * the recorder's log whatever the arguments are, so nothing about the hook
+    * complicates this reasoning.
+    */
   val expected: List[RenderedWeave] = List(
     RenderedWeave("TestAlg", "a", List(List("i" -> "7"))),
     RenderedWeave("TestAlg", "b", List(List("x" -> "ab", "y" -> "2"))),
@@ -25,33 +41,6 @@ object ExpectedWeaves {
     RenderedWeave("TestAlg", "d", List(List("i" -> "4"), List("j" -> "5"))),
     // every parameter of `e` is a capability, so it contributes no clause at all
     RenderedWeave("TestAlg", "e", Nil)
-  )
-
-  /** The order in which the five calls above reach the interpreter, stated
-    * explicitly.
-    *
-    * ==This adds no coverage over [[expected]], and that is worth knowing.==
-    * Post-M12 [[rendered]] reads the recorder's arrival-ordered buffer instead
-    * of constructing weaves, and `RenderedWeave.methodName` is the same
-    * `codomain.name` the recorder's log line carries, so `expected` is
-    * ''already'' an arrival-order pin and this constant is a re-projection of
-    * it. No derivation can fail one assertion without failing the other. Pre-M12
-    * that was untrue — `rendered` built its list in the order the test called
-    * the methods, which said nothing about the interpreter — and the property is
-    * kept spelled out here so a future reader does not have to rediscover that
-    * `expected` now carries it.
-    *
-    * The spec that asserts this passes `OnRaise.noop`, which cannot write to
-    * the log whatever the arguments are, so the log holds nothing but the five
-    * arrivals. Changing the sample arguments does not change that; changing the
-    * hook would.
-    */
-  val expectedOrder: List[String] = List(
-    "weave:TestAlg.a",
-    "weave:TestAlg.b",
-    "weave:TestAlg.c",
-    "weave:TestAlg.d",
-    "weave:TestAlg.e"
   )
 
   /** The same calls, rendered from what the interpreter saw.
