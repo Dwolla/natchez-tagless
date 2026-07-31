@@ -1,25 +1,18 @@
 package com.dwolla.tagless.mtl
 
-import cats.Functor
 import cats.mtl.Raise
-import cats.tagless.aop.Aspect
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
 
 /** The property-based form of the erasure smoke test: for arbitrary inputs,
-  * weaving the reference instance and then erasing it back must agree with the
-  * underlying algebra, on both success and raise paths.
+  * intercepting the reference instance with the forgetful interpreter must
+  * agree with the underlying algebra, on both success and raise paths.
   *
-  * This is deliberately a smoke test, not law L3 — the formal law suite and its
-  * discipline `RuleSet`s are milestone M2's.
+  * This is deliberately a smoke test, not law L3′ — the formal law suite and
+  * its discipline `RuleSet`s are milestone M2's.
   */
 class TestAlgReferencePropertySpec extends ScalaCheckSuite {
   private type F[A] = Either[TestError, A]
-
-  private implicit val syntheticRender: Synthetic[Render] =
-    new Synthetic[Render] {
-      def apply[A]: Render[A] = (_: A) => "<synthetic>"
-    }
 
   private val raiseF: Raise[F, TestError] = Raise[F, TestError]
 
@@ -27,7 +20,7 @@ class TestAlgReferencePropertySpec extends ScalaCheckSuite {
     TestAlgReference.referenceRaiseAspect[Render, Render, Render]
 
   private def erased(impl: TestAlg[F]): TestAlg[F] =
-    ref.mapK(ref.weave(impl)(Functor[F]))(WeaveArrows.eraseWeave[F, Render, Render, Render])
+    ref.intercept(impl)(WeaveArrows.codomainTarget[F, Render, Render], OnRaise.noop[F, Render])
 
   property("erasure preserves the result of every method, raising or not") {
     forAll { (i: Int, x: String, y: Int, j: Int, eOutcome: Int) =>
@@ -44,9 +37,11 @@ class TestAlgReferencePropertySpec extends ScalaCheckSuite {
 
   property("weaving reports the algebra and method names for every input") {
     forAll { (i: Int, eOutcome: Int) =>
-      val woven = ref.weave(new EitherTestAlg(eOutcome))(Functor[F])
-      val weave: Aspect.Weave[F, Render, Render, Int] = woven.c(i)
+      val recorder = new RecordingFk[F, Render, Render]
+      val w = ref.intercept(new EitherTestAlg(eOutcome))(recorder.fk, OnRaise.noop[F, Render])
+      val _ = w.c(i)
 
+      val weave = recorder.weaves.head.weave
       assertEquals(weave.algebraName, "TestAlg")
       assertEquals(weave.codomain.name, "c")
       assertEquals(weave.domain.map(_.map(_.name)), List(List("i")))

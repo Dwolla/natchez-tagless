@@ -85,24 +85,13 @@ class WeaveArrowsOnRaiseSpec extends ScalaCheckSuite {
     }
   }
 
-  property(
-    "raiseLift and raiseLift(noop) erase a woven TestAlg identically, on both raising and non-raising inputs"
-  ) {
-    forAll { (i: Int, x: String, y: Int, j: Int, eOutcome: Int) =>
-      val impl = new EitherTestAlg(eOutcome)
-      val ref = TestAlgReference.referenceRaiseAspect[Render, Render, Render]
-      val woven = ref.weave(impl)(Functor[F])
-
-      val erasedNoHook = ref.mapK(woven)(noHookArrow)
-      val erasedNoopHook = ref.mapK(woven)(noopHookArrow)
-
-      assertEquals(erasedNoHook.a(i)(raiseF), erasedNoopHook.a(i)(raiseF))
-      assertEquals(erasedNoHook.b(x, y)(raiseF), erasedNoopHook.b(x, y)(raiseF))
-      assertEquals(erasedNoHook.c(i), erasedNoopHook.c(i))
-      assertEquals(erasedNoHook.d(i)(j)(raiseF), erasedNoopHook.d(i)(j)(raiseF))
-      assertEquals(erasedNoHook.e(raiseF, raiseF), erasedNoopHook.e(raiseF, raiseF))
-    }
-  }
+  // The whole-algebra form of the property above — erase a woven `TestAlg`
+  // through both arrows and compare — went with `RaiseAspect#weave` in M12.
+  // It compared `raiseLift` against `raiseLift(noop)`, and both are deleted in
+  // this milestone's Task 2, so there is no fused statement of it to keep: the
+  // fused `intercept` has exactly one hook parameter and no hookless variant
+  // to disagree with. The surviving whole-algebra erasure coverage is
+  // `TestAlgReferencePropertySpec`.
 
   // ------------------------------------------- exactly-once, raise-only
 
@@ -156,54 +145,12 @@ class WeaveArrowsOnRaiseSpec extends ScalaCheckSuite {
     }
   }
 
-  /** A `TestAlg[Lazily]` whose raising branches actually call through the
-    * `Raise` capability they're given (unlike a pure laziness fixture),
-    * so a full weave+erase round trip exercises `raiseLift(onRaise)`'s own
-    * interception point rather than bypassing it.
-    */
-  private val countingLazilyAlg: TestAlg[Lazily] =
-    new TestAlg[Lazily] {
-      def a(i: Int)(implicit R: Raise[Lazily, ErrA]): Lazily[String] =
-        if (i < 0) R.raise(NegativeInput(i)) else EitherT(Eval.always(s"a:$i".asRight[TestError]))
-
-      def b(x: String, y: => Int)(implicit R: Raise[Lazily, ErrB]): Lazily[Int] =
-        if (x.isEmpty) R.raise(EmptyInput("x")) else EitherT(Eval.always((x.length + y).asRight[TestError]))
-
-      def c(i: Int): Lazily[Int] = EitherT(Eval.always((i * 2).asRight[TestError]))
-
-      def d(i: Int)(j: Int)(implicit R: Raise[Lazily, ErrA]): Lazily[Int] =
-        if (i + j < 0) R.raise(NegativeInput(i + j)) else EitherT(Eval.always((i + j).asRight[TestError]))
-
-      def e(implicit R1: Raise[Lazily, ErrA], R2: Raise[Lazily, ErrB]): Lazily[Unit] =
-        EitherT(Eval.always(().asRight[TestError]))
-    }
-
-  property(
-    "the hook never runs on a success path, and runs exactly once per raise, through a full weave+erase round trip"
-  ) {
-    forAll { (i: Int) =>
-      val counter = new AtomicInteger(0)
-      val log = ListBuffer.empty[String]
-
-      val ref = TestAlgReference.referenceRaiseAspect[Render, Render, Render]
-      val woven = ref.weave(countingLazilyAlg)(Functor[Lazily])
-      val arrow = RaiseArrow(
-        WeaveArrows.codomainTarget[Lazily, Render, Render],
-        WeaveArrows.raiseLift[Lazily, Render, Render, Render](loggingOnRaise(counter, log))
-      )
-      val erased = ref.mapK(woven)(arrow)
-
-      val result = erased.a(i)(loggingRaise(log)).value.value
-
-      if (i < 0) {
-        assertEquals(counter.get(), 1, s"the hook must run exactly once when raising for i=$i")
-        assertEquals(result, NegativeInput(i).asLeft[String].leftWiden[TestError])
-      } else {
-        assertEquals(counter.get(), 0, s"the hook must not run on the success path for i=$i")
-        assertEquals(result, s"a:$i".asRight[TestError])
-      }
-    }
-  }
+  // The success-path property that lived here — the hook never fires when a
+  // method returns normally, and fires exactly once when it raises, across a
+  // whole round trip — was rescued onto `RaiseAspect.observing` in M12 and now
+  // lives in `ObservingCapabilitySpec`. It is asserted there against a
+  // recording `fk`, so it additionally pins that the weave reaches the
+  // interpreter on both branches.
 
   // ------------------------------------------------------- Serializable
 

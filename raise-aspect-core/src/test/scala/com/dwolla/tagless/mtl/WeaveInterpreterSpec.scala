@@ -17,17 +17,6 @@ class WeaveInterpreterSpec extends FunSuite {
   // interpreter a caller supplies in production is this shape.
   private val erase: W ~> F = WeaveArrows.codomainTarget[F, Render, Render]
 
-  // `Synthetic`'s companion supplies only `Synthetic[Trivial]`, so `Cod = Render`
-  // needs a local instance for `WeaveInterpreter.fromRaiseAspect` to resolve.
-  // The module's other specs each define this same private val; match them.
-  // (M10's Task 2 lost time to this exact omission in a spec source — the
-  // constraint is on the instance, so without it the test fails to compile
-  // rather than failing to pass.)
-  private implicit val syntheticRender: Synthetic[Render] =
-    new Synthetic[Render] {
-      def apply[A]: Render[A] = (_: A) => "<synthetic>"
-    }
-
   test("an Aspect instance outranks a RaiseAspect instance for the same algebra") {
     import WeaveInterpreterFixtures._
 
