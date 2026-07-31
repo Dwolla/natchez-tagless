@@ -30,10 +30,20 @@ such a call to land.
 - A correction to shipped code: `Synthetic`'s and `RaiseTraceWeaveOps`'s
   scaladoc claimed a synthesized instance is never observable through the
   public API. It is; `raiseLift(rf).functor.map(w)(identity)` demonstrates it.
-  Not reachable through the derivation or through any cats-mtl 1.7 `Raise`
-  default or syntax operation, and bounded by the shipped `Synthetic` being a
-  constant sentinel — so an API-surface property, not a live defect, and
-  unfixable by law. Now recorded as a constraint on implementors instead.
+  **Corrected 2026-07-31 after Brian pushed back on the severity, and he was
+  right.** The original note called this "an API-surface property, not a live
+  defect" because nothing in the derivation or in cats-mtl's own defaults
+  reaches `functor`. That misses the point of the member: it is public so that
+  *external generic code* can recover the bundled algebra. Running
+  `FunctorTests` against the synthesized instance showed it **fails the
+  identity law** — at structural equality all five laws fail, and modulo
+  `Advice` identity the two identity laws fail. Laws L6a–L6d pass only because
+  they never compare `codomain.instance`. A generic `R.functor.map(fa)(f)`
+  applied to a real weave silently corrupts a successful call's rendering, and
+  with a user-written rendering `Synthetic` it becomes a redaction hole.
+  A lawful instance needs `Functor[Cod]`: `Trivial` has one and is already
+  sound, `TraceableValue` cannot have one. Unfixable by law, and not fixable
+  at all for `Cod = TraceableValue` while `Raise` requires a carrier `Functor`.
 - `02-capability-aspect-design.md` itself.
 
 **If M8 resumes**, start at that document's §11 (the five spikes) and §12 (the

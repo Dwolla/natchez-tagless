@@ -34,11 +34,13 @@ trait ToRaiseTraceWeaveOps {
     * `Synthetic`'s scaladoc for the one public route by which a synthesized
     * instance ''can'' be obtained, and why no law can forbid it.
     *
-    * This instance is a constant sentinel rather than a rendering of anything,
-    * which is what makes that route harmless here: the worst it can produce is a
-    * recognizably wrong span attribute, never a leaked value. Keep it that way —
-    * a `Synthetic[TraceableValue]` that rendered its argument would turn an API
-    * wart into a redaction hole.
+    * That route is a live defect, not a theoretical one, and it is reachable on
+    * a **successful** call through `Raise#functor` — see `Synthetic`'s scaladoc
+    * for the demonstration and for why no lawful `Functor[TraceableValue]`
+    * exists. This instance being a constant sentinel is what bounds the damage
+    * to a recognizably wrong span attribute rather than a leaked value. Keep it
+    * that way: a `Synthetic[TraceableValue]` that rendered its argument would
+    * turn a wrong attribute into a redaction hole.
     *
     * Lives here, on the syntax trait, rather than in the package object: `syn` is
     * a formal implicit parameter of `WeaveInterpreter.fromRaiseAspect`

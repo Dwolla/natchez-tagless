@@ -27,13 +27,52 @@ import cats.tagless.Trivial
   * and not `codomain.instance`, because a law comparing the instance would be
   * unsatisfiable.
   *
-  * Nothing in the derivation, and nothing in cats-mtl 1.7's own `Raise`
-  * defaults or syntax, reaches that member — verified during M8's Phase 1
-  * research — so this is a property of the API surface rather than a live
-  * defect. Implementors should still treat it as a real constraint: **a
-  * `Synthetic` instance must not reveal anything about the value it stands in
-  * for.** The sentinel-string instances this repo ships satisfy that by
-  * construction; a `Synthetic` that rendered its argument would not.
+  * ==This is a live defect, not merely an API-surface wart==
+  *
+  * An earlier revision of this comment said the substitution was "a property
+  * of the API surface rather than a live defect", on the grounds that nothing
+  * in the derivation or in cats-mtl's own `Raise` defaults reaches `functor`.
+  * That reasoning was wrong: `Raise#functor` is public *precisely so external
+  * generic code can recover the algebra bundled with the capability*, so
+  * cats-mtl not calling it says nothing about whether anyone calls it.
+  *
+  * Demonstrated, not argued. The synthesized `Functor` **fails the functor
+  * identity law**. `FunctorTests` was run against it at three equivalences:
+  *
+  *   - structural (`Weave` is a case class, `Aspect.Advice` a plain trait with
+  *     reference equality) — all five laws fail, because `map` always
+  *     allocates a fresh `Advice`;
+  *   - structural modulo `Advice` identity — `covariant identity` and
+  *     `invariant identity` fail, isolating the `Cod` substitution;
+  *   - the equivalence laws L6a–L6d use — all five pass, because that
+  *     equivalence never compares `codomain.instance`, which is the one
+  *     component the implementation gets wrong.
+  *
+  * The realistic failure is a generic helper of the shape
+  * `R.functor.map(fa)(f)` — the member's designed purpose — applied to a real
+  * woven value. On a **successful** call, the codomain's real rendering is
+  * replaced by this instance's. No error, no warning, every other attribute
+  * intact.
+  *
+  * ==What that means for an implementor==
+  *
+  * **A `Synthetic` instance must not reveal anything about the value it stands
+  * in for.** With this repo's constant sentinels the worst case is a
+  * recognizably wrong span attribute. `Synthetic` is a public extension point,
+  * and a rendering instance — `a => StringValue(a.toString)`, the obvious
+  * first guess — converts that into a redaction hole: a `TraceableValue[Card]`
+  * that deliberately renders `****1111` was demonstrated emitting the full
+  * number instead.
+  *
+  * ==The structural limit==
+  *
+  * A lawful `Functor[Weave[F, Dom, Cod, *]]` at the modulo-`Advice`
+  * equivalence requires exactly a `Functor[Cod]` — verified by building one.
+  * `cats.tagless.Trivial` has one, so the `Cod = Trivial` path is already
+  * lawful today. `natchez.TraceableValue` cannot: its type parameter appears
+  * only in negative position, so no covariant `Functor` exists, and
+  * `Invariant`/`Contravariant` do not supply what `map` needs. Not exposing a
+  * `Functor` at all is impossible — `Raise` declares it abstract.
   */
 trait Synthetic[Cod[_]] extends Serializable {
   def apply[A]: Cod[A]
