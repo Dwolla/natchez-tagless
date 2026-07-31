@@ -2,9 +2,28 @@
 
 ## Status
 
-**Not started; scheduled after M7** (Brian, 2026-07-30). Prerequisites: M5
-merged; M6/M7 recommended first (their shapes constrain this design — see
-"Interactions" below). The two gates below are unchanged and both still shut.
+**Phase 1 in progress** on branch `milestone/m8-capability-aspect`, stacked on
+the unmerged M6, M10, M11 and M7. Prerequisites met: M5 merged; M6 and M7 both
+complete (their shapes constrain this design — see "Interactions" below).
+
+**Need gate: opened by Brian, 2026-07-30.** Recorded honestly, because neither
+of the gate's two literal conditions was met: there is no concrete driving
+algebra, and no upstream M9 discussion is open. Brian's rationale is to extend
+the transport concept as far as cats-mtl's capabilities allow, which is a
+coherent goal for a library whose premise is that concept, and a stronger
+basis for the M9 upstreaming proposal than a `Raise`-only form. The gate's
+owner opened it deliberately; that is what satisfies it.
+
+The cost that acceptance carries, stated so it is not forgotten: **the design
+has no external use case to validate against.** In particular Phase 1's
+question 1 — a method taking *mixed* capabilities — has no real-world shape to
+anchor it. Mitigation: build the fixture algebra as part of Phase 1 and treat
+it as the driving use case, and keep scope to exactly the four verified
+transportable capabilities. Extensible user-registered capabilities stay out of
+scope (question 3 already says so).
+
+**Design gate: still shut.** Phase 2 does not begin until Brian ratifies
+`02-capability-aspect-design.md`.
 
 ### What changed under this milestone since it was written
 
