@@ -34,6 +34,80 @@ top of the equally unmerged M6). Two consequences for this milestone:
 Nothing in M10/M11 invalidates this milestone's Decisions section; option (b)
 and the (a)/(c) rulings stand as written.
 
+### Spike outcome (Task 2, 2026-07-30) — GO on both axes, via a technique the
+### document did not anticipate
+
+Independently verified by a second agent that reimplemented the technique from
+scratch in a throwaway clone rather than trusting the spike's report.
+
+**The document's own hypothesis for Scala 3 failed.** Emitting
+`scala.compiletime.summonInline[T]` in the generated body is a NO-GO for all
+three instance kinds. The cause is *not* the `Symbol.newClass`-built def — a
+quote-only control macro with no `newClass` fails identically, while the same
+shape in ordinary source compiles. An inline call inside a macro expansion is
+reduced against the **macro call site's** implicit scope.
+
+Worse than inert: with a conforming `given` at the call site, the woven code
+*used the call-site instance and ignored the one the method was handed*. It is
+a silent-wrong-instance hazard, not a no-op. `scala.compiletime.summonFrom`
+cannot be emitted at all ("can only be used in an inline method"). **Do not
+revisit either.**
+
+**What works — "technique B".** Emit a direct reference to the generated
+method's own implicit/given parameter: `Ref(paramSymbol)` on Scala 3,
+`Ident(name)` on Scala 2. GO on both axes, all three instance kinds, on
+2.12.21, 2.13.18 and 3.3.8. Runtime-verified for `Dom` and `Cod` (the woven
+advice really carries the method-local instance) and at the emitted-tree level
+for `Err`. A strict extension: the full suite keeps passing except Task 1's
+four red tests, which flip, and all three existing missing-instance
+diagnostics stay intact.
+
+**The precise rule it implements** — this, not "in-body summon", is what gets
+built:
+
+> An instance resolves iff the declared type of one of the generated method's
+> own implicit/given parameters is a **subtype** (`<:<`) of the needed
+> `Dom[T]` / `Cod[T]` / `Err[E]`. No implicit search of any kind is performed:
+> no derivation, no companion scope, no chaining.
+
+Verified to resolve: exact match; a candidate that is a *subtype* of the needed
+type; the needed type behind a type alias; contravariant widening (handed
+`Show[Widget]`, needs `Show[SubWidget]` for `Show[-A]` — sound, and why the
+test is `<:<` and not `=:=`); several method-local implicits with exactly one
+conforming; polymorphic and context-bound methods (`def poly[A: Render](a: A)`)
+— which could *never* resolve at the derivation site, so this is scope M7 did
+not promise; a conforming parameter in a non-final `using` clause on Scala 3;
+and the `mapK` / `RaiseFunctorK` path.
+
+Verified *not* to resolve: derivation from a method-local instance (needs
+`Render[List[Widget]]`, handed `Render[Widget]`); a needed type that is a
+subtype of the handed one under an invariant type class; an instance reachable
+only *through* a parameter (`B.unbox`); and an instance handed as an ordinary
+**non-implicit** parameter.
+
+**Brian's ruling, 2026-07-30: the derivation case is out of scope. Build the
+hybrid on technique B.** Note what makes that cheap to accept — Scala 2's
+`implicitly`-splice alternative only derives when the derivation rule is in
+lexical scope *at the derivation site*, because the generated body's lexical
+scope **is** the macro call site. "Full implicit search in the body" was never
+going to deliver what the phrase suggests, on either axis, short of the
+permanently-rejected option (a).
+
+**Scala 2's `implicitly` splice is rejected even though it works**: it
+regresses all three existing missing-instance diagnostics into raw
+`TypecheckException` stack traces (7 suite failures versus technique B's 4),
+and it would give Scala 2 a capability Scala 3 cannot match.
+
+**A correction Task 3 must carry.** Task 1 reported, and the spike then
+"explained", that the combined `WidgetAlg` fails via `Dom` first on Scala 3 and
+`Err` first on Scala 2. Both accounts are wrong. On Scala 3 the first-fired
+diagnostic for a multi-method algebra is **unstable across compilation
+arrangements** — the same derivation yielded `Dom`, `Cod`, and `Err` depending
+on build state. Consequences: no test may assert *which* diagnostic fires for a
+multi-method algebra, and no debugging may reason "it failed via `Err`, so
+`Dom` must have worked."
+
+
 ---
 
 Read `01-overview-design-and-laws.md` first — especially the appendix
@@ -43,6 +117,16 @@ This milestone resolves that limitation on **both** macro axes; the overview
 explicitly requires whatever is chosen to apply to both.
 
 ## Decisions (ratified 2026-07-30 — final)
+
+> **Decision 1 amended 2026-07-30**, after the Task 2 spike and Brian's ruling.
+> Its mechanism — "emit an in-body summon" — is not buildable: `summonInline`
+> is a NO-GO on Scala 3 and actively binds the wrong instance. What gets built
+> instead is technique B, a direct reference to the method's own conforming
+> implicit/given parameter, described precisely in the Status section above.
+> The hybrid shape is unchanged: derivation-site resolution first, method-local
+> fallback only when that fails. Decision 1's *goal* stands; only its mechanism
+> and its reach change, and the narrowing (no derivation from a method-local
+> instance) was ruled out of scope.
 
 1. **Pursue option (b)** — resolve `Dom`/`Cod` instances inside the
    generated method body, where the method's own `implicit`/`using`
