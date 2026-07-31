@@ -315,7 +315,7 @@ production code in it.
 | `WeaveInterpreter` | **shape unchanged** — its `apply` is already `intercept`'s signature. `fromAspect` unchanged. `fromRaiseAspect` becomes a one-liner and drops its `implicit syn: Synthetic[Cod]`. The low/high-priority resolution mechanism survives whole. |
 | `WeaveKnot` (in `core`) | untouched — already fused-shaped (`Alg[F] => Alg[F]`). |
 | natchez syntax | `traceWithInputs`/`traceWithInputsAndOutputs` signatures **unchanged**. `syntheticTraceableValue` and its 30-line caveat delete. `RaiseRecorder` untouched. |
-| Scala 2 macro | `raiseWeave` → `raiseInstrument`; `substituteCapabilities` and `Method#transformedParamLists` become provably dead and delete. |
+| Scala 2 macro | `raiseWeave` → the fused generator. `substituteCapabilities` and `Method#transformedParamLists` **survive** — `raiseMapK` is their sole caller (the spike's "provably dead" claim held only for the `intercept` path). |
 | Scala 3 macro | `deriveWeave` → `deriveInstrument`. |
 | Every rejection diagnostic | **unchanged**, on both axes, re-asserted against the fused entry point. |
 
@@ -449,9 +449,13 @@ and JS `Test/compile`, with the full existing suite passing alongside:
   Two different error types on one method resolve two different instances.
 - `ExpectedWeaves.expected` reproduces **byte for byte**.
 - One derivation emits both `intercept` and `mapK` on both axes.
-- `substituteCapabilities` and `Method#transformedParamLists` become unused —
-  the fused generator calls `method.copy(body = …)` and nothing else, and
-  `transformedParamLists` has no other caller.
+- ~~`substituteCapabilities` and `Method#transformedParamLists` become
+  unused.~~ **False — corrected during Task 4.** The fused generator does call
+  `method.copy(body = …)` and nothing else, but `raiseMapK` still calls
+  `substituteCapabilities` to retype `Raise[F, E]` → `Raise[G, E]` for its
+  genuine carrier change, and decision D2 keeps `mapK` in the same derivation.
+  Both helpers survive with exactly one caller. The spike's claim held only
+  for the `intercept` path.
 - End to end through the real natchez `InMemory` backend with
   `TraceWeaveCapturingInputsAndOutputs[F]` at its exact existing type and
   `RaiseRecorder[F, TraceableValue].onRaise`, reproducing the command histories
@@ -486,8 +490,8 @@ in the plan, not an assumption:
 - [ ] `RaiseAspect` has exactly one weaving operation, `intercept`, with the
       signature above; `weave` does not exist anywhere in the tree.
 - [ ] `Synthetic` does not exist; `WeaveArrows` contains `codomainTarget` and
-      nothing else; `substituteCapabilities` and `transformedParamLists` are
-      gone from the Scala 2 macro.
+      nothing else. `substituteCapabilities` and `transformedParamLists` **survive**, with
+      `raiseMapK` as their sole caller — see the correction note below.
 - [ ] No `Functor` is constructed anywhere in the library except by reading
       `R.functor` off a capability the caller supplied. `grep -rn "new Functor"`
       over `raise-aspect-*` main sources returns nothing.

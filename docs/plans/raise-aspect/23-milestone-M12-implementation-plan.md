@@ -1335,8 +1335,18 @@ the deleted eraseWeave."
 
 `raiseWeave` becomes `raiseInstrument`. This is the smaller of the two macro
 changes: the fused generator *removes* the carrier-substitution machinery
-rather than adding anything, so `substituteCapabilities` and
-`Method#transformedParamLists` become provably dead.
+rather than adding anything.
+
+> **Corrected 2026-07-31, during Task 4.** This section originally said
+> `substituteCapabilities` and `Method#transformedParamLists` "become provably
+> dead" and instructed deleting them. That is **false**, and following it
+> breaks the build. `raiseMapK` — which decision D2 keeps emitting unchanged —
+> calls `substituteCapabilities` to retype each `Raise[F, E]` parameter to
+> `Raise[G, E]`, because `mapK`'s per-method override must match `Alg[G]`'s
+> abstract signature exactly. The "provably dead" claim came from the spike
+> and holds only for the `intercept` path, not for a derivation that also
+> emits `mapK`. Both helpers stay; Steps 3 and 4 below are superseded on that
+> point only.
 
 The code below is what the macro spike compiled and ran on 2.12.21 and 2.13.18,
 with `RaiseInstrument` → `RaiseAspect` per decision D1. Take it as given rather
@@ -2198,8 +2208,8 @@ git commit -m "docs: record the fused derivation and where the Functor finding n
 - [ ] `RaiseAspect` has exactly one weaving operation, `intercept`; `weave`
       does not exist anywhere in the tree.
 - [ ] `Synthetic` does not exist; `WeaveArrows` contains `codomainTarget` and
-      nothing else; `substituteCapabilities` and `transformedParamLists` are
-      gone from the Scala 2 macro.
+      nothing else. `substituteCapabilities` and `transformedParamLists` **survive**, with
+      `raiseMapK` as their sole caller — see the correction note below.
 - [ ] `grep -rn "new Functor" raise-aspect-*/src/main` returns nothing — no
       `Functor` is constructed anywhere in the library; the only ones in play
       are read off capabilities the caller supplied.
