@@ -420,11 +420,12 @@ M6 and M7 are independent of each other; M8 and M9 carry explicit gates
 recorded in their documents. As ever: do not do work belonging to milestones
 other than your own.
 
-### Method-local `Dom`/`Cod` instances are not resolved (found in M4)
+### Method-local `Dom`/`Cod`/`Err` instances (found in M4, resolved in M7)
 
-`Dom` and `Cod` instances are summoned at the *derivation* site. A method that
-supplies its own instance through a `using`/`implicit` clause is therefore not
-supported, even though the instance is in scope everywhere it is needed:
+Originally, `Dom` and `Cod` instances (later joined by `Err`, added in M10) were
+summoned only at the *derivation* site. A method that supplied its own instance
+through its own `using`/`implicit` clause could not be woven at all, even though
+the instance was in scope everywhere it was needed:
 
 ```scala
 trait Widget
@@ -433,29 +434,89 @@ trait WidgetAlg[F[_]] {
   def show(w: Widget)(using Render[Widget]): F[String]
 }
 
-// DeriveRaise.aspect[WidgetAlg, Render, Render] fails with:
+// Before M7, DeriveRaise.aspect[WidgetAlg, Render, Render] failed with:
 //   Not found: given Render[Widget] for parameter w of method show
 ```
 
 Capturing `w` in `domain` needs a `Render[Widget]`, and the only one available
-lives inside `show`'s own `using` clause — which the derivation cannot see, since
-it resolves instances before generating the method body.
+lived inside `show`'s own `using` clause — invisible to the derivation, which
+resolved instances before generating the method body.
 
 Upstream cats-tagless works around this in `MacroAspect` with an
 `addToGivenScope` block (commented "This is a hack") that reflects into
 `dotty.tools.dotc` internals to inject the method's given parameters into the
-implicit cache. M4 deliberately omitted it: it is reflection into compiler
-internals that silently degrades to a no-op on failure, no fixture exercised it,
-and shipping it in a published library means a future compiler change surfaces as
-a confusing implicit-not-found rather than an obvious break.
+implicit cache. M4 deliberately omitted it, and **M7 confirmed that ruling
+permanently**: it is reflection into compiler internals that silently degrades
+to a no-op on failure, no fixture exercised it, and shipping it in a published
+library means a future compiler change surfaces as a confusing
+implicit-not-found rather than an obvious break. Option (a) stays rejected; do
+not revisit it.
 
-If this shape turns out to matter, the options are (a) adapt upstream's hack with
-a fixture that actually covers it, (b) resolve `Dom`/`Cod` lazily inside the
-generated method body where the method's givens are genuinely in scope, or
-(c) reject it explicitly with a diagnostic pointing at the derivation site. Note
-the Scala 2 macro has the same limitation and no equivalent hack upstream, so
-whatever is chosen should apply to both axes.
+**M7 resolved this limitation on both macro axes by pursuing option (b), but not
+by the mechanism this appendix originally proposed.** The mechanism that
+shipped, and the mechanism this appendix speculated about, are different enough
+to be worth keeping straight:
 
-Milestone M7 (`17-milestone-M7-method-local-dom-cod-instances.md`) is the
-planned resolution: a spike-verified attempt at (b), with (c) as the decided
-fallback on both axes and (a) staying rejected.
+> An instance resolves iff the declared type of one of the generated method's
+> own implicit/given parameters is a **subtype** (`<:<`) of the needed
+> `Dom[T]` / `Cod[T]` / `Err[E]`. No implicit search of any kind is performed:
+> no derivation, no companion scope, no chaining.
+
+Concretely: derivation-site resolution runs first, exactly as before — it
+changes nothing when it succeeds, including the existing missing-instance
+diagnostics. Only when it fails does the macro look for exactly one of the
+generated method's own implicit/given parameters whose declared type conforms
+to the needed one, and splice a direct reference to that parameter —
+`Ref(paramSymbol)` on Scala 3, `Ident(name)` on Scala 2. This newly resolves,
+among other shapes:
+an exact match; a candidate that is merely a subtype of the needed type; the
+needed type hidden behind a type alias; contravariant widening; several
+method-local candidates with exactly one conforming; polymorphic and
+context-bound methods (`def poly[A: Render](a: A)`), which could never resolve
+at the derivation site at all, since no concrete type exists there to summon
+against; and the `functorK`/`mapK` path. Two conforming candidates abort with an
+ambiguity error naming both, rather than picking one arbitrarily; a conforming
+parameter sitting in an ordinary, non-implicit clause gets a hint naming it
+rather than the plain missing-instance message.
+
+**This appendix's own option-(b) hypothesis — emit an in-body
+`scala.compiletime.summonInline` and let post-macro inlining resolve it in the
+generated body's scope — turned out not to work, and is worth recording
+precisely so nobody re-attempts it.** It is not merely inert. A `summonInline`
+spliced into a macro expansion is reduced against the **macro call site's**
+implicit scope, not the generated method's — so with a conforming `given`
+sitting at the call site, the woven code silently used *that* instance and
+ignored the one the method was actually handed. That is a silent-wrong-instance
+hazard, not a no-op, which makes it more dangerous than the plain "not found"
+error it was meant to replace. `scala.compiletime.summonFrom` cannot even be
+emitted from this position ("can only be used in an inline method"). Do not
+revisit either.
+
+**What remains unresolved.** By Brian's explicit ruling, the derivation case
+itself is out of scope: deriving an instance from a method-local one (e.g.
+needing `Render[List[Widget]]` when only `Render[Widget]` is method-local)
+would require actual implicit search, which the `<:<` rule deliberately does
+not perform. Three more shapes go unresolved not by ruling but as a structural
+consequence of the same `<:<`-only rule: a needed type that is a subtype of the
+handed one under an *invariant* type class (the reverse of the contravariant
+case that does resolve); an instance reachable only *through* a parameter
+rather than being one directly; and an instance handed as an ordinary,
+non-implicit parameter (the best it gets is the hint mentioned above) — none of
+these are declared-type subtype relations, so nothing short of real implicit
+search would reach them. Scala 2 has a superficially more powerful
+alternative — splicing an untyped `implicitly[T]` into the generated body,
+which the typer then resolves with the method's implicit parameters in
+scope — and it was rejected even though it compiles: it only
+*derives* an instance when the derivation rule is in lexical scope **at the
+derivation site**, because the generated body's lexical scope *is* the macro
+call site, not some independent scope nested inside the method. So "full
+implicit search in the body" was never going to deliver what the phrase
+suggests, on either axis, short of the permanently-rejected option (a). It was
+also rejected on independent grounds: it regresses all three existing
+missing-instance diagnostics into raw `TypecheckException` stack traces, and it
+would hand Scala 2 a capability Scala 3 cannot match.
+
+See `17-milestone-M7-method-local-dom-cod-instances.md` — its Status section
+records the spike in full, including the independently-reproduced Scala 3
+behavior above and the exact fixtures verified against 2.12.21, 2.13.18, and
+3.3.8.

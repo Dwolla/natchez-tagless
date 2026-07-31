@@ -316,8 +316,12 @@ private class DeriveRaiseMacros[Q <: Quotes](using val q: Q):
         )
 
   /** As [[summonOrAbort]], but worded for a capability parameter's error type.
-    * Kept textually identical to the Scala 2 axis's message — the two axes are
-    * held to behavioral agreement.
+    * Kept textually identical to the Scala 2 axis's message only for this
+    * method's own base wording — the two axes are held to behavioral
+    * agreement there. The appended non-implicit-parameter hint and the
+    * ambiguity message (thrown from [[methodLocalInstance]]) use this axis's
+    * "using/implicit"/"givens" vocabulary where Scala 2 says
+    * "implicit"/"implicits".
     */
   def summonErrOrAbort(Err: TypeRepr, errorType: TypeRepr, method: Symbol): Term =
     val tpe = Err.appliedTo(errorType)

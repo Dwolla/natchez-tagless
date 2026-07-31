@@ -107,13 +107,22 @@ on build state. Consequences: no test may assert *which* diagnostic fires for a
 multi-method algebra, and no debugging may reason "it failed via `Err`, so
 `Dom` must have worked."
 
+**Path taken, per acceptance criterion.** Path (b) — via technique B, the
+direct parameter reference described above — was taken on **both** axes, for
+all three instance kinds (`Dom`, `Cod`, `Err`). Task 4 (the Decision-3
+rejection-diagnostic path) was therefore skipped, since it applies only when
+(b) is infeasible on either axis, and the spike found it feasible on both. The
+`WidgetAlg` fixtures (Task 1) derive and pass their structural checks on
+2.12.21, 2.13.18, and 3.3.8, exactly as Task 3 implemented and the full macro
+suite confirms.
+
 
 ---
 
 Read `01-overview-design-and-laws.md` first — especially the appendix
-"Method-local `Dom`/`Cod` instances are not resolved (found in M4)", which
-defines this milestone's problem and enumerates the options (a)/(b)/(c).
-This milestone resolves that limitation on **both** macro axes; the overview
+"Method-local `Dom`/`Cod`/`Err` instances (found in M4, resolved in M7)", which
+defines this milestone's problem and enumerates the options (a)/(b)/(c). This
+milestone resolves that limitation on **both** macro axes; the overview
 explicitly requires whatever is chosen to apply to both.
 
 ## Decisions (ratified 2026-07-30 — final)
