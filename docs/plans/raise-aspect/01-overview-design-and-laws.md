@@ -422,7 +422,7 @@ other than your own.
 
 Third round (2026-07-31):
 
-- M12 fused derivation — replaces `weave` + `mapK` with a single `instrument`,
+- M12 fused derivation — replaces `weave` + `mapK` with a single `intercept`,
   removing the `Weave`-as-effect-type carrier and with it the unlawful
   synthesized `Functor` →
   `22-milestone-M12-fused-derivation.md`

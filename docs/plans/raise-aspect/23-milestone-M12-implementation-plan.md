@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace `RaiseAspect`'s two operations (`weave` + `mapK`) with one
-carrier-preserving `instrument`, so the caller's `Raise[F, E]` is handed
+carrier-preserving `intercept`, so the caller's `Raise[F, E]` is handed
 straight to the underlying implementation and no capability ever crosses a
 carrier boundary. That deletes `Synthetic` and the unlawful synthesized
 `Functor[Weave[F, Dom, Cod, *]]` it exists to feed.
@@ -52,11 +52,11 @@ numbering used throughout.
 
 **Naming, fixed by decision D1 and load-bearing for every code block below.**
 The macro spike's sources named the type `RaiseInstrument`, its helper
-`RaiseInstrument.observing`, and its entry point `DeriveRaise.instrument`,
+`RaiseInstrument.observing`, and its entry point `DeriveRaise.intercept`,
 because they had to coexist with the real `RaiseAspect` in one tree. This
 milestone keeps the existing names: the type stays **`RaiseAspect`**, the entry
 point stays **`DeriveRaise.aspect`**, the helper is **`RaiseAspect.observing`**,
-and only the *method* is new — **`instrument`**. Every code block taken from
+and only the *method* is new — **`intercept`**. Every code block taken from
 the spike below has exactly those identifiers substituted and nothing else.
 
 **The core change is atomic.** Task 1 changes a type class every other module
@@ -72,7 +72,7 @@ try to keep every module green at every step; there is no such sequence.
 
 **`raise-aspect-core` main:**
 
-- `RaiseAspect.scala` — `weave` becomes `instrument`; gains a companion object
+- `RaiseAspect.scala` — `weave` becomes `intercept`; gains a companion object
   holding `observing`. `RaiseFunctorK` unchanged.
 - `WeaveInterpreter.scala` — `fromRaiseAspect` becomes a one-liner and drops
   its `Synthetic[Cod]` parameter. `fromAspect` unchanged.
@@ -108,7 +108,7 @@ public signatures and span histories unchanged.
 
 ---
 
-## Task 1: `RaiseAspect#instrument` and `RaiseAspect.observing`
+## Task 1: `RaiseAspect#intercept` and `RaiseAspect.observing`
 
 The atomic change. `RaiseAspect`, `WeaveInterpreter`, the reference oracle and
 every core test that mentions `weave` move together — each references the next,
@@ -135,7 +135,7 @@ the same commit that deletes the code it covered.
 - Consumes: `OnRaise[F, Err]`, `RaiseArrow[F, G, Err]`, `RaisePull[G, F, Err]`,
   `WeaveArrows.codomainTarget` — all unchanged from M10.
 - Produces:
-  - `trait RaiseAspect[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorK[Alg, Err] { def instrument[F[_]](af: Alg[F])(fk: Aspect.Weave[F, Dom, Cod, *] ~> F, onRaise: OnRaise[F, Err])(implicit F: Apply[F]): Alg[F] }`
+  - `trait RaiseAspect[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorK[Alg, Err] { def intercept[F[_]](af: Alg[F])(fk: Aspect.Weave[F, Dom, Cod, *] ~> F, onRaise: OnRaise[F, Err])(implicit F: Apply[F]): Alg[F] }`
   - `RaiseAspect.observing[F[_], E, Err[_]](R: Raise[F, E], onRaise: OnRaise[F, Err])(implicit F: Apply[F], ev: Err[E]): Raise[F, E]`
   - `LowPriorityWeaveInterpreter.fromRaiseAspect[Alg[_[_]], Dom[_], Cod[_], Err[_], F[_]](implicit F: Apply[F], A: RaiseAspect[Alg, Dom, Cod, Err]): WeaveInterpreter[Alg, Dom, Cod, Err, F]` — **no `syn` parameter**
   - `final class RecordingFk[F[_], Dom[_], Cod[_]]` with
@@ -298,10 +298,6 @@ trait RaiseFunctorK[Alg[_[_]], Err[_]] extends Serializable {
   * `docs/plans/raise-aspect/22-milestone-M12-fused-derivation.md` for the
   * defect that design removed.
   *
-  * The name `instrument` is not `cats.tagless.aop.Instrument#instrument`,
-  * which returns an `Alg[Instrumentation[F, *]]`. This one interprets in place
-  * and returns an `Alg[F]`.
-  *
   * There is deliberately no `E` parameter: transport is uniform in the error
   * type, so each method is handled with whatever error types it declares,
   * including several `Raise` parameters on one method.
@@ -321,7 +317,7 @@ trait RaiseAspect[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorK[Alg, 
     *
     * `Apply[F]` is needed only to sequence the hook's effect before the raise.
     */
-  def instrument[F[_]](af: Alg[F])(
+  def intercept[F[_]](af: Alg[F])(
       fk: Aspect.Weave[F, Dom, Cod, *] ~> F,
       onRaise: OnRaise[F, Err]
   )(implicit F: Apply[F]): Alg[F]
@@ -361,17 +357,17 @@ the next four steps.
 - [ ] **Step 5: Rewrite `WeaveInterpreter.fromRaiseAspect`**
 
 In `WeaveInterpreter.scala`, replace `LowPriorityWeaveInterpreter`'s body. Note
-that `WeaveInterpreter#apply`'s signature was **already** `instrument`'s — this
+that `WeaveInterpreter#apply`'s signature was **already** `intercept`'s — this
 is the deletion of an adapter, not a redesign. `fromAspect` is untouched.
 
 ```scala
 trait LowPriorityWeaveInterpreter {
 
   /** Lower priority: used only when no `Aspect` instance is available. The
-    * caller's interpreter and hook go straight to `RaiseAspect#instrument` —
-    * this type class's `apply` and `instrument` are the same signature.
+    * caller's interpreter and hook go straight to `RaiseAspect#intercept` —
+    * this type class's `apply` and `intercept` are the same signature.
     *
-    * `Apply[F]` is `instrument`'s own constraint, needed to sequence the hook.
+    * `Apply[F]` is `intercept`'s own constraint, needed to sequence the hook.
     */
   implicit def fromRaiseAspect[Alg[_[_]], Dom[_], Cod[_], Err[_], F[_]](implicit
       F: Apply[F],
@@ -381,7 +377,7 @@ trait LowPriorityWeaveInterpreter {
       def apply(alg: Alg[F])(
           fk: Aspect.Weave[F, Dom, Cod, *] ~> F,
           onRaise: OnRaise[F, Err]
-      ): Alg[F] = A.instrument(alg)(fk, onRaise)
+      ): Alg[F] = A.intercept(alg)(fk, onRaise)
     }
 }
 ```
@@ -425,7 +421,7 @@ object RecordedWeave {
   * `WeaveArrows.codomainTarget`.
   *
   * After M12 there is no `Alg[Aspect.Weave[F, Dom, Cod, *]]` value for a test
-  * to reach into: `instrument` hands each weave to `fk` and returns `F[A]`.
+  * to reach into: `intercept` hands each weave to `fk` and returns `F[A]`.
   * What the interpreter sees is therefore the entire observable surface of
   * weaving, and this is how a test sees it. It is strictly ''more'' than the
   * pre-M12 tests could see, because it pins the order in which weaves arrive;
@@ -461,7 +457,7 @@ final class RecordingFk[F[_], Dom[_], Cod[_]] {
 
 This is the differential oracle both macros are checked against, so it must
 show exactly what they will generate. `mapK` is **unchanged**; only `weave`
-becomes `instrument`. Every `pull(R)` becomes
+becomes `intercept`. Every `pull(R)` becomes
 `RaiseAspect.observing(R, onRaise)`, and the `Aspect.Weave` each method used to
 *return* is now passed to `fk`.
 
@@ -476,7 +472,7 @@ import cats.~>
 ```
 
 ```scala
-      def instrument[F[_]](af: TestAlg[F])(
+      def intercept[F[_]](af: TestAlg[F])(
           fk: Aspect.Weave[F, Dom, Cod, *] ~> F,
           onRaise: OnRaise[F, Err]
       )(implicit F: Apply[F]): TestAlg[F] =
@@ -558,14 +554,14 @@ and replace the two helpers at the top with:
   private val ref: RaiseAspect[TestAlg, Render, Render, Render] =
     TestAlgReference.referenceRaiseAspect[Render, Render, Render]
 
-  /** The fused analogue of the old `weave`-then-`mapK` pair: instrument with a
+  /** The fused analogue of the old `weave`-then-`mapK` pair: intercept with a
     * recording interpreter, then read the recorded weaves. `codomainTarget`'s
     * behaviour is what `RecordingFk` forwards, so the returned algebra is the
     * erased one and the recorder holds the structure.
     */
   private def instrumentedOf(eOutcome: Int): (TestAlg[F], RecordingFk[F, Render, Render]) = {
     val recorder = new RecordingFk[F, Render, Render]
-    (ref.instrument(new EitherTestAlg(eOutcome))(recorder.fk, OnRaise.noop[F, Render]), recorder)
+    (ref.intercept(new EitherTestAlg(eOutcome))(recorder.fk, OnRaise.noop[F, Render]), recorder)
   }
 
   private def erasedOf(eOutcome: Int): TestAlg[F] = instrumentedOf(eOutcome)._1
@@ -627,7 +623,7 @@ instrumented method's *result* equals the underlying call:
 
 ```scala
   private def erased(impl: TestAlg[F]): TestAlg[F] =
-    ref.instrument(impl)(WeaveArrows.codomainTarget[F, Render, Render], OnRaise.noop[F, Render])
+    ref.intercept(impl)(WeaveArrows.codomainTarget[F, Render, Render], OnRaise.noop[F, Render])
 ```
 
 for the first property (which is L3′ in embryo), and for the second:
@@ -636,7 +632,7 @@ for the first property (which is L3′ in embryo), and for the second:
   property("weaving reports the algebra and method names for every input") {
     forAll { (i: Int, eOutcome: Int) =>
       val recorder = new RecordingFk[F, Render, Render]
-      val w = ref.instrument(new EitherTestAlg(eOutcome))(recorder.fk, OnRaise.noop[F, Render])
+      val w = ref.intercept(new EitherTestAlg(eOutcome))(recorder.fk, OnRaise.noop[F, Render])
       val _ = w.c(i)
 
       val weave = recorder.weaves.head.weave
@@ -660,7 +656,7 @@ for the first property (which is L3′ in embryo), and for the second:
 - `WeaveInterpreterFixtures.scala` — `plainRaiseAspectPoison`'s `weave` becomes:
 
   ```scala
-      def instrument[F[_]](af: PlainAlg[F])(
+      def intercept[F[_]](af: PlainAlg[F])(
           fk: Weave[F, Render, Render, *] ~> F,
           onRaise: OnRaise[F, Render]
       )(implicit F: Apply[F]): PlainAlg[F] =
@@ -673,7 +669,7 @@ for the first property (which is L3′ in embryo), and for the second:
   eight-line comment (the constraint it existed to satisfy is gone). Nothing
   else changes: the spec already calls
   `WeaveInterpreter[…].apply(alg)(erase, hook)`, which is now a direct call to
-  `instrument`.
+  `intercept`.
 
 - [ ] **Step 10: Run the full core suite**
 
@@ -697,7 +693,7 @@ available locally — no Node — consistent with every prior milestone.)
 
 ```bash
 git add raise-aspect-core/
-git commit -m "feat!: fuse weave and mapK into RaiseAspect#instrument
+git commit -m "feat!: fuse weave and mapK into RaiseAspect#intercept
 
 The woven Aspect.Weave is now data handed to the interpreter's fk rather than
 the algebra's effect type, so a method's Raise[F, E] is passed straight to the
@@ -842,7 +838,7 @@ import cats.~>
 /** The forgetful arrow from a woven value back to the underlying effect.
   *
   * Before M12 this object also held the pair of capability transports between
-  * `F` and the woven carrier. The fused `RaiseAspect#instrument` never puts a
+  * `F` and the woven carrier. The fused `RaiseAspect#intercept` never puts a
   * capability on the woven carrier, so there is nothing left to transport, and
   * the `Synthetic[Cod]` those transports needed is gone with them.
   */
@@ -885,7 +881,7 @@ sbt "+raiseAspectCoreJS/Test/scalaJSLinkerResult"
 git add raise-aspect-core/
 git commit -m "feat!: delete Synthetic and the weave-carrier capability transports
 
-The fused instrument never puts a Raise on the woven carrier, so raiseLift,
+The fused intercept never puts a Raise on the woven carrier, so raiseLift,
 raisePull, eraseWeave and the synthesized weave Functor have no caller and no
 reason to exist. WeaveArrows keeps codomainTarget. The unlawful-Functor finding
 those scaladocs carried now lives in the M12 milestone document."
@@ -920,7 +916,7 @@ Deletions are permitted only for the laws named here, each of which is a law
   `WeaveRenderer.scala`, `ReferenceRaiseAspectSpec.scala`
 
 **Interfaces:**
-- Consumes: Task 1's `RaiseAspect#instrument`, `RaiseAspect.observing`,
+- Consumes: Task 1's `RaiseAspect#intercept`, `RaiseAspect.observing`,
   `RecordingFk`; Task 2's `WeaveArrows.codomainTarget` and
   `CarrierArrows.resultToLazily`.
 - Produces:
@@ -988,14 +984,14 @@ package laws
 import cats.Applicative
 import cats.laws._
 
-/** Law L3′, the load-bearing one: instrumenting an algebra with the forgetful
+/** Law L3′, the load-bearing one: intercepting an algebra with the forgetful
   * interpreter and no hook recovers the original algebra, including on inputs
   * that raise.
   */
 trait RaiseAspectLaws[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorKLaws[Alg, Err] {
   implicit def F: RaiseAspect[Alg, Dom, Cod, Err]
 
-  /** L3′ — `instrument(af)(codomainTarget, OnRaise.noop) <-> af`.
+  /** L3′ — `intercept(af)(codomainTarget, OnRaise.noop) <-> af`.
     *
     * The analogue of upstream's Aspect-consistency law, and the successor to
     * M2's L3 (`mapK(weave(af))(eraseWeave) <-> af`). There is no longer a
@@ -1003,11 +999,11 @@ trait RaiseAspectLaws[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorKLa
     * carried is exactly this: at `A = Either[TestError, *]` a raise must come
     * back as the identical `Left` through the instrumented path.
     *
-    * `Applicative[A]` rather than `Functor[A]`: `instrument` needs `Apply` to
+    * `Applicative[A]` rather than `Functor[A]`: `intercept` needs `Apply` to
     * sequence the hook and `OnRaise.noop` needs `Applicative` to produce one.
     */
   def instrumentErasure[A[_]](af: Alg[A])(implicit A: Applicative[A]): IsEq[Alg[A]] =
-    F.instrument(af)(WeaveArrows.codomainTarget[A, Dom, Cod], OnRaise.noop[A, Err]) <-> af
+    F.intercept(af)(WeaveArrows.codomainTarget[A, Dom, Cod], OnRaise.noop[A, Err]) <-> af
 }
 
 object RaiseAspectLaws {
@@ -1038,7 +1034,7 @@ trait RaiseAspectTests[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorKT
     new DefaultRuleSet(
       name = "raiseAspect",
       parent = Some(raiseFunctorK[A, B, C]),
-      "instrument erasure" -> forAll((af: Alg[A]) => laws.instrumentErasure[A](af)(ApplicativeA))
+      "intercept erasure" -> forAll((af: Alg[A]) => laws.instrumentErasure[A](af)(ApplicativeA))
     )
 }
 
@@ -1070,7 +1066,7 @@ macro axes' oracles both need:
       eOutcome: Int
   ): (TestAlg[Result], RecordingFk[Result, Render, Render]) = {
     val recorder = new RecordingFk[Result, Render, Render]
-    (instance.instrument(new EitherTestAlg(eOutcome))(recorder.fk, OnRaise.noop[Result, Render]), recorder)
+    (instance.intercept(new EitherTestAlg(eOutcome))(recorder.fk, OnRaise.noop[Result, Render]), recorder)
   }
 
   /** What the interpreter saw, rendered — the fused analogue of mapping
@@ -1097,11 +1093,11 @@ come from cats-mtl's `EitherT` instances by contravariance, as
 
 - [ ] **Step 7: Transpose `PlainAlgReference`**
 
-`weave` becomes `instrument`, mechanically — this fixture has no capability
+`weave` becomes `intercept`, mechanically — this fixture has no capability
 parameters, so no `observing` call appears:
 
 ```scala
-      def instrument[F[_]](af: PlainAlg[F])(
+      def intercept[F[_]](af: PlainAlg[F])(
           fk: Aspect.Weave[F, Dom, Cod, *] ~> F,
           onRaise: OnRaise[F, Err]
       )(implicit F: Apply[F]): PlainAlg[F] =
@@ -1235,13 +1231,13 @@ method's domain": there is no synthesized instance left for it to look for, and
 L10's two tests keep their counting fixture and lose the weave indirection:
 
 ```scala
-  test("L10 instrumenting performs no effects until the result is run") {
+  test("L10 intercepting performs no effects until the result is run") {
     val counter = new java.util.concurrent.atomic.AtomicInteger(0)
     val recorder = new RecordingFk[Lazily, Render, Render]
 
-    val inst = instance.instrument(countingAlg(counter))(recorder.fk, OnRaise.noop[Lazily, Render])
+    val inst = instance.intercept(countingAlg(counter))(recorder.fk, OnRaise.noop[Lazily, Render])
     val out = inst.a(1)(raiseLazily)
-    assertEquals(counter.get(), 0, "instrumenting must not run the underlying effect")
+    assertEquals(counter.get(), 0, "intercepting must not run the underlying effect")
 
     val _ = out.value.value
     assertEquals(counter.get(), 1, "running the instrumented result must run the effect exactly once")
@@ -1265,7 +1261,7 @@ upstream's still returns a woven algebra:
 ```scala
   private def ourWeaves(inputs: List[Int]): List[Aspect.Weave[Result, Render, Render, String]] = {
     val recorder = new RecordingFk[Result, Render, Render]
-    val instrumented = ours.instrument(impl)(recorder.fk, OnRaise.noop[Result, Render])
+    val instrumented = ours.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
     inputs.foreach(i => { val _ = instrumented.p(i) })
     recorder.weaves.map(_.weave.asInstanceOf[Aspect.Weave[Result, Render, Render, String]])
   }
@@ -1277,7 +1273,7 @@ and compare `RenderedWeave`s, which is what both tests actually assert on:
 ```scala
   private def ourRendered(inputs: List[Int]): List[RenderedWeave] = {
     val recorder = new RecordingFk[Result, Render, Render]
-    val instrumented = ours.instrument(impl)(recorder.fk, OnRaise.noop[Result, Render])
+    val instrumented = ours.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
     inputs.foreach(i => { val _ = instrumented.p(i) })
     recorder.weaves.map(r => WeaveRenderer.render(r.weave))
   }
@@ -1291,7 +1287,7 @@ and compare `RenderedWeave`s, which is what both tests actually assert on:
 
   test("L9 our instrumented results match upstream's woven codomain targets") {
     val recorder = new RecordingFk[Result, Render, Render]
-    val instrumented = ours.instrument(impl)(recorder.fk, OnRaise.noop[Result, Render])
+    val instrumented = ours.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
     val theirWoven = upstream.weave(impl)
 
     exhaustiveInt.allValues.foreach { i =>
@@ -1325,7 +1321,7 @@ sbt "+raiseAspectLawsJS/Test/scalaJSLinkerResult"
 git add raise-aspect-laws/
 git commit -m "feat!: L3 becomes L3', and the synthesized-functor laws go with the functor
 
-instrument(af)(codomainTarget, noop) <-> af replaces mapK(weave(af))(eraseWeave)
+intercept(af)(codomainTarget, noop) <-> af replaces mapK(weave(af))(eraseWeave)
 <-> af; L5 and L6a-d are deleted because the functions they are laws about no
 longer exist, and L7 becomes an eq assertion on the caller's own Functor. L8 and
 L9 now observe what a recording interpreter receives, which additionally pins
@@ -1362,7 +1358,7 @@ than re-deriving it.
 **Interfaces:**
 - Consumes: Tasks 1–3.
 - Produces: `DeriveRaise.aspect[Alg[_[_]], Dom[_], Cod[_], Err[_]]: RaiseAspect[Alg, Dom, Cod, Err]`
-  emitting **both** `instrument` and `mapK` from one derivation;
+  emitting **both** `intercept` and `mapK` from one derivation;
   `DeriveRaise.functorK[Alg[_[_]], Err[_]]` unchanged.
 - Removes: `DeriveRaiseMacros.raiseWeave`, `substituteCapabilities`,
   `Method#transformedParamLists`.
@@ -1378,7 +1374,7 @@ class CrossVersionAgreementSpec extends FunSuite {
   test("the Scala 2 derivation matches the shared expected weave renderings") {
     val derived = DeriveRaise.aspect[TestAlg, Render, Render, Render]
     val recorder = new RecordingFk[Result, Render, Render]
-    val instrumented = derived.instrument(new EitherTestAlg(0))(recorder.fk, OnRaise.noop[Result, Render])
+    val instrumented = derived.intercept(new EitherTestAlg(0))(recorder.fk, OnRaise.noop[Result, Render])
 
     assertEquals(ExpectedWeaves.rendered(instrumented, recorder), ExpectedWeaves.expected)
   }
@@ -1416,7 +1412,7 @@ and change `ExpectedWeaves.rendered` — and nothing else in that file — to:
 sbt "++2.13.18 raiseAspectMacrosJVM/test"
 ```
 
-Expected: compile failure — `value instrument is not a member of RaiseAspect`
+Expected: compile failure — `value intercept is not a member of RaiseAspect`
 is what the derived instance produces today, because the macro still generates
 `weave`.
 
@@ -1426,9 +1422,9 @@ In `DeriveRaiseMacros.scala`, delete `raiseWeave` (`:441-494`) and
 `substituteCapabilities` (`:431-439`) and put in their place:
 
 ```scala
-  // def instrument[F[_]](af: Alg[F])(fk: Aspect.Weave[F, Dom, Cod, *] ~> F, onRaise: OnRaise[F, Err])
+  // def intercept[F[_]](af: Alg[F])(fk: Aspect.Weave[F, Dom, Cod, *] ~> F, onRaise: OnRaise[F, Err])
   //                     (implicit F: Apply[F]): Alg[F]
-  def raiseInstrument(Dom: Type, Cod: Type, Err: Type)(algebra: Type): MethodDef = MethodDef("instrument") {
+  def raiseInstrument(Dom: Type, Cod: Type, Err: Type)(algebra: Type): MethodDef = MethodDef("intercept") {
     case PolyType(List(f), MethodType(List(af), MethodType(List(fk, onRaise), MethodType(List(applyF), _)))) =>
       val F = f.asType.toTypeConstructor
       val Af = singleType(NoPrefix, af)
@@ -1512,7 +1508,7 @@ Expected after the deletion: no output.
 - [ ] **Step 5: Update the Scala 2 macro tests**
 
 Mechanical, and the same transformation everywhere: `derived.weave(impl)(Functor[Result])`
-plus inspection of the returned weave becomes `derived.instrument(impl)(recorder.fk, hook)`
+plus inspection of the returned weave becomes `derived.intercept(impl)(recorder.fk, hook)`
 plus inspection of `recorder.weaves`.
 
 - `DifferentialOracleSpec.scala` — see Task 6 for the audit; here, get it
@@ -1546,20 +1542,20 @@ plus inspection of `recorder.weaves`.
   ```
 
   The two `mapK` tests are **unchanged**; the "erasure arrow" test becomes an
-  `instrument`-with-`codomainTarget` comparison:
+  `intercept`-with-`codomainTarget` comparison:
 
   ```scala
-  test("the derived instrument agrees with the reference under the forgetful interpreter") {
+  test("the derived intercept agrees with the reference under the forgetful interpreter") {
     val eqAlg = eqTestAlg[Result]
     val erase = WeaveArrows.codomainTarget[Result, Render, Render]
     outcomes.foreach { outcome =>
       val impl = new EitherTestAlg(outcome)
       assert(
         eqAlg.eqv(
-          derived.instrument(impl)(erase, OnRaise.noop[Result, Render]),
-          reference.instrument(impl)(erase, OnRaise.noop[Result, Render])
+          derived.intercept(impl)(erase, OnRaise.noop[Result, Render]),
+          reference.intercept(impl)(erase, OnRaise.noop[Result, Render])
         ),
-        s"instrument under the forgetful interpreter differs for eOutcome $outcome"
+        s"intercept under the forgetful interpreter differs for eOutcome $outcome"
       )
     }
   }
@@ -1619,7 +1615,7 @@ That was demonstrated by the spike; this step is the check.
 ```bash
 git add raise-aspect-macros/src/main/scala-2/ raise-aspect-macros/src/test/scala-2/ \
         raise-aspect-macros/src/test/scala/
-git commit -m "feat!: generate the fused instrument in the Scala 2 derivation
+git commit -m "feat!: generate the fused intercept in the Scala 2 derivation
 
 raiseWeave becomes raiseInstrument: the generated method keeps the algebra's own
 parameter lists and return type and simply hands its weave to fk, so
@@ -1676,7 +1672,7 @@ where the file already uses them).
 sbt "++3.3.8 raiseAspectMacrosJVM/test"
 ```
 
-Expected: compile failure — the derived instance has `weave`, not `instrument`.
+Expected: compile failure — the derived instance has `weave`, not `intercept`.
 
 - [ ] **Step 3: Change the Scala 3 entry point**
 
@@ -1684,7 +1680,7 @@ Expected: compile failure — the derived instance has `weave`, not `instrument`
   def aspect[Alg[_[_]]: Type, Dom[_]: Type, Cod[_]: Type, Err[_]: Type](using Quotes)
       : Expr[RaiseAspect[Alg, Dom, Cod, Err]] = '{
     new RaiseAspect[Alg, Dom, Cod, Err]:
-      def instrument[F[_]](af: Alg[F])(
+      def intercept[F[_]](af: Alg[F])(
           fk: FunctionK[[X] =>> Aspect.Weave[F, Dom, Cod, X], F],
           onRaise: OnRaise[F, Err]
       )(implicit F: Apply[F]): Alg[F] =
@@ -1791,7 +1787,7 @@ a parameter position, which stays because the shared derivation still emits
 The same mechanical transposition as Task 4 Step 5, adjusted for `using`
 syntax and `@experimental`, plus:
 
-- `UsingAlgSpec` — after instrumenting, assert that a raise through `R1` and a
+- `UsingAlgSpec` — after intercepting, assert that a raise through `R1` and a
   raise through `R2` each reach the hook rendered through *their own* `Err`
   instance (`errA:` / `errB:` prefixes). This is newly observable: before M12
   the two capabilities were transported and the evidence was invisible from the
@@ -1823,11 +1819,11 @@ axis reproducing `ExpectedWeaves.expected`.
 
 ```bash
 git add raise-aspect-macros/src/main/scala-3/ raise-aspect-macros/src/test/scala-3/
-git commit -m "feat!: generate the fused instrument in the Scala 3 derivation
+git commit -m "feat!: generate the fused intercept in the Scala 3 derivation
 
 deriveWeave becomes deriveInstrument: the carrier is TypeRepr.of[F] rather than
 the woven type lambda, the args handler decorates the caller's Raise in place,
-and the body handler hands its weave to fk. One derivation emits instrument and
+and the body handler hands its weave to fk. One derivation emits intercept and
 mapK; every rejection diagnostic is unchanged."
 ```
 
@@ -2021,7 +2017,7 @@ git rm natchez-tagless-mtl/src/test/scala/com/dwolla/tracing/mtl/SyntheticTracea
 In `AspectPriorityFixtures.scala`, `fooRaiseAspectPoison`'s `weave` becomes:
 
 ```scala
-      def instrument[F[_]](af: Foo[F])(
+      def intercept[F[_]](af: Foo[F])(
           fk: Weave[F, TraceableValue, TraceableValue, *] ~> F,
           onRaise: OnRaise[F, TraceableValue]
       )(implicit F: Apply[F]): Foo[F] =
@@ -2068,7 +2064,7 @@ stale snippet there fails the previous step rather than this one.
 git add natchez-tagless-mtl/
 git commit -m "feat!: drop Synthetic[TraceableValue] from the tracing syntax
 
-The fused instrument never needs a Cod instance for a value that does not
+The fused intercept never needs a Cod instance for a value that does not
 exist, so the sentinel instance and the caveat explaining why it had to be a
 constant both go. traceWithInputs and traceWithInputsAndOutputs keep their exact
 signatures and the integration suites keep their exact span histories."
@@ -2097,7 +2093,7 @@ and date the note, exactly as M10 did:
 
 ```markdown
 > **Amended 2026-07-31 by M12.** `RaiseAspect`'s two operations are fused into
-> one: `instrument[F](af)(fk, onRaise)(implicit F: Apply[F]): Alg[F]`.
+> one: `intercept[F](af)(fk, onRaise)(implicit F: Apply[F]): Alg[F]`.
 > `Aspect.Weave` is no longer an effect type — it is data handed to `fk` — so
 > no method receives a `Raise[Weave[F, Dom, Cod, *], E]`, nothing synthesizes a
 > `Functor` for the woven carrier, and `Synthetic` is deleted. `RaiseFunctorK`,
@@ -2199,7 +2195,7 @@ git commit -m "docs: record the fused derivation and where the Functor finding n
 
 ## Acceptance criteria
 
-- [ ] `RaiseAspect` has exactly one weaving operation, `instrument`; `weave`
+- [ ] `RaiseAspect` has exactly one weaving operation, `intercept`; `weave`
       does not exist anywhere in the tree.
 - [ ] `Synthetic` does not exist; `WeaveArrows` contains `codomainTarget` and
       nothing else; `substituteCapabilities` and `transformedParamLists` are

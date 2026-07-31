@@ -1,4 +1,4 @@
-# Milestone M12 — fused derivation: one carrier-preserving `instrument`
+# Milestone M12 — fused derivation: one carrier-preserving `intercept`
 
 ## Status
 
@@ -157,7 +157,7 @@ is the very next `mapK`. M12 makes that composition the primitive:
 
 ```scala
 trait RaiseAspect[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorK[Alg, Err] {
-  def instrument[F[_]](af: Alg[F])(
+  def intercept[F[_]](af: Alg[F])(
       fk: Aspect.Weave[F, Dom, Cod, *] ~> F,
       onRaise: OnRaise[F, Err]
   )(implicit F: Apply[F]): Alg[F]
@@ -201,13 +201,13 @@ change at all.
 ## Decisions (proposed — ratify before starting, then final)
 
 **D1 — Keep the type name `RaiseAspect` and the entry point
-`DeriveRaise.aspect`; the *method* becomes `instrument`; the decorator lives at
+`DeriveRaise.aspect`; the *method* becomes `intercept`; the decorator lives at
 `RaiseAspect.observing`.**
 
 The macro spike wrote its validated code as a new `RaiseInstrument` type with a
-`DeriveRaise.instrument` entry point, because it had to coexist with the real
+`DeriveRaise.intercept` entry point, because it had to coexist with the real
 `RaiseAspect` in the same tree. Its own component-fates table recommends the
-opposite for the milestone: "`RaiseAspect`: `weave` replaced by `instrument`;
+opposite for the milestone: "`RaiseAspect`: `weave` replaced by `intercept`;
 keeps `extends RaiseFunctorK`. Same file, same name." Keeping the name is the
 smaller diff by a wide margin — `WeaveInterpreter.fromRaiseAspect`,
 `RaiseAspectLaws`, `RaiseAspectTests`, `RaiseAspectSuite`,
@@ -218,17 +218,19 @@ so `DerivationErrorSpec` needs no edit on either axis. Renaming is a cheap
 reversal if Brian prefers `RaiseInstrument`; the plan quotes the spike's code
 with exactly two identifiers substituted, and says so at each site.
 
-The earlier spike flagged that `instrument` collides conceptually with
-`cats.tagless.aop.Instrument#instrument`, which returns `Alg[Instrumentation[F, *]]`
-— a different thing — and suggested `weaveWith`/`intercept`/`interpret`. The
-method name `instrument` is what compiled and passed on all three Scala
-versions, the collision is nominal rather than structural (there is no
-`Instrument` instance anywhere in this repo and no import can make the two
-ambiguous), and `RaiseAspect#instrument`'s scaladoc will name the difference.
-Flagged so the ratification is informed, not to reopen it.
+**The method is named `intercept`, ruled by Brian on 2026-07-31.** The spike's
+sources called it `intercept`, which collided conceptually with
+`cats.tagless.aop.Instrument#intercept` — a different operation, returning
+`Alg[Instrumentation[F, *]]`. That collision was nominal rather than
+structural, since no `Instrument` instance exists in this repo, but M9 may
+one day upstream this work into cats-tagless itself, where both names would
+live in one library. `intercept` was among the alternatives the spike raised
+and it removes the problem rather than documenting it. No scaladoc anywhere
+should explain how this method differs from `Instrument#intercept`; with the
+new name there is nothing to distinguish.
 
 **D2 — Keep the hierarchy: `RaiseAspect extends RaiseFunctorK`, one derivation
-emits both `instrument` and `mapK`.**
+emits both `intercept` and `mapK`.**
 
 This is the higher-risk of the two shapes and it was chosen for the spike
 *because* it was the higher-risk one — if `instantiate`/`newClassOf` could only
@@ -303,14 +305,14 @@ production code in it.
 
 | Component | Fate |
 | --- | --- |
-| `RaiseAspect` | `weave` replaced by `instrument`; keeps `extends RaiseFunctorK`. Same file, same name (D1). Gains a companion holding `observing`. |
+| `RaiseAspect` | `weave` replaced by `intercept`; keeps `extends RaiseFunctorK`. Same file, same name (D1). Gains a companion holding `observing`. |
 | `RaiseFunctorK` | **untouched.** |
 | `RaiseArrow` | **untouched.** Still what `mapK` travels along. |
 | `RaisePull` | **untouched.** Still `RaiseArrow`'s backward half. |
 | `OnRaise` | **untouched.** |
 | `WeaveArrows` | reduced to `codomainTarget`. `raisePull`, both `raiseLift` overloads, `eraseWeave` and the private `syntheticWeaveFunctor` delete; the file goes from 134 lines to ~25. |
 | `Synthetic` | **deleted outright**, along with the defect that motivated it. |
-| `WeaveInterpreter` | **shape unchanged** — its `apply` is already `instrument`'s signature. `fromAspect` unchanged. `fromRaiseAspect` becomes a one-liner and drops its `implicit syn: Synthetic[Cod]`. The low/high-priority resolution mechanism survives whole. |
+| `WeaveInterpreter` | **shape unchanged** — its `apply` is already `intercept`'s signature. `fromAspect` unchanged. `fromRaiseAspect` becomes a one-liner and drops its `implicit syn: Synthetic[Cod]`. The low/high-priority resolution mechanism survives whole. |
 | `WeaveKnot` (in `core`) | untouched — already fused-shaped (`Alg[F] => Alg[F]`). |
 | natchez syntax | `traceWithInputs`/`traceWithInputsAndOutputs` signatures **unchanged**. `syntheticTraceableValue` and its 30-line caveat delete. `RaiseRecorder` untouched. |
 | Scala 2 macro | `raiseWeave` → `raiseInstrument`; `substituteCapabilities` and `Method#transformedParamLists` become provably dead and delete. |
@@ -326,13 +328,13 @@ composition), L4 (arrow coherence, on the retained `RaiseArrow`), L9
 **Change:**
 
 - **L3 → L3′.** `mapK(weave(af))(eraseWeave) <-> af` becomes
-  `instrument(af)(codomainTarget, OnRaise.noop) <-> af`. Demonstrated passing
+  `intercept(af)(codomainTarget, OnRaise.noop) <-> af`. Demonstrated passing
   against both derived instances on all three Scala versions. L3′ is weaker in
   one sense — there is no second operation for the first to be inverse to — but
   the content L3 actually carried (a raise comes back as the identical value
   through the woven path) is exactly what L3′ states. Its effect constraint
   strengthens from `Functor[A]` to `Applicative[A]`, because `OnRaise.noop`
-  needs `Applicative` and `instrument` needs `Apply`.
+  needs `Applicative` and `intercept` needs `Apply`.
 - **L8 re-anchors** from inspecting `Alg[Weave[…]]` values to inspecting what a
   recording `fk` receives. Strictly stronger: it additionally pins the *order*
   in which weaves reach the interpreter, which value inspection cannot see.
@@ -446,7 +448,7 @@ and JS `Test/compile`, with the full existing suite passing alongside:
   and renders through `Err[E]` (proved by a prefixed rendering, not `toString`).
   Two different error types on one method resolve two different instances.
 - `ExpectedWeaves.expected` reproduces **byte for byte**.
-- One derivation emits both `instrument` and `mapK` on both axes.
+- One derivation emits both `intercept` and `mapK` on both axes.
 - `substituteCapabilities` and `Method#transformedParamLists` become unused —
   the fused generator calls `method.copy(body = …)` and nothing else, and
   `transformedParamLists` has no other caller.
@@ -467,7 +469,7 @@ in the plan, not an assumption:
 
 - `WeaveInterpreter.fromRaiseAspect`'s five-line rewrite and its dropped
   `Synthetic[Cod]` parameter. Strongly supported: `WeaveInterpreter#apply`'s
-  signature is *already* `instrument`'s, and the natchez spike called the same
+  signature is *already* `intercept`'s, and the natchez spike called the same
   `fk`/`onRaise` pair by hand.
 - The `ToRaiseTraceWeaveOps` deletion, and that `RaiseTraceWeaveOps`' public
   signatures are unaffected.
@@ -481,7 +483,7 @@ in the plan, not an assumption:
 
 ## Acceptance criteria
 
-- [ ] `RaiseAspect` has exactly one weaving operation, `instrument`, with the
+- [ ] `RaiseAspect` has exactly one weaving operation, `intercept`, with the
       signature above; `weave` does not exist anywhere in the tree.
 - [ ] `Synthetic` does not exist; `WeaveArrows` contains `codomainTarget` and
       nothing else; `substituteCapabilities` and `transformedParamLists` are
