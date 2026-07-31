@@ -2,13 +2,13 @@ package com.dwolla.tagless.mtl
 package laws
 package discipline
 
-import cats.{Eq, Functor}
+import cats.{Applicative, Eq}
 import cats.laws.discipline._
 import org.scalacheck.Arbitrary
 import org.scalacheck.Prop._
 
-/** Discipline `RuleSet` for law L3, extending the `RaiseFunctorK` rule set with
-  * the weave-erasure law.
+/** Discipline `RuleSet` for law L3′, extending the `RaiseFunctorK` rule set with
+  * the intercept-erasure law.
   */
 trait RaiseAspectTests[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorKTests[Alg, Err] {
   def laws: RaiseAspectLaws[Alg, Dom, Cod, Err]
@@ -19,19 +19,18 @@ trait RaiseAspectTests[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorKT
       ArbArrowBC: Arbitrary[RaiseArrow[B, C, Err]],
       EqAlgA: Eq[Alg[A]],
       EqAlgC: Eq[Alg[C]],
-      FunctorA: Functor[A]
+      ApplicativeA: Applicative[A]
   ): RuleSet =
     new DefaultRuleSet(
       name = "raiseAspect",
       parent = Some(raiseFunctorK[A, B, C]),
-      "weave erasure" -> forAll((af: Alg[A]) => laws.weaveErasure[A](af)(FunctorA))
+      "intercept erasure" -> forAll((af: Alg[A]) => laws.instrumentErasure[A](af)(ApplicativeA))
     )
 }
 
 object RaiseAspectTests {
   def apply[Alg[_[_]], Dom[_], Cod[_], Err[_]](implicit
-      ev: RaiseAspect[Alg, Dom, Cod, Err],
-      syn: Synthetic[Cod]
+      ev: RaiseAspect[Alg, Dom, Cod, Err]
   ): RaiseAspectTests[Alg, Dom, Cod, Err] =
     new RaiseAspectTests[Alg, Dom, Cod, Err] { val laws = RaiseAspectLaws[Alg, Dom, Cod, Err] }
 }

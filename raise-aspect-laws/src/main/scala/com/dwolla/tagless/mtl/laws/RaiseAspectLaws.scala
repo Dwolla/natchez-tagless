@@ -1,34 +1,34 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.Functor
+import cats.Applicative
 import cats.laws._
 
-/** Law L3, the load-bearing one: weaving an algebra and then erasing the weave
-  * recovers the original algebra, including on inputs that raise.
+/** Law L3′, the load-bearing one: intercepting an algebra with the forgetful
+  * interpreter and no hook recovers the original algebra, including on inputs
+  * that raise.
   */
 trait RaiseAspectLaws[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorKLaws[Alg, Err] {
   implicit def F: RaiseAspect[Alg, Dom, Cod, Err]
-  implicit def synthetic: Synthetic[Cod]
 
-  /** L3 — `mapK(weave(af))(eraseWeave) <-> af`.
+  /** L3′ — `intercept(af)(codomainTarget, OnRaise.noop) <-> af`.
     *
-    * This is the analogue of upstream's Aspect-consistency law. At
-    * `A = Either[TestError, *]` a raise must come back as the identical `Left`
-    * through the woven path, which is what makes the synthesized `Cod` instance
-    * inside the raise shell safe.
+    * The analogue of upstream's Aspect-consistency law, and the successor to
+    * M2's L3 (`mapK(weave(af))(eraseWeave) <-> af`). There is no longer a
+    * second operation for the first to be inverse to, but the content L3
+    * carried is exactly this: at `A = Either[TestError, *]` a raise must come
+    * back as the identical `Left` through the instrumented path.
+    *
+    * `Applicative[A]` rather than `Functor[A]`: `intercept` needs `Apply` to
+    * sequence the hook and `OnRaise.noop` needs `Applicative` to produce one.
     */
-  def weaveErasure[A[_]](af: Alg[A])(implicit A: Functor[A]): IsEq[Alg[A]] =
-    F.mapK(F.weave(af))(WeaveArrows.eraseWeave[A, Dom, Cod, Err]) <-> af
+  def instrumentErasure[A[_]](af: Alg[A])(implicit A: Applicative[A]): IsEq[Alg[A]] =
+    F.intercept(af)(WeaveArrows.codomainTarget[A, Dom, Cod], OnRaise.noop[A, Err]) <-> af
 }
 
 object RaiseAspectLaws {
   def apply[Alg[_[_]], Dom[_], Cod[_], Err[_]](implicit
-      ev: RaiseAspect[Alg, Dom, Cod, Err],
-      syn: Synthetic[Cod]
+      ev: RaiseAspect[Alg, Dom, Cod, Err]
   ): RaiseAspectLaws[Alg, Dom, Cod, Err] =
-    new RaiseAspectLaws[Alg, Dom, Cod, Err] {
-      val F = ev
-      val synthetic = syn
-    }
+    new RaiseAspectLaws[Alg, Dom, Cod, Err] { val F = ev }
 }

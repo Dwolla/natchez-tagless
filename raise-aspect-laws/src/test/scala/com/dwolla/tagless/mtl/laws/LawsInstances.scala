@@ -5,19 +5,17 @@ import cats.Eq
 import cats.data.EitherT
 import cats.laws.discipline.ExhaustiveCheck
 import cats.mtl.Raise
-import cats.syntax.all._
-import cats.tagless.aop.Aspect
 import cats.Eval
+import org.scalacheck.{Arbitrary, Gen}
 
 /** Shared `Eq`, `ExhaustiveCheck` and rendering instances for the law suites. */
 object LawsInstances {
 
   type Result[A] = Either[TestError, A]
-  type Woven[A] = Aspect.Weave[Result, Render, Render, A]
   type Lazily[A] = EitherT[Eval, TestError, A]
 
   /** Small exhaustive domains. Both include values that make the fixture raise
-    * — negatives for `a`/`d`, the empty string for `b` — so L3/L4/L5 exercise
+    * — negatives for `a`/`d`, the empty string for `b` — so L3′ and L4 exercise
     * the error path rather than only the happy one.
     */
   implicit val exhaustiveInt: ExhaustiveCheck[Int] =
@@ -32,15 +30,6 @@ object LawsInstances {
       def render[A](instance: Render[A])(a: A): String = instance.render(a)
     }
 
-  /** The synthesized `Cod` used inside raise shells. Its output is deliberately
-    * distinctive: if it ever leaks into an observable position, laws that
-    * compare rendered weaves will say so loudly.
-    */
-  implicit val syntheticRender: Synthetic[Render] =
-    new Synthetic[Render] {
-      def apply[A]: Render[A] = (_: A) => "<synthetic>"
-    }
-
   /** The error hierarchy is all case classes, so structural equality is right. */
   implicit val eqTestError: Eq[TestError] = Eq.fromUniversalEquals
 
@@ -53,33 +42,41 @@ object LawsInstances {
     *
     * Adding `implicit` would also be a trap: the summon on the right would then
     * resolve to the val being defined and initialize it to `null`, surfacing
-    * much later as an NPE inside `raiseLift`.
+    * much later as an NPE at the first `raise`.
     */
   val raiseResult: Raise[Result, TestError] = Raise[Result, TestError]
 
-  /** This one, unlike [[raiseResult]], does have to be `implicit`. cats-mtl knows
-    * nothing about the woven carrier, so [[WeaveArrows.raiseLift]] is the only
-    * source of a `Raise[Woven, _]` — and the place that needs one is
-    * [[eqTestAlg]] at `F = Woven`, summoned implicitly by the rule set builders
-    * as their `Eq[Alg[A]]`, with no call site at which to pass it.
+  /** The non-identity `RaiseArrow` L1/L2 are exercised over.
     *
-    * It escapes the `null` trap because the right-hand side names its dependency
-    * rather than summoning a `Raise[Woven, TestError]`.
+    * Until M12 that role belonged to `WeaveArrows.eraseWeave`, whose source
+    * carrier was the woven one; fusion deletes both the arrow and the carrier.
+    * [[CarrierArrows.resultToLazily]] is a genuine change of effect —
+    * `Either[TestError, *]` to `EitherT[Eval, TestError, *]` — with a real
+    * capability transport in the opposite direction, so `mapK` stays tested at
+    * something other than the identity.
     */
-  implicit val raiseWoven: Raise[Woven, TestError] =
-    WeaveArrows.raiseLift[Result, Render, Render, Render].apply(raiseResult)
+  implicit val arbResultToLazily: Arbitrary[RaiseArrow[Result, Lazily, Render]] =
+    Arbitrary(Gen.const(CarrierArrows.resultToLazily))
 
-  /** Structural `Eq` for a woven value.
-    *
-    * `Aspect.Advice` defines no `equals`, so `==` on `Weave` compares by
-    * reference and would make every law that touches a weave pass or fail for
-    * the wrong reason. Compare the rendered structure plus the codomain target.
+  /** Intercept the algebra under test with a recording interpreter. The pair
+    * is the fused replacement for `weave` — the algebra behaves as though it
+    * had been woven and immediately erased, and the recorder holds the
+    * structure that used to be inspectable on the returned value.
     */
-  implicit def eqWoven[A](implicit ev: Eq[Result[A]]): Eq[Woven[A]] =
-    Eq.instance { (x, y) =>
-      WeaveRenderer.render(x) === WeaveRenderer.render(y) &&
-      ev.eqv(x.codomain.target, y.codomain.target)
-    }
+  def instrumented(
+      instance: RaiseAspect[TestAlg, Render, Render, Render],
+      eOutcome: Int
+  ): (TestAlg[Result], RecordingFk[Result, Render, Render]) = {
+    val recorder = new RecordingFk[Result, Render, Render]
+    (instance.intercept(new EitherTestAlg(eOutcome))(recorder.fk, OnRaise.noop[Result, Render]), recorder)
+  }
+
+  /** What the interpreter saw, rendered — the fused analogue of mapping
+    * `WeaveRenderer.render` over a list of returned weaves, and stricter,
+    * because the list is in arrival order.
+    */
+  def renderedWeaves(recorder: RecordingFk[Result, Render, Render]): List[RenderedWeave] =
+    recorder.weaves.map(r => WeaveRenderer.render(r.weave))
 
   /** `Eq` for the fixture algebra by sampling: two algebras are equal when
     * every method agrees on every input drawn from the exhaustive domains.
