@@ -33,8 +33,12 @@ numbering used throughout.
   verification runs under `+` unless a step says otherwise.
 - **No new dependencies** in any module. `raise-aspect-core` must not gain a
   natchez dependency.
-- **Zero new compiler warnings.** The build runs `-Xfatal-warnings`. Use the
-  repo's existing `val _ = …` idiom for discarded non-`Unit` statements.
+- **Zero new compiler warnings** — verify locally with `-Xfatal-warnings`.
+  **CI does not enforce this**: `sbt-typelevel-settings` defaults
+  `tlFatalWarnings` to `false` and nothing in this repo overrides it
+  (corrected 2026-07-31; see `22-milestone-M12-fused-derivation.md`'s Status
+  section). Use the repo's existing `val _ = …` idiom for discarded
+  non-`Unit` statements.
 - **No compatibility shims, deprecated overloads, or dual code paths** —
   decision D5, following M10's D7. Every type here is unpublished
   (`mimaPreviousArtifacts := Set.empty` on all four modules). The

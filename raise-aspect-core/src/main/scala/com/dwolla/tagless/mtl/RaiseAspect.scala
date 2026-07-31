@@ -31,9 +31,10 @@ trait RaiseFunctorK[Alg[_[_]], Err[_]] extends Serializable {
   * including several `Raise` parameters on one method.
   *
   * `Err` is not an `E` parameter. It is a per-error-type ''evidence'' type
-  * class — `RaisePull#apply` still quantifies over `E` itself and merely
-  * demands an `Err[E]` at each application — so transport stays uniform while
-  * an interception point gains something better than `toString` to render a
+  * class demanded afresh at each application: `intercept`'s evidence arrives
+  * at `RaiseAspect.observing`'s `ev: Err[E]` parameter, and `mapK`'s at
+  * `RaisePull#apply`'s. Either way transport stays uniform in `E` while an
+  * interception point gains something better than `toString` to render a
   * raised error with. Use `cats.tagless.Trivial` for `Err` when no evidence is
   * wanted.
   */

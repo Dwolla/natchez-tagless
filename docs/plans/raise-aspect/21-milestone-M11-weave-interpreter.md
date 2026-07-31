@@ -28,7 +28,10 @@ Read `03-evidence-carrying-transport-design.md` Part B first.
 - No new dependencies. **`raise-aspect-core` must not gain a natchez
   dependency** — that is the whole point of this milestone, and the Task 3
   check enforces it mechanically.
-- Zero new compiler warnings; the build runs `-Xfatal-warnings`.
+- Zero new compiler warnings — verify locally with `-Xfatal-warnings`. **CI does
+  not enforce this**: `sbt-typelevel-settings` defaults `tlFatalWarnings` to
+  `false` and nothing in this repo overrides it (corrected 2026-07-31; see
+  `22-milestone-M12-fused-derivation.md`'s Status section).
 - No compatibility shims (design decision D7). The old typeclasses are
   deleted, not deprecated.
 - The two syntax methods keep the exact signatures `core`'s

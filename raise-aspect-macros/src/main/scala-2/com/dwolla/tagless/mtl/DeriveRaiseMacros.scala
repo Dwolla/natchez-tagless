@@ -21,10 +21,10 @@
  *
  * MODIFICATIONS: the reification and code-generation machinery below is taken
  * from upstream's `DeriveMacros`, reduced to what the `RaiseAspect` derivation
- * needs. The `weave` and `mapK` generators are rewritten to transport
- * `cats.mtl.Raise` capability parameters instead of rejecting every method whose
- * signature mentions the effect type. See docs/plans/raise-aspect/ for the
- * expansion specification.
+ * needs. `raiseInstrument` (the fused `intercept` generator) and `raiseMapK`
+ * transport `cats.mtl.Raise` capability parameters instead of rejecting every
+ * method whose signature mentions the effect type. See docs/plans/raise-aspect/
+ * for the expansion specification.
  */
 
 package com.dwolla.tagless.mtl

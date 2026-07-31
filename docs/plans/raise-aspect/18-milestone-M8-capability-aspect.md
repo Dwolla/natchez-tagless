@@ -180,6 +180,22 @@ lexically inside that package.
    same overview-then-milestones structure that governed M0–M5, applied
    recursively: Phase 1's deliverable is the next `01-overview`-style doc.
 
+### M12 changes what a resumed M8 would be deciding (2026-07-31)
+
+The fused derivation means no capability is transported into a method, so the
+producing-vs-consuming classification no longer governs which capabilities may
+appear as method parameters — `Handle`, `Local`, `Listen`, `Censor` and
+`Stateful` were all demonstrated working, requiring only `Apply[F]`. The
+classification still governs `mapK`, which keeps real transport, so §1.1's
+research does not expire; it relocates.
+
+M12 deliberately kept `Raise`-only recognition and every rejection diagnostic.
+Admitting more is still this milestone's decision and it is still paused. Two
+hazards recorded in the fused-derivation spike would need answering first:
+decorating a `Handle` with `RaiseAspect.observing` silently downcasts it to
+`Raise` and drops `handleWith`, and the hook would fire for raises that never
+escape.
+
 ---
 
 Read `01-overview-design-and-laws.md` first.

@@ -149,6 +149,14 @@ modules/
 > `03-evidence-carrying-transport-design.md` §B.2 for the discovery and the
 > fix.
 
+> **Amended 2026-07-31 by M12.** `RaiseAspect`'s two operations are fused into
+> one: `intercept[F](af)(fk, onRaise)(implicit F: Apply[F]): Alg[F]`.
+> `Aspect.Weave` is no longer an effect type — it is data handed to `fk` — so
+> no method receives a `Raise[Weave[F, Dom, Cod, *], E]`, nothing synthesizes a
+> `Functor` for the woven carrier, and `Synthetic` is deleted. `RaiseFunctorK`,
+> `RaiseArrow` and `RaisePull` are unchanged; `mapK` still does real transport.
+> See `22-milestone-M12-fused-derivation.md`.
+
 ### 3.2 Core types
 
 Algebras with method-level `Raise` parameters are functorial over a category
@@ -183,7 +191,10 @@ trait RaiseFunctorK[Alg[_[_]], Err[_]] extends Serializable {
 }
 
 trait RaiseAspect[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorK[Alg, Err] {
-  def weave[F[_]](af: Alg[F])(implicit F: Functor[F]): Alg[Aspect.Weave[F, Dom, Cod, *]]
+  def intercept[F[_]](af: Alg[F])(
+      fk: Aspect.Weave[F, Dom, Cod, *] ~> F,
+      onRaise: OnRaise[F, Err]
+  )(implicit F: Apply[F]): Alg[F]
 }
 ```
 
@@ -191,28 +202,28 @@ There is deliberately **no `E` parameter on the typeclass**: transport is
 uniform in the error type, so each method is handled with whatever error
 type(s) it declares, including multiple `Raise` parameters per method.
 `Err[_]` is not that `E` parameter — it is a per-error-type *evidence* type
-class that `RaisePull#apply` demands afresh at each application, so transport
-stays uniform in `E` while an interception point gains something better than
+class that both `intercept` (at `RaiseAspect.observing`'s `ev: Err[E]`) and
+`RaisePull#apply` demand afresh at each application, so transport stays
+uniform in `E` while an interception point gains something better than
 `toString` to render a raised error with; `cats.tagless.Trivial` is the `Err`
 to use when no evidence is wanted. `Aspect.Weave`/`Aspect.Advice` are reused
 from cats-tagless so natchez-tagless's existing `Weave ~> F` interpreters
-work unchanged. `weave` is not expressible via `mapK` (it injects per-call
-metadata and needs `Dom`/`Cod` instances); both are derived.
+work unchanged. `intercept` is not expressible via `mapK`: it injects
+per-call metadata that needs `Dom`/`Cod` instances, and it hands the woven
+`Weave` to `fk` while decorating each capability parameter with
+`RaiseAspect.observing`, at the same carrier, rather than transporting it
+anywhere; both are derived.
 
-### 3.3 Canonical arrows and synthetic instances
+### 3.3 Canonical arrows
+
+`Synthetic` is deleted: nothing on the woven carrier ever needs to satisfy
+`Raise`'s structure, because the fused `intercept` never puts a `Raise` there
+in the first place. What remains:
 
 ```scala
-/** Produces a Cod instance for any type. Used only inside the raise-lift
-  * shell, which is unwrapped immediately; its value is never observable
-  * (a raised F[A] contains no A). Laws L5/L6 pin this down. */
-trait Synthetic[Cod[_]] extends Serializable { def apply[A]: Cod[A] }
-object Synthetic {
-  implicit val trivial: Synthetic[cats.tagless.Trivial] = ...
-}
-
-/** Invoked with the typed value at the moment a raise crosses a `raiseLift`
-  * interception point. Universally quantified in `E`, with per-`E` evidence
-  * supplied by `Err`. */
+/** Invoked with the typed value at the moment a raise crosses the
+  * interception point `RaiseAspect.observing` decorates. Universally
+  * quantified in `E`, with per-`E` evidence supplied by `Err`. */
 trait OnRaise[F[_], Err[_]] extends Serializable {
   def apply[E](e: E)(implicit ev: Err[E]): F[Unit]
 }
@@ -221,50 +232,52 @@ object OnRaise {
 }
 ```
 
-In a `WeaveArrows` object (names final):
+In a `WeaveArrows` object (names final), the only arrow left is the forgetful
+one — `intercept`'s law L3′ erases with it, and the derivation's own
+generated methods use nothing else:
 
 ```scala
 /** Forward: forget the metadata. */
 def codomainTarget[F[_], Dom[_], Cod[_]]: Aspect.Weave[F, Dom, Cod, *] ~> F
   // = _.codomain.target
-
-/** Used INSIDE derived weave methods. */
-def raisePull[F[_], Dom[_], Cod[_], Err[_]](implicit F: Functor[F]): RaisePull[Aspect.Weave[F, Dom, Cod, *], F, Err] =
-  // apply[E](rw)(implicit ev: Err[E]) = new Raise[F, E] {
-  //   val functor = F                                  // NOT rw.functor
-  //   def raise[E2 <: E, A](e: E2) = rw.raise[E2, A](e).codomain.target
-  // }
-
-/** Used on the interpretation side. Shell advice name is "raise". */
-def raiseLift[F[_], Dom[_], Cod[_], Err[_]](implicit F: Functor[F], syn: Synthetic[Cod]): RaisePull[F, Aspect.Weave[F, Dom, Cod, *], Err] =
-  // apply[E](r)(implicit ev: Err[E]) = new Raise[Weave[F, Dom, Cod, *], E] {
-  //   val functor = syntheticWeaveFunctor(F, syn)      // see below
-  //   def raise[E2 <: E, A](e: E2) =
-  //     Aspect.Weave("raise", Nil, Aspect.Advice("raise", r.raise[E2, A](e))(syn[A]))
-  // }
-
-/** As `raiseLift` above, but sequences an `OnRaise[F, Err]` hook's effect
-  * before the raised value crosses the interception point (`Apply[F]`, not
-  * `Functor[F]`, is what sequencing needs) — this is M6/M10's typed-error
-  * span recording. */
-def raiseLift[F[_], Dom[_], Cod[_], Err[_]](onRaise: OnRaise[F, Err])(implicit F: Apply[F], syn: Synthetic[Cod]): RaisePull[F, Aspect.Weave[F, Dom, Cod, *], Err] =
-  // apply[E](r)(implicit ev: Err[E]) = new Raise[Weave[F, Dom, Cod, *], E] {
-  //   val functor = syntheticWeaveFunctor(F, syn)
-  //   def raise[E2 <: E, A](e: E2) =
-  //     Aspect.Weave("raise", Nil,
-  //       Aspect.Advice("raise", onRaise.apply[E](e) *> r.raise[E2, A](e))(syn[A]))
-  // }
-
-/** The full erasure morphism Weave[F, Dom, Cod, *] ⇒ F. */
-def eraseWeave[F[_]: Functor, Dom[_], Cod[_], Err[_]](implicit syn: Synthetic[Cod]): RaiseArrow[Aspect.Weave[F, Dom, Cod, *], F, Err] =
-  RaiseArrow(codomainTarget, raiseLift)
 ```
 
-`syntheticWeaveFunctor` maps `codomain.target` with `Functor[F]`, substitutes
-`syn[B]` for the `Cod` instance, and preserves `algebraName`, `domain`, and
-`codomain.name`. It and `Synthetic` exist only to satisfy `Raise`'s structure
-on shell values in the raise channel; laws L5–L7 verify they are never
-observable through the public API.
+What used to be the lift direction — wrapping a `Raise[F, E]` in a shell
+`Weave` so it could satisfy a `Raise[Weave[F, Dom, Cod, *], E]` — has nothing
+left to do, because no method ever asks for a `Raise` on that carrier. In its
+place, `RaiseAspect`'s companion holds the one capability-side helper the
+fused expansion needs: decorate the caller's own `Raise[F, E]`, at the same
+carrier, with the observation hook:
+
+```scala
+object RaiseAspect {
+  def observing[F[_], E, Err[_]](R: Raise[F, E], onRaise: OnRaise[F, Err])(implicit
+      F: Apply[F],
+      ev: Err[E]
+  ): Raise[F, E] =
+    new Raise[F, E] {
+      val functor: Functor[F] = R.functor
+
+      def raise[E2 <: E, A](e: E2): F[A] =
+        onRaise.apply[E](e)(ev) *> R.raise[E2, A](e)
+    }
+}
+```
+
+`functor = R.functor` is the caller's own real `Functor[F]` — nothing is
+synthesized, which is why this decorator is sound by construction: it can
+only produce what `R` produces, prefixed by the hook's effect. Law L7, which
+used to check a synthesized functor extensionally, now asserts this by `eq`.
+
+The synthesized `Functor[Aspect.Weave[F, Dom, Cod, *]]` that this section used
+to specify was measured to fail the functor identity law, and the failure was
+reachable through `Raise#functor` on a **successful** call — silently
+replacing a real `Cod` rendering with a fabricated one, and, with a
+user-authored rendering `Synthetic`, defeating a deliberate redaction. The
+measurements, the blast radius, and the proof that no lawful implementation
+exists for a negative-only `Cod` are recorded in
+`22-milestone-M12-fused-derivation.md`. That document is the only remaining
+home for the finding: the scaladoc that carried it went with the code.
 
 ### 3.4 Expansion specification for derivation
 
@@ -277,29 +290,34 @@ trait Bar[F[_]] {
 }
 ```
 
-`DeriveRaise.aspect[Bar, Dom, Cod, Err]` must produce, for `weave` (modulo
+`DeriveRaise.aspect[Bar, Dom, Cod, Err]` must produce, for `intercept` (modulo
 hygiene; confirm `Weave`/`Advice` constructor shapes against the vendored
-`Aspect.scala`):
+`Aspect.scala`; this is `TestAlgReference`'s pattern, transposed onto `Bar`):
 
 ```scala
-def weave[F[_]](af: Bar[F])(implicit F: Functor[F]): Bar[Aspect.Weave[F, Dom, Cod, *]] =
-  new Bar[Aspect.Weave[F, Dom, Cod, *]] {
-    def bar(i: Int, s: => String)(
-        implicit R: Raise[Aspect.Weave[F, Dom, Cod, *], BarError]
-    ): Aspect.Weave[F, Dom, Cod, String] =
-      Aspect.Weave(
-        "Bar",
-        List(List(
-          Aspect.Advice("i", cats.Eval.now(i))(Dom[Int]),
-          Aspect.Advice("s", cats.Eval.always(s))(Dom[String])
-        )),
-        Aspect.Advice("bar", af.bar(i, s)(WeaveArrows.raisePull[F, Dom, Cod, Err].apply(R)(errBarError)))(Cod[String])
+def intercept[F[_]](af: Bar[F])(
+    fk: Aspect.Weave[F, Dom, Cod, *] ~> F,
+    onRaise: OnRaise[F, Err]
+)(implicit F: Apply[F]): Bar[F] =
+  new Bar[F] {
+    def bar(i: Int, s: => String)(implicit R: Raise[F, BarError]): F[String] =
+      fk(
+        Aspect.Weave(
+          "Bar",
+          List(List(
+            Aspect.Advice("i", cats.Eval.now(i))(Dom[Int]),
+            Aspect.Advice("s", cats.Eval.always(s))(Dom[String])
+          )),
+          Aspect.Advice("bar", af.bar(i, s)(RaiseAspect.observing(R, onRaise)(F, errBarError)))(Cod[String])
+        )
       )
 
-    def baz(k: Int): Aspect.Weave[F, Dom, Cod, Int] =
-      Aspect.Weave("Bar",
-        List(List(Aspect.Advice("k", cats.Eval.now(k))(Dom[Int]))),
-        Aspect.Advice("baz", af.baz(k))(Cod[Int]))
+    def baz(k: Int): F[Int] =
+      fk(
+        Aspect.Weave("Bar",
+          List(List(Aspect.Advice("k", cats.Eval.now(k))(Dom[Int]))),
+          Aspect.Advice("baz", af.baz(k))(Cod[Int]))
+      )
   }
 ```
 
@@ -307,9 +325,12 @@ where `errBarError` is the `Err[BarError]` the derivation summons implicitly
 for `bar`'s `Raise` parameter — one summon per capability parameter, at the
 derivation site, per Task 6's macro work; a missing instance is a derivation-
 time diagnostic naming the method, the error type, and `Err`, not a runtime
-failure.
+failure. The weave is built as data and handed to `fk`; the capability itself
+never touches that carrier — it is decorated in place, at `F`, by
+`RaiseAspect.observing`.
 
-and for `mapK`:
+and for `mapK`, unchanged from before M12 — this half still does real
+transport across a genuine carrier change:
 
 ```scala
 def mapK[F[_], G[_]](af: Bar[F])(arrow: RaiseArrow[F, G, Err]): Bar[G] =
@@ -327,10 +348,12 @@ Derivation rules:
    `e` does not mention `F`. Implicitness is irrelevant to classification;
    generated signatures preserve parameter-list shape and `implicit`/`using`
    flags exactly.
-2. Capability parameters are transported, never captured in `domain`. All
-   other parameters must not mention `F` and are captured as `Advice`s with
-   `Dom` instances (strict → `Eval.now`, by-name → `Eval.always`), exactly
-   like upstream `Derive.aspect`.
+2. Capability parameters are never captured in `domain`. `intercept` decorates
+   each one in place, at the same carrier, via `RaiseAspect.observing`; `mapK`
+   transports each one across the arrow's `pull`. All other parameters must
+   not mention `F` and are captured as `Advice`s with `Dom` instances (strict
+   → `Eval.now`, by-name → `Eval.always`), exactly like upstream
+   `Derive.aspect`.
 3. `F` may otherwise appear only as the top-level return type; anything else,
    including `Handle[F, e]`, is a compile error (messages in the M3/M4 docs).
 4. `algebraName` = simple name of `Alg`; advice names = parameter/method
@@ -351,47 +374,64 @@ Notation: `<->` is extensional equality under the test-kit `Eq` instances.
 
 Adapted from existing law sets:
 
-- **L1 mapK identity:** `mapK(af)(RaiseArrow.id) <-> af`
-- **L2 mapK composition:** `mapK(mapK(af)(f))(g) <-> mapK(af)(f andThen g)`
-- **L3 weave erasure** (the Aspect-consistency analogue and the load-bearing
-  law): `mapK(weave(af))(WeaveArrows.eraseWeave) <-> af`, tested including
-  inputs that make the underlying implementation raise — at
-  `F = Either[TestError, *]` a raise must return the identical `Left`
-  through the woven path.
+- **L1 mapK identity:** `mapK(af)(RaiseArrow.id) <-> af`. Also exercised over
+  a genuine non-identity arrow, `CarrierArrows.resultToLazily`
+  (`Either[TestError, *] → EitherT[Eval, TestError, *]`) — M12 deleted
+  `eraseWeave`, L1/L2's only prior non-identity arrow, and this replaces it;
+  testing only at the identity would be a coverage loss disguised as a
+  deletion.
+- **L2 mapK composition:** `mapK(mapK(af)(f))(g) <-> mapK(af)(f andThen g)`,
+  exercised over the same `CarrierArrows.resultToLazily`, for the same reason.
+- **L3′ intercept erasure** (the Aspect-consistency analogue and the
+  load-bearing law, replacing pre-M12 L3): `intercept(af)(codomainTarget,
+  OnRaise.noop) <-> af`, tested including inputs that make the underlying
+  implementation raise — at `F = Either[TestError, *]` a raise must return the
+  identical `Left` through the intercepted path. There is no longer a second
+  operation for this to be inverse to, but the content pre-M12 L3 carried is
+  exactly this. Constraint strengthens from `Functor[A]` to `Applicative[A]`:
+  `intercept` needs `Apply` to sequence the hook, and `OnRaise.noop` needs
+  `Applicative` to produce one.
 - **Serializable** tests for all typeclass instances (cats convention).
 
 (cats-mtl's `Raise` is itself essentially lawless — its laws live on
 `Handle` — so beyond functor coherence there is nothing upstream to
-preserve; that is what L6/L7 pin down.)
+preserve; that used to be what L6/L7 pinned down — see below.)
 
 Novel laws:
 
 - **L4 arrow coherence** (property of a `RaiseArrow`; check for `id`,
-  `eraseWeave`, and their compositions):
+  `CarrierArrows.resultToLazily`, and their compositions):
   `arrow.fk(arrow.pull(rg).raise[A](e)) <-> rg.raise[A](e)`
-- **L5 section/retraction** on the canonical pair:
-  `raisePull(raiseLift(r)).raise[A](e) <-> r.raise[A](e)`, i.e.
-  `raiseLift(r).raise[A](e).codomain.target <-> r.raise[A](e)`
-- **L6 synthesized-functor coherence (lift side):**
-  `lifted.functor.map(w)(f).codomain.target <-> Functor[F].map(w.codomain.target)(f)`
-  and `algebraName`/`domain`/`codomain.name` preserved.
-- **L7 synthesized-functor coherence (pull side):** the `Raise[F, E]` handed
-  to the underlying implementation has `functor` extensionally equal to the
-  ambient `Functor[F]` (unit test; guards against routing through
-  `rw.functor`).
+- ~~**L5 section/retraction** on the canonical pair~~ — struck, M12.
+  `WeaveArrows.raisePull` and `WeaveArrows.raiseLift`, the pair this law
+  related, are both deleted: no capability ever crosses the woven carrier, so
+  there is no section/retraction pair left to relate.
+- ~~**L6 synthesized-functor coherence (lift side)**~~ — struck, M12. A law
+  about the private `syntheticWeaveFunctor` helper, deleted along with
+  `Synthetic` and `raiseLift`.
+- ~~**L7 synthesized-functor coherence (pull side)**~~ — struck, M12, but not
+  merely lost: `syntheticWeaveFunctor` is deleted, and what the law checked
+  survives as an `eq` assertion in §3.3, since `RaiseAspect.observing` sets
+  `functor = R.functor` directly rather than routing through anything
+  synthesized. What was a property to check extensionally is now an identity
+  to assert.
 - **L8 weave structure fidelity / capability erasure** (structural, per
   method/argument tuple): `algebraName` and method name correct; `domain`
   matches declared parameter lists in order with capability parameters
   absent, advice names = parameter names, strict args `Eval.now`-like,
   by-name args not forced by weaving (throwing-thunk test);
-  `codomain.target` equals invoking the underlying method with the pulled
-  capability.
+  `codomain.target` equals invoking the underlying method with the decorated
+  capability. Post-M12 there is no `Alg[Weave[…]]` value to inspect —
+  `intercept` hands each weave to `fk` and returns `F[A]` directly — so this
+  is now asserted through a recording interpreter that receives what `fk`
+  would, which additionally pins the *order* in which weaves arrive, strictly
+  more than value inspection could see.
 - **L9 conservative extension:** on capability-free algebras,
   `DeriveRaise.aspect` agrees with `cats.tagless.Derive.aspect` (structurally
   equal rendered `Weave`s, `Eq`-equal codomain targets), and
   `mapK(af)(RaiseArrow(fk, pull))` agrees with `FunctorK.mapK(af)(fk)` for
   any `pull`.
-- **L10 laziness parity (semi-law):** weaving itself performs no `F`
+- **L10 laziness parity (semi-law):** intercepting itself performs no `F`
   effects; effects run exactly when they would under upstream
   `Derive.aspect` (tested with a `Writer`/`State` effect counter).
 

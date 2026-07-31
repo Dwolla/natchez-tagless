@@ -56,7 +56,7 @@ class EdgeCaseDerivationSpec extends FunSuite:
     assertEquals(out, impl.inherited(2)(using raiseResult))
   }
 
-  test("the inherited capability is transported, so raises survive erasure") {
+  test("the inherited capability's raise survives intercept unchanged") {
     val recorder = new RecordingFk[Result, Render, Render]
     val instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
 

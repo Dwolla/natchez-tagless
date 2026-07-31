@@ -180,7 +180,7 @@ object MethodLocal:
 
   /** An arrow whose `pull` renders every raised error through the `Err` evidence
     * the ''derivation'' handed it. That evidence is the only observable trace of
-    * which `Err[E]` the macro resolved, since `WeaveArrows.raisePull` ignores it.
+    * which `Err[E]` the macro resolved, since `RaisePull.id` ignores it.
     */
   def recordingArrow(recorded: ListBuffer[String]): RaiseArrow[WidgetResult, WidgetResult, Render] =
     RaiseArrow(

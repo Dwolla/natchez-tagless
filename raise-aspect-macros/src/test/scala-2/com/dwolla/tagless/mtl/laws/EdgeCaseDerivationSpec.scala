@@ -54,7 +54,7 @@ class EdgeCaseDerivationSpec extends FunSuite {
     assertEquals(out, impl.inherited(2)(raiseResult))
   }
 
-  test("the inherited capability is transported, so raises survive erasure") {
+  test("the inherited capability's raise survives intercept unchanged") {
     assertEquals(instrumented.inherited(-4)(raiseResult), NegativeInput(-4).asLeft[String].leftWiden[TestError])
     assertEquals(instrumented.inherited(-4)(raiseResult), impl.inherited(-4)(raiseResult))
   }

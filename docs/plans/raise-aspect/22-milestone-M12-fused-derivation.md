@@ -2,17 +2,130 @@
 
 ## Status
 
-**Planned, not started.** Branch to create: `milestone/m12-fused-derivation`,
-stacked on `milestone/m8-capability-aspect` @ `97c5ece` (which is itself stacked
-on the unmerged M6/M10/M11/M7 chain). The Decisions section below was proposed
-by the planning session on 2026-07-31 and **needs Brian's ratification before
-Task 1 starts**.
+**Complete (2026-07-31).** Branch `milestone/m8-capability-aspect` (M12
+continued on it; stacked on the unmerged M6/M10/M11/M7 chain). The Decisions
+section below was ratified as proposed; all eight tasks landed as written,
+with two corrections found and made along the way (below).
 
-Prerequisites: M10 and M11 merged into the working chain (they are — `Err[_]`
-and `WeaveInterpreter` are both present at `97c5ece`). M8 is **paused** and
-stays paused; see "Scope" below.
+The implementation plan is `23-milestone-M12-implementation-plan.md`; each
+task's brief, report, and per-commit review diff live under
+`.superpowers/sdd/23-milestone-M12-implementation-plan/`.
 
-The implementation plan is `23-milestone-M12-implementation-plan.md`.
+**What landed, task by task:**
+
+- **Task 1** (`raise-aspect-core`, `ea84f13`) fused `weave`+`mapK` into
+  `RaiseAspect#intercept`, with `RaiseAspect.observing` decorating the
+  caller's own `Raise[F, E]` in place, at the same carrier. 43/43 on
+  2.12.21/2.13.18/3.3.8, JVM and JS linker, zero warnings.
+- **Task 2** (`raise-aspect-core`, `1a52c13`) deleted `Synthetic` and
+  `WeaveArrows.raisePull`/`raiseLift`/`eraseWeave`, reducing `WeaveArrows` to
+  `codomainTarget` alone. `grep -rn "new Functor" raise-aspect-*/src/main` is
+  empty. Zero review findings at any severity.
+- **Task 3** (`raise-aspect-laws`, `28f75e1`..`8bf341c`) turned L3 into L3′,
+  deleted L5 and L6a–d with the machinery they were laws about, turned L7 into
+  an `eq` assertion, and re-anchored L8/L9 on a recording interpreter. One
+  review round (2 findings, both addressed) restored a falsifiable `Err =
+  Trivial` instantiation for L4 that had degenerated to a tautology. 21/21.
+- **Task 4** (Scala 2 macro, `39ad9a3`) renamed `raiseWeave` to
+  `raiseInstrument`; every rejection diagnostic is unchanged;
+  `ExpectedWeaves.expected` is byte-identical. 58/58, zero warnings.
+- **Task 5** (Scala 3 macro, `1603ec9`) renamed `deriveWeave` to
+  `deriveInstrument`; cross-axis agreement was verified structurally (the args
+  and body handlers build in the same order on both axes), not just by test
+  count. 58/58 → 66/66, the new test being `UsingAlgSpec`'s proof that a
+  two-capability method decorates both parameters independently.
+- **Task 6** (differential-oracle audit, `1603ec9`..`9937804`) is a
+  code-free, assertion-by-assertion audit of the pre-M12 oracle, verified by
+  injecting seven defects into the hand-written reference and confirming each
+  is caught — not by reading. **Headline finding:** the harness was blind to a
+  dropped hook. With `OnRaise.noop` in play, the events comparison degenerated
+  to the weave-order check `renderedWeaves` already covered, and
+  `drop-hook-e-r1` survived the *entire* Scala 2 macro suite and core. Closed
+  by `LawsInstances.observed`, whose hook writes into the recorder's log, so
+  derived and reference must now agree on hook/weave interleaving and which
+  `Err` instance rendered each raise.
+- **Task 7** (`natchez-tagless-mtl`, `a74c335`) dropped
+  `Synthetic[TraceableValue]` and its 30-line caveat from
+  `RaiseTraceWeaveOps`; `traceWithInputs`/`traceWithInputsAndOutputs`
+  signatures are byte-identical (confirmed by diff, not assumed), and span
+  histories are unmoved (grepping the diff for
+  `CreateSpan|Put\(|AttachError|ReleaseSpan` returns nothing).
+  `natchezTaglessMtlJVM` 18/18 on all three versions.
+- **Task 8** (this task) is this Status section, the overview's §3.2–§3.4/§4,
+  and a consequence note on `18-milestone-M8-capability-aspect.md`, plus the
+  four carried-forward stale-comment fixes and the `tlFatalWarnings`
+  correction below.
+
+**What diverged from the plan, and why:**
+
+- The plan's claim that `substituteCapabilities` and
+  `Method#transformedParamLists` become dead code once the fused generator
+  lands was **false**: `raiseMapK`, kept unchanged by decision D2, still calls
+  `substituteCapabilities` to retype `Raise[F, E]` for its genuine carrier
+  change. Found during Task 4, corrected in four places (`5298756`) — both
+  acceptance-criteria lists and this document — before Task 5 or the
+  whole-branch review could be measured against the false criterion.
+- L1/L2's replacement non-identity arrow (`eraseWeave` is deleted) needed new
+  fixture work, `CarrierArrows.resultToLazily`
+  (`Either[TestError, *] → EitherT[Eval, TestError, *]`), which the plan
+  flagged correctly as task-level but did not pre-build; an early version of
+  L4's `Err = Trivial` instantiation over this arrow was a tautology (it
+  reduced to the same expression on both sides at `RaiseArrow.id`) until Task
+  3's review round caught it and moved it onto the non-identity arrow.
+- **A claim that `sbt-typelevel` enables `tlFatalWarnings` in CI is false for
+  this repo, and had been repeated uncorrected across several M12 task
+  dispatches** (it originated in M11's final review). `sbt-typelevel-settings`
+  0.8.6 defaults `tlFatalWarnings := false`
+  (`TypelevelSettingsPlugin.scala:47`), and nothing in `build.sbt`,
+  `project/`, or `.github/` overrides it — `ci.yml`'s env block holds only
+  `GITHUB_TOKEN`. Proof: four Scala 3 unused-import warnings exist in `core`
+  on `main` today; if fatal warnings were enforced there, `main` would
+  already be red. Consequence: tasks that forced `-Xfatal-warnings` locally
+  were *stricter* than CI requires, not catching up to a real gate — their
+  zero-warning claims stand, just not for the reason originally given.
+  Corrected here and in `20-milestone-M10-evidence-carrying-transport.md`,
+  `21-milestone-M11-weave-interpreter.md`, and
+  `23-milestone-M12-implementation-plan.md`, the only other places the claim
+  appeared.
+
+**Verification actually run, with counts:**
+
+- JVM tests green on 2.12.21, 2.13.18, and 3.3.8 (measured directly by Task 8,
+  after this document's own edits) — `coreJVM` 19/19, `raiseAspectCoreJVM`
+  34/34, `raiseAspectLawsJVM` 21/21, and `natchezTaglessMtlJVM` 18/18, each ×3
+  Scala versions unchanged; `raiseAspectMacrosJVM` 59/59 on 2.12.21, 59/59 on
+  2.13.18, and 67/67 on 3.3.8 — Scala 3 carries eight more tests than Scala 2
+  because `UsingAlgSpec` (`using`-clause fixtures) has no Scala 2 analogue.
+  Zero new warnings on any version; the pre-existing four Scala 3 unused-import
+  warnings in `core` and the pre-existing doctest outer-reference warning on
+  2.12/2.13 are both unchanged from `main`. (`sbt +test` unqualified also
+  attempts the JS test-execution projects, which abort for lack of a local
+  Node install — the same pre-existing environment gap every prior milestone
+  hit; the JVM-scoped run above is what actually exercises the suites.)
+- All four JS linkers (`raiseAspectCoreJS`, `raiseAspectLawsJS`,
+  `raiseAspectMacrosJS`, `natchezTaglessMtlJS`
+  `Test/scalaJSLinkerResult`): green. Test *execution* on JS remains
+  uncovered locally (no Node), consistent with every prior milestone.
+- `natchezTaglessMtlJVM/doc`: succeeds — the `package.scala` doctests compile
+  and run against `intercept`/`RaiseAspect.observing`.
+- Both `DerivationErrorSpec`s and every rejection diagnostic: unedited,
+  passing on all three versions.
+- `git diff --stat` on `ExpectedWeaves.scala`: touches only `rendered` and
+  the additive `expectedOrder`; `val expected` is untouched.
+
+**Found along the way, for later milestones:**
+
+- The unlawful-`Functor` finding's only surviving home is this document's
+  "Problem" section above; the scaladoc that used to carry it (`Synthetic`,
+  `RaiseTraceWeaveOps`) is deleted with the code.
+- M8, if resumed, is now deciding a different question than when it paused:
+  nothing crosses a carrier boundary post-fusion, so the producing/consuming
+  classification governs `mapK` only, not method-parameter admissibility.
+  See `18-milestone-M8-capability-aspect.md`'s status section for the note
+  recorded there.
+- Any future milestone document that states "CI enforces fatal warnings" is
+  wrong under this repo's current `sbt-typelevel-settings` version and
+  should be corrected the same way this one was.
 
 ### Why this milestone exists, in one paragraph
 

@@ -22,12 +22,12 @@
  * limitations under the License.
  *
  * MODIFICATIONS: the reflection machinery is upstream's `DeriveMacros`, reduced
- * to the subset the `RaiseAspect` derivation needs. The `weave` and `mapK`
- * generators are rewritten from `MacroAspect`/`MacroFunctorK` to transport
- * `cats.mtl.Raise` capability parameters instead of rejecting methods whose
- * signatures mention the effect type. Upstream's `addToGivenScope` block is
- * deliberately omitted; see the future-work note in
- * docs/plans/raise-aspect/01-overview-design-and-laws.md §5.
+ * to the subset the `RaiseAspect` derivation needs. `deriveInstrument` (the
+ * fused `intercept` generator, rewritten from `MacroAspect`) and `deriveMapK`
+ * (rewritten from `MacroFunctorK`) transport `cats.mtl.Raise` capability
+ * parameters instead of rejecting methods whose signatures mention the effect
+ * type. Upstream's `addToGivenScope` block is deliberately omitted; see the
+ * future-work note in docs/plans/raise-aspect/01-overview-design-and-laws.md §5.
  */
 
 package com.dwolla.tagless.mtl
