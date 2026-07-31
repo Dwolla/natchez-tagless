@@ -51,4 +51,11 @@ com.dwolla.tracing.mtl.syntax.Foo.io.traceWithInputs[TraceableValue]"""
     val traced = Foo.io.traceWithInputs[TraceableValue]
     traced.foo(3).assertEquals("foo:3")
   }
+
+  test("the syntax package no longer supplies a Synthetic instance") {
+    assert(
+      compileErrors("com.dwolla.tagless.mtl.Synthetic").nonEmpty,
+      "Synthetic must not exist: the fused derivation never places a capability on the woven carrier"
+    )
+  }
 }

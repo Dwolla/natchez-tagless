@@ -43,7 +43,7 @@ package com.dwolla.tracing.mtl
   *         }
   *       }
   *
-  *     // One instance serves every F: weave/mapK are separately polymorphic per call.
+  *     // One instance serves every F: intercept/mapK are separately polymorphic per call.
   *     @experimental
   *     implicit val raiseAspect: RaiseAspect[Validator, TraceableValue, TraceableValue, TraceableValue] =
   *       DeriveRaise.aspect[Validator, TraceableValue, TraceableValue, TraceableValue]

@@ -44,8 +44,8 @@ package com.dwolla.tracing
   *     // implicit val raiseAspect: RaiseAspect[Validator, TraceableValue, TraceableValue, TraceableValue] =
   *     //   DeriveRaise.aspect[Validator, TraceableValue, TraceableValue, TraceableValue]
   *     // — declared in the companion per cats-tagless convention, not summoned; one
-  *     // instance serves every F, since weave/mapK are separately polymorphic per
-  *     // call. The exact declaration is version-specific — see above.
+  *     // instance serves every F, since intercept/mapK are separately polymorphic
+  *     // per call. The exact declaration is version-specific — see above.
   *   }
   *
   *   def run(implicit trace: Trace[IO], RA: RaiseAspect[Validator, TraceableValue, TraceableValue, TraceableValue]): IO[String] = {
@@ -65,9 +65,11 @@ package com.dwolla.tracing
   *
   * ==Design constraints==
   *
-  *   - `weave` requires a `Functor[F]` — the underlying runtime needs it to satisfy
-  *     `Raise`'s own abstract `functor` member on the shell values used internally
-  *     to transport a capability across the woven boundary.
+  *   - `intercept` requires an `Apply[F]` — needed only to sequence the
+  *     `onRaise` hook's effect before the underlying `Raise[F, E]`'s own
+  *     `raise` runs. The woven `Aspect.Weave` is data handed to the
+  *     interpreter, never a carrier a capability is transported across, so no
+  *     `Functor` is ever synthesized for it.
   *   - `Handle[F, E]` parameters are rejected at derivation time, with a message
   *     pointing at this design: `Handle` ''consumes'' `F` (`handleWith` takes an
   *     `F[A]`), so — unlike `Raise`, which only ever produces `F` values — it is
@@ -112,8 +114,8 @@ package com.dwolla.tracing
   * happens with no action required from the caller: both syntax methods
   * resolve a `RaiseRecorder[F, TraceableValue]` and hand its
   * `OnRaise[F, TraceableValue]` hook to `WeaveInterpreter`, which sequences it
-  * at the `raiseLift` interception point — falling back to this `Trace`-based
-  * recording whenever no more specific hook is in scope.
+  * via `RaiseAspect.observing` — falling back to this `Trace`-based recording
+  * whenever no more specific hook is in scope.
   *
   * This default rendering ''is'' redaction-aware, like the rest of this
   * library: `raise.error.value` is the error's `TraceableValue[E]` rendering,
