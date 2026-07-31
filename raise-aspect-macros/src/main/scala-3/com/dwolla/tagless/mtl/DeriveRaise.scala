@@ -59,7 +59,7 @@ import scala.annotation.experimental
   */
 object DeriveRaise:
 
-  /** Derive a [[RaiseAspect]], supporting both `weave` and `mapK`. */
+  /** Derive a [[RaiseAspect]], supporting both `intercept` and `mapK`. */
   @experimental
   inline def aspect[Alg[_[_]], Dom[_], Cod[_], Err[_]]: RaiseAspect[Alg, Dom, Cod, Err] =
     ${ RaiseAspectMacros.aspect[Alg, Dom, Cod, Err] }

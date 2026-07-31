@@ -1,10 +1,8 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.Functor
 import cats.arrow.FunctionK
 import cats.mtl.Raise
-import cats.tagless.aop.Aspect
 import munit.FunSuite
 
 import scala.annotation.experimental
@@ -190,7 +188,7 @@ object MethodLocal:
       new RaisePull[WidgetResult, WidgetResult, Render]:
         def apply[E](rg: Raise[WidgetResult, E])(implicit ev: Render[E]): Raise[WidgetResult, E] =
           new Raise[WidgetResult, E]:
-            val functor: Functor[WidgetResult] = rg.functor
+            val functor: cats.Functor[WidgetResult] = rg.functor
             def raise[E2 <: E, A](e: E2): WidgetResult[A] =
               recorded += ev.render(e)
               rg.raise[E2, A](e)
@@ -200,8 +198,6 @@ object MethodLocal:
 class MethodLocalInstanceSpec extends FunSuite:
   import LawsInstances.renderableRender
   import MethodLocal.{*, given}
-
-  private type Woven[A] = Aspect.Weave[WidgetResult, Render, Render, A]
 
   private val showAspect: RaiseAspect[WidgetShowAlg, Render, Render, Render] =
     DeriveRaise.aspect[WidgetShowAlg, Render, Render, Render]
@@ -229,27 +225,33 @@ class MethodLocalInstanceSpec extends FunSuite:
   private val raiseWidget: Raise[WidgetResult, WidgetError] = Raise[WidgetResult, WidgetError]
 
   test("the Dom advice carries the Render the method itself was handed") {
-    val woven: WidgetShowAlg[Woven] = showAspect.weave(widgets)(Functor[WidgetResult])
+    val recorder = new RecordingFk[WidgetResult, Render, Render]
+    val instrumented = showAspect.intercept(widgets)(recorder.fk, OnRaise.noop[WidgetResult, Render])
 
-    val rendered = WeaveRenderer.render(woven.show(Widget(1))(using loud))
+    instrumented.show(Widget(1))(using loud)
+    val rendered = WeaveRenderer.render(recorder.weaves.last.weave)
     assertEquals(rendered.algebraName, "WidgetShowAlg")
     assertEquals(rendered.methodName, "show")
     assertEquals(rendered.domain, List(List("w" -> "loud:1")))
 
-    assertEquals(WeaveRenderer.render(woven.show(Widget(1))(using quiet)).domain, List(List("w" -> "quiet:1")))
+    instrumented.show(Widget(1))(using quiet)
+    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("w" -> "quiet:1")))
   }
 
   test("the Cod advice carries the Render the method itself was handed") {
-    val woven: WidgetMakeAlg[Woven] = makeAspect.weave(widgets)(Functor[WidgetResult])
+    val recorder = new RecordingFk[WidgetResult, Render, Render]
+    val instrumented = makeAspect.intercept(widgets)(recorder.fk, OnRaise.noop[WidgetResult, Render])
 
-    val loudly = woven.make(2)(using loud)
+    instrumented.make(2)(using loud)
+    val loudly = recorder.weaves.last.weave
     assertEquals(loudly.codomain.name, "make")
     assertEquals(
       loudly.codomain.target.map(loudly.codomain.instance.render),
       Right("loud:2"): WidgetResult[String]
     )
 
-    val quietly = woven.make(2)(using quiet)
+    instrumented.make(2)(using quiet)
+    val quietly = recorder.weaves.last.weave
     assertEquals(
       quietly.codomain.target.map(quietly.codomain.instance.render),
       Right("quiet:2"): WidgetResult[String]
@@ -271,6 +273,29 @@ class MethodLocalInstanceSpec extends FunSuite:
     assertEquals(recorded.toList, List("loudError:negative:-1", "quietError:negative:-2"))
   }
 
+  test("the intercept hook renders a raise through the method-local Err instance") {
+    // Before M12 the hook could only be observed indirectly, through `mapK`
+    // and a hand-rolled recording `RaisePull` (the test above): the pre-fusion
+    // `weave` had no `onRaise` parameter at all. `intercept` wires the hook in
+    // directly — `RaiseAspect.observing($pn, $onRaise)($applyF, $errInstance)`
+    // — so this asserts the stronger claim: the *method-local* `Err[WidgetError]`
+    // the call was handed is exactly what reaches the hook, not a derivation-site
+    // instance and not `toString`.
+    val rendered = ListBuffer.empty[String]
+    val hook: OnRaise[WidgetResult, Render] = new OnRaise[WidgetResult, Render]:
+      def apply[E](e: E)(implicit ev: Render[E]): WidgetResult[Unit] =
+        rendered += ev.render(e)
+        Right(())
+    val recorder = new RecordingFk[WidgetResult, Render, Render]
+    val instrumented = riskyAspect.intercept(widgets)(recorder.fk, hook)
+
+    instrumented.risky(-7)(using loudError, raiseWidget)
+    assertEquals(rendered.toList, List("loudError:negative:-7"))
+
+    instrumented.risky(-8)(using quietError, raiseWidget)
+    assertEquals(rendered.toList, List("loudError:negative:-7", "quietError:negative:-8"))
+  }
+
   test("the functorK path resolves Err from the method's own using clause too") {
     val recorded = ListBuffer.empty[String]
     val mapped = riskyFunctorK.mapK(widgets)(recordingArrow(recorded))
@@ -283,11 +308,14 @@ class MethodLocalInstanceSpec extends FunSuite:
   }
 
   test("all three instance kinds resolve on one algebra") {
-    val woven: WidgetAlg[Woven] = widgetAspect.weave(widgets)(Functor[WidgetResult])
+    val recorder = new RecordingFk[WidgetResult, Render, Render]
+    val instrumented = widgetAspect.intercept(widgets)(recorder.fk, OnRaise.noop[WidgetResult, Render])
 
-    assertEquals(WeaveRenderer.render(woven.show(Widget(4))(using loud)).domain, List(List("w" -> "loud:4")))
+    instrumented.show(Widget(4))(using loud)
+    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("w" -> "loud:4")))
 
-    val made = woven.make(5)(using quiet)
+    instrumented.make(5)(using quiet)
+    val made = recorder.weaves.last.weave
     assertEquals(made.codomain.target.map(made.codomain.instance.render), Right("quiet:5"): WidgetResult[String])
 
     val recorded = ListBuffer.empty[String]
@@ -297,70 +325,74 @@ class MethodLocalInstanceSpec extends FunSuite:
   }
 
   test("a polymorphic method resolves both Dom and Cod from its own given parameter") {
-    val woven: WidgetPolyAlg[Woven] = polyAspect.weave(poly)(Functor[WidgetResult])
+    val recorder = new RecordingFk[WidgetResult, Render, Render]
+    val instrumented = polyAspect.intercept(poly)(recorder.fk, OnRaise.noop[WidgetResult, Render])
 
-    assertEquals(WeaveRenderer.render(woven.poly(Widget(7))(using loud)).domain, List(List("a" -> "loud:7")))
+    instrumented.poly(Widget(7))(using loud)
+    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("a" -> "loud:7")))
 
-    val out = woven.poly(Widget(8))(using quiet)
+    instrumented.poly(Widget(8))(using quiet)
+    val out = recorder.weaves.last.weave
     assertEquals(out.codomain.target.map(out.codomain.instance.render), Right("quiet:8"): WidgetResult[String])
   }
 
   test("a context-bound method resolves from its synthetic evidence parameter") {
-    val woven: WidgetBoundedAlg[Woven] = boundedAspect.weave(bounded)(Functor[WidgetResult])
+    val recorder = new RecordingFk[WidgetResult, Render, Render]
+    val instrumented = boundedAspect.intercept(bounded)(recorder.fk, OnRaise.noop[WidgetResult, Render])
 
-    assertEquals(WeaveRenderer.render(woven.bounded(Widget(9))(using loud)).domain, List(List("a" -> "loud:9")))
-    assertEquals(WeaveRenderer.render(woven.bounded(Widget(9))(using quiet)).domain, List(List("a" -> "quiet:9")))
+    instrumented.bounded(Widget(9))(using loud)
+    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("a" -> "loud:9")))
+
+    instrumented.bounded(Widget(9))(using quiet)
+    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("a" -> "quiet:9")))
   }
 
   test("a subtype, an alias, and one conforming instance among several all resolve") {
-    val woven: WidgetVariationsAlg[Woven] = variationsAspect.weave(variations)(Functor[WidgetResult])
+    val recorder = new RecordingFk[WidgetResult, Render, Render]
+    val instrumented = variationsAspect.intercept(variations)(recorder.fk, OnRaise.noop[WidgetResult, Render])
 
     val widgetRender: WidgetRender = (w: Widget) => s"widgetRender:${w.id}"
-    assertEquals(
-      WeaveRenderer.render(woven.sub(Widget(10))(using widgetRender)).domain,
-      List(List("w" -> "widgetRender:10"))
-    )
-    assertEquals(WeaveRenderer.render(woven.aliased(Widget(11))(using loud)).domain, List(List("w" -> "loud:11")))
-    assertEquals(
-      WeaveRenderer.render(woven.several(Widget(12))(using quietError, quiet)).domain,
-      List(List("w" -> "quiet:12"))
-    )
+    instrumented.sub(Widget(10))(using widgetRender)
+    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("w" -> "widgetRender:10")))
+
+    instrumented.aliased(Widget(11))(using loud)
+    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("w" -> "loud:11")))
+
+    instrumented.several(Widget(12))(using quietError, quiet)
+    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("w" -> "quiet:12")))
   }
 
   test("a conforming given in a non-final using clause resolves") {
-    val woven: WidgetMultiUsingAlg[Woven] = multiUsingAspect.weave(multiUsing)(Functor[WidgetResult])
+    val recorder = new RecordingFk[WidgetResult, Render, Render]
+    val instrumented = multiUsingAspect.intercept(multiUsing)(recorder.fk, OnRaise.noop[WidgetResult, Render])
 
-    assertEquals(
-      WeaveRenderer.render(woven.multi(Widget(13))(using loud)(using Render[Int])).domain,
-      List(List("w" -> "loud:13"))
-    )
-    assertEquals(
-      WeaveRenderer.render(woven.multi(Widget(13))(using quiet)(using Render[Int])).domain,
-      List(List("w" -> "quiet:13"))
-    )
+    instrumented.multi(Widget(13))(using loud)(using Render[Int])
+    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("w" -> "loud:13")))
+
+    instrumented.multi(Widget(13))(using quiet)(using Render[Int])
+    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("w" -> "quiet:13")))
   }
 
   test("a wider contravariant instance stands in for the narrower one the derivation needs") {
-    val woven: ContraAlg[Aspect.Weave[WidgetResult, Contra, Render, *]] =
-      contraAspect.weave(contra)(Functor[WidgetResult])
+    val recorder = new RecordingFk[WidgetResult, Contra, Render]
+    val instrumented = contraAspect.intercept(contra)(recorder.fk, OnRaise.noop[WidgetResult, Render])
 
-    assertEquals(
-      WeaveRenderer.render(woven.sub(SubThing("x"))(using loudThing)).domain,
-      List(List("s" -> "loudThing:x"))
-    )
-    assertEquals(
-      WeaveRenderer.render(woven.sub(SubThing("x"))(using quietThing)).domain,
-      List(List("s" -> "quietThing:x"))
-    )
+    instrumented.sub(SubThing("x"))(using loudThing)
+    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("s" -> "loudThing:x")))
+
+    instrumented.sub(SubThing("x"))(using quietThing)
+    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("s" -> "quietThing:x")))
   }
 
   test("resolution is derivation-site first: a method-local instance does not override one in scope") {
-    val woven: PrecedenceAlg[Woven] = precedenceAspect.weave(precedence)(Functor[WidgetResult])
+    val recorder = new RecordingFk[WidgetResult, Render, Render]
+    val instrumented = precedenceAspect.intercept(precedence)(recorder.fk, OnRaise.noop[WidgetResult, Render])
     val shouty: Render[Int] = (i: Int) => s"shouty:$i"
 
     // `Render.renderInt` renders "7"; the method-local `shouty` would render
     // "shouty:7". The fallback only fires when derivation-site search fails.
-    assertEquals(WeaveRenderer.render(woven.pick(7)(using shouty)).domain, List(List("i" -> "7")))
+    instrumented.pick(7)(using shouty)
+    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("i" -> "7")))
   }
 
   // --- rejections ----------------------------------------------------------
