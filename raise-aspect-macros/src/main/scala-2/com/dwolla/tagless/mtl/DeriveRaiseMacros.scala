@@ -294,9 +294,62 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
     case t => t
   }
 
-  private def inferOrAbort(tpe: Type, describe: => String): Tree =
+  /** The generated method's own implicit parameters.
+    *
+    * Scala 2's grammar permits at most one implicit clause and requires it to be
+    * last, so the trailing clause is the only place to look — the same rule
+    * [[domainOf]] relies on when it drops that clause from the domain.
+    */
+  private def implicitParamsOf(method: Method): List[ValDef] =
+    method.paramLists.lastOption.toList.flatten.filter(_.mods.hasFlag(Flag.IMPLICIT))
+
+  /** Exactly one of the generated method's own implicit parameters whose declared
+    * type conforms to `tpe`, if there is one.
+    *
+    * This is a subtype test against what the method is ''handed'', not an implicit
+    * search: nothing is derived, no companion scope is consulted, and nothing
+    * chains. `<:<` rather than `=:=` because a wider contravariant instance can
+    * legitimately stand in for the narrower one the derivation asked for.
+    *
+    * Two conforming parameters abort rather than silently taking the first: real
+    * implicit search would report the ambiguity, and an arbitrary pick surfaces
+    * much later as a baffling wrong-instance bug.
+    */
+  private def methodLocalInstance(tpe: Type, describe: => String, method: Method): Option[Tree] =
+    implicitParamsOf(method).filter(p => bareType(p.tpt.tpe) <:< tpe) match {
+      case Nil => None
+      case p :: Nil => Some(Ident(p.name))
+      case ps =>
+        abort(
+          s"ambiguous method-local implicits for $tpe $describe: " +
+            ps.map(_.name.decodedName.toString).mkString(", ")
+        )
+    }
+
+  /** A parameter the user most likely meant to make implicit: its declared type
+    * would have satisfied the instance we could not find, but it sits in an
+    * ordinary clause, where nothing can reach it. Without this the message names
+    * only the parameter being advised and gives no hint that a conforming
+    * instance was sitting unused in the argument list.
+    */
+  private def unusableCandidateHint(tpe: Type, method: Method): Option[String] =
+    method.paramLists.flatten
+      .filterNot(_.mods.hasFlag(Flag.IMPLICIT))
+      .find(p => bareType(p.tpt.tpe) <:< tpe)
+      .map { p =>
+        s"Parameter ${p.name.decodedName} of method ${method.displayName} would conform, but only the " +
+          "method's implicit parameters are considered as method-local instances."
+      }
+
+  /** Resolve an instance for `tpe` at the derivation site, falling back to the
+    * generated method's own implicit parameters, and only then aborting.
+    */
+  private def inferOrAbort(tpe: Type, describe: => String, method: Method): Tree =
     c.inferImplicitValue(tpe) match {
-      case EmptyTree => abort(s"Not found: implicit $tpe $describe")
+      case EmptyTree =>
+        methodLocalInstance(tpe, describe, method).getOrElse(
+          abort(s"Not found: implicit $tpe $describe" + unusableCandidateHint(tpe, method).fold("")(". " + _))
+        )
       case tree => tree
     }
 
@@ -304,16 +357,22 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
     * both. Distinct from `inferOrAbort` so the message can say "error type"
     * rather than "parameter" — the parameter is the `Raise`, not the error.
     */
-  private def inferErrOrAbort(Err: Type, errorType: Type, method: Method): Tree =
-    c.inferImplicitValue(appliedType(Err, errorType)) match {
+  private def inferErrOrAbort(Err: Type, errorType: Type, method: Method): Tree = {
+    val tpe = appliedType(Err, errorType)
+    c.inferImplicitValue(tpe) match {
       case EmptyTree =>
-        abort(
-          s"no evidence for the error type $errorType raised by method ${method.displayName}: " +
-            s"an implicit ${Err.typeSymbol.name}[$errorType] is required at the derivation site. " +
-            s"Supply one, or derive at Err = cats.tagless.Trivial to opt out of error evidence."
-        )
+        methodLocalInstance(tpe, s"for the error type $errorType raised by method ${method.displayName}", method)
+          .getOrElse(
+            abort(
+              s"no evidence for the error type $errorType raised by method ${method.displayName}: " +
+                s"an implicit ${Err.typeSymbol.name}[$errorType] is required at the derivation site. " +
+                s"Supply one, or derive at Err = cats.tagless.Trivial to opt out of error evidence." +
+                unusableCandidateHint(tpe, method).fold("")(" " + _)
+            )
+          )
       case tree => tree
     }
+  }
 
   /** Reject every parameter that mentions `F` other than as a capability. */
   private def validateParams(method: Method, f: Symbol): Unit =
@@ -357,7 +416,8 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
         val displayName = p.name.decodedName.toString
         val instance = inferOrAbort(
           appliedType(Dom, pt),
-          s"for parameter $displayName of method ${method.displayName}"
+          s"for parameter $displayName of method ${method.displayName}",
+          method
         )
         val constructor = TermName(if (p.mods.hasFlag(Flag.BYNAMEPARAM)) "byName" else "byValue")
         val advice = q"$AspectAdvice.$constructor[$Dom, $pt]($displayName, ${p.name})($instance)"
@@ -405,7 +465,8 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
 
           val codInstance = inferOrAbort(
             appliedType(Cod, typeArgs),
-            s"for the result of method ${method.displayName}"
+            s"for the result of method ${method.displayName}",
+            method
           )
           val codomain =
             q"$AspectAdvice[$F, $Cod, ..$typeArgs](${method.displayName}, ${method.delegate(Ident(af), args)})($codInstance)"

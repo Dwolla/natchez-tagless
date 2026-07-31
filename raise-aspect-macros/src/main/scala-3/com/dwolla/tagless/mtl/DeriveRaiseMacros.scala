@@ -261,24 +261,78 @@ private class DeriveRaiseMacros[Q <: Quotes](using val q: Q):
       (names.zip(types) :: rest, result)
     case other => (Nil, other)
 
-  def summonOrAbort(tpe: TypeRepr, describe: => String): Term =
+  private def paramsOf(method: Symbol)(select: TermParamClause => Boolean): List[ValDef] =
+    method.tree match
+      case d: DefDef => d.termParamss.filter(select).flatMap(_.params)
+      case _ => Nil
+
+  /** Exactly one of the generated method's own given/implicit parameters whose
+    * declared type conforms to `tpe`, if there is one.
+    *
+    * This is a subtype test against what the method is ''handed'', not an implicit
+    * search: nothing is derived, no companion scope is consulted, and nothing
+    * chains. `<:<` rather than `=:=` because a wider contravariant instance can
+    * legitimately stand in for the narrower one the derivation asked for.
+    *
+    * Every using clause is searched, not only the last: Scala 3 permits several,
+    * in any position. Two conforming parameters abort rather than silently taking
+    * the first — real implicit search would report the ambiguity, and an arbitrary
+    * pick surfaces much later as a baffling wrong-instance bug.
+    */
+  private def methodLocalInstance(tpe: TypeRepr, describe: => String, method: Symbol): Option[Term] =
+    paramsOf(method)(c => c.isGiven || c.isImplicit).filter(_.tpt.tpe.widenParam <:< tpe) match
+      case Nil => None
+      case p :: Nil => Some(Ref(p.symbol))
+      case ps =>
+        report.errorAndAbort(
+          s"ambiguous method-local givens for ${tpe.show} $describe: ${ps.map(_.name).mkString(", ")}"
+        )
+
+  /** A parameter the user most likely meant to make a given: its declared type
+    * would have satisfied the instance we could not find, but it sits in an
+    * ordinary clause, where nothing can reach it. Without this the message names
+    * only the parameter being advised and gives no hint that a conforming
+    * instance was sitting unused in the argument list.
+    */
+  private def unusableCandidateHint(tpe: TypeRepr, method: Symbol): Option[String] =
+    paramsOf(method)(c => !c.isGiven && !c.isImplicit)
+      .find(_.tpt.tpe.widenParam <:< tpe)
+      .map { p =>
+        s"Parameter ${p.name} of method ${method.name} would conform, but only the method's using/implicit " +
+          "parameters are considered as method-local instances."
+      }
+
+  /** Resolve an instance for `tpe` at the derivation site, falling back to the
+    * generated method's own given/implicit parameters, and only then aborting.
+    */
+  def summonOrAbort(tpe: TypeRepr, describe: => String, method: Symbol): Term =
     Implicits.search(tpe) match
       case success: ImplicitSearchSuccess => success.tree
-      case _ => report.errorAndAbort(s"Not found: given ${tpe.show} $describe")
+      case _ =>
+        methodLocalInstance(tpe, describe, method).getOrElse(
+          report.errorAndAbort(
+            s"Not found: given ${tpe.show} $describe" + unusableCandidateHint(tpe, method).fold("")(". " + _)
+          )
+        )
 
   /** As [[summonOrAbort]], but worded for a capability parameter's error type.
     * Kept textually identical to the Scala 2 axis's message — the two axes are
     * held to behavioral agreement.
     */
-  def summonErrOrAbort(Err: TypeRepr, errorType: TypeRepr, methodName: String): Term =
-    Implicits.search(Err.appliedTo(errorType)) match
+  def summonErrOrAbort(Err: TypeRepr, errorType: TypeRepr, method: Symbol): Term =
+    val tpe = Err.appliedTo(errorType)
+    Implicits.search(tpe) match
       case success: ImplicitSearchSuccess => success.tree
       case _ =>
-        report.errorAndAbort(
-          s"no evidence for the error type ${errorType.show} raised by method $methodName: " +
-            s"an implicit ${Err.typeSymbol.name}[${errorType.show}] is required at the derivation site. " +
-            s"Supply one, or derive at Err = cats.tagless.Trivial to opt out of error evidence."
-        )
+        methodLocalInstance(tpe, s"for the error type ${errorType.show} raised by method ${method.name}", method)
+          .getOrElse(
+            report.errorAndAbort(
+              s"no evidence for the error type ${errorType.show} raised by method ${method.name}: " +
+                s"an implicit ${Err.typeSymbol.name}[${errorType.show}] is required at the derivation site. " +
+                s"Supply one, or derive at Err = cats.tagless.Trivial to opt out of error evidence." +
+                unusableCandidateHint(tpe, method).fold("")(" " + _)
+            )
+          )
 
   /** Reject every algebra member that uses the effect type in a way the
     * derivation cannot support. Runs against the ''declared'' algebra `Alg[F]`,
@@ -378,7 +432,12 @@ private[mtl] object RaiseAspectMacros:
           val name = Expr(param.name)
           val value = Ref(param.symbol)
           val dom = macros
-            .summonOrAbort(TypeRepr.of[Dom].appliedTo(tpe.widenParam), s"for parameter ${param.name}")
+            .summonOrAbort(
+              TypeRepr.of[Dom].appliedTo(tpe.widenParam),
+              s"for parameter ${param.name}",
+              // the enclosing generated method, whose given parameters the advice may reference
+              param.symbol.owner
+            )
             .asExprOf[Dom[t]]
           if tpe.isByName then '{ Aspect.Advice.byName($name, ${ value.asExprOf[t] })(using $dom) :: Nil }
           else if tpe.isRepeated then '{ ${ value.asExprOf[Seq[t]] }.map(Aspect.Advice.byValue($name, _)(using $dom)) }
@@ -390,7 +449,7 @@ private[mtl] object RaiseAspectMacros:
           tpe.dealias.typeArgs.last.asType match
             case '[e] =>
               val errEv = macros
-                .summonErrOrAbort(TypeRepr.of[Err], tpe.dealias.typeArgs.last, methodSym.name)
+                .summonErrOrAbort(TypeRepr.of[Err], tpe.dealias.typeArgs.last, methodSym)
                 .asExprOf[Err[e]]
               '{
                 WeaveArrows
@@ -409,7 +468,11 @@ private[mtl] object RaiseAspectMacros:
               given Quotes = sym.asQuotes
               val methodName = Expr(sym.name)
               val cod = macros
-                .summonOrAbort(TypeRepr.of[Cod].appliedTo(tpe.typeArgs.last), s"for the result of method ${sym.name}")
+                .summonOrAbort(
+                  TypeRepr.of[Cod].appliedTo(tpe.typeArgs.last),
+                  s"for the result of method ${sym.name}",
+                  sym
+                )
                 .asExprOf[Cod[t]]
               val domain = Expr.ofList(clauses.map { c =>
                 val kept = c.params.collect {
@@ -440,7 +503,7 @@ private[mtl] object RaiseAspectMacros:
           tpe.dealias.typeArgs.last.asType match
             case '[e] =>
               val errEv = macros
-                .summonErrOrAbort(TypeRepr.of[Err], tpe.dealias.typeArgs.last, methodSym.name)
+                .summonErrOrAbort(TypeRepr.of[Err], tpe.dealias.typeArgs.last, methodSym)
                 .asExprOf[Err[e]]
               '{ $arrow.pull(${ arg.asExprOf[Raise[G, e]] })(using $errEv) }.asTerm
       },
