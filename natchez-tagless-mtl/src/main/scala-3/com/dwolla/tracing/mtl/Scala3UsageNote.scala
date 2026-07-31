@@ -30,9 +30,12 @@ package com.dwolla.tracing.mtl
   *     }
   *
   *     // The derivation below summons Err[E] (here TraceableValue[ValidationError])
-  *     // per raise parameter at the derivation site, per Task 6 — supply it before
-  *     // deriving, or the derivation fails with a diagnostic naming the method and
-  *     // the missing error type.
+  *     // per raise parameter at the derivation site first, per Task 6. If no instance
+  *     // is available there, resolution falls back to one of validate's own `using`
+  *     // parameters, provided its declared type is a subtype of the needed one — no
+  *     // derivation, no companion scope, no chaining. Only if neither resolves does
+  *     // the derivation fail, with a diagnostic naming the method and the missing
+  *     // error type.
   *     implicit val traceableValueValidationError: TraceableValue[ValidationError] =
   *       new TraceableValue[ValidationError] {
   *         def toTraceValue(a: ValidationError): TraceValue = a match {

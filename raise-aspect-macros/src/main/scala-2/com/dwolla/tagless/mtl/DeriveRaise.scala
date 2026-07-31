@@ -25,6 +25,24 @@ import scala.language.experimental.macros
   * error can render it through that type class instead of `toString`. Use
   * `cats.tagless.Trivial` for `Err` to opt out; its universal instance makes
   * the constraint vacuous.
+  *
+  * `Dom`, `Cod`, and `Err` are resolved at the derivation site first; if that
+  * fails, resolution falls back to one of the generated method's own
+  * `implicit` parameters, provided its declared type is a subtype of the
+  * needed one. This is a plain subtype check, not implicit search — no
+  * derivation, no companion scope, no chaining — so a polymorphic or
+  * context-bound method (`def poly[A: Render](a: A)`) can supply its own
+  * instance even though the derivation site never sees a concrete type to
+  * summon against.
+  *
+  * Because derivation-site resolution runs first, an instance that later
+  * becomes available at the derivation site (e.g. a conforming `implicit val`
+  * added to the companion) silently takes over from a method-local instance
+  * the method was previously relying on — there is no diagnostic marking the
+  * switch. Two of the method's own implicit parameters conforming to the
+  * needed type is an error (`ambiguous method-local implicits for ...`,
+  * naming both); a conforming parameter that isn't declared `implicit` gets a
+  * hint naming it, rather than the plain missing-instance message.
   */
 object DeriveRaise {
 
