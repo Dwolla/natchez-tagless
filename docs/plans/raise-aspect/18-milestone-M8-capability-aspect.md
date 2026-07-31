@@ -62,8 +62,32 @@ organizing principle for everything else is:
 > A capability is transportable iff every abstract member only produces `F`
 > values (evidence members like `functor`/`applicative`/`monad` aside).
 
-Expected classifications — **verify each against the actual cats-mtl
-sources; do not recall**:
+Classifications — **verified against cats-mtl v1.7.0 (tag `v1.7.0`, commit
+`931556e44938a47eaa91af4d907b61a4a0bb4cab`) on 2026-07-30**, sources vendored
+under `reference/upstream/cats-mtl/`. All five bullet-point expectations below
+were confirmed; two things about the list itself were not:
+
+- **The enumeration was incomplete.** cats-mtl 1.7.0 has **nine** capability
+  type classes, not the seven named here. **`Listen`** is missing entirely —
+  it is excluded, disqualified by `listen` consuming an `F[A]`, and it sits
+  between `Tell` and `Censor` in the hierarchy, so any design that reasons
+  about `Censor` must account for it.
+- **`Chronicle`'s disqualifier was misattributed.** The grouping below implies
+  `confess`/`dictate` consume `F`. They do not; `Chronicle` is disqualified
+  specifically by **`materialize`**. The verdict is unchanged, the reason is
+  not — and a generalization that keys off the wrong member would classify it
+  wrongly.
+
+One thing the verification flagged for the design phase: cats-mtl already
+ships `Local.liftTo` via `LiftKind`, which looks like it might already solve
+transport for a consuming capability. **It does not.** `LiftKind` lifts only
+endomorphisms `F ~> F` into `G ~> G`, and only has instances where `G` is a
+canonical monad-transformer stack over `F` (`EitherT`/`IorT`/`Kleisli`/
+`OptionT`/`WriterT`) — not for an arbitrary `F ~> G` such as this library's
+tracing interpreter. Do not build on it without re-reading
+`reference/upstream/cats-mtl/core/src/main/scala/cats/mtl/LiftKind.scala`.
+
+The original expectations, all confirmed:
 
 - `Ask[F, A]`: `ask` produces `F[A]`; evidence member expected to be
   `Applicative[F]`. Transportable.
