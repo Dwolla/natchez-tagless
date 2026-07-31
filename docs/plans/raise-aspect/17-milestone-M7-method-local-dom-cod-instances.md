@@ -2,8 +2,9 @@
 
 ## Status
 
-**In progress.** Brian set the order on 2026-07-30: M7, then M8, and ratified
-the Decisions below the same day.
+**Complete** (branch `milestone/m7-method-local-instances`, stacked on the
+unmerged M6, M10, and M11). Brian set the order on 2026-07-30: M7, then M8,
+and ratified the Decisions below the same day.
 
 Prerequisites: M5 merged (the macros as they landed in M3/M4). Independent of
 M6 — the two can run in either order. The Decisions section below was proposed

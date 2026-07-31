@@ -474,10 +474,21 @@ needed type hidden behind a type alias; contravariant widening; several
 method-local candidates with exactly one conforming; polymorphic and
 context-bound methods (`def poly[A: Render](a: A)`), which could never resolve
 at the derivation site at all, since no concrete type exists there to summon
-against; and the `functorK`/`mapK` path. Two conforming candidates abort with an
+against; a conforming parameter in a non-final `using` clause on Scala 3 (an
+axis-asymmetric shape: Scala 2's grammar permits at most one implicit clause
+and requires it to be last, so it cannot even be expressed there); and the
+`functorK`/`mapK` path. Two conforming candidates abort with an
 ambiguity error naming both, rather than picking one arbitrarily; a conforming
 parameter sitting in an ordinary, non-implicit clause gets a hint naming it
 rather than the plain missing-instance message.
+
+Because the fallback only fires when derivation-site resolution fails,
+derivation-site precedence is silent: adding an instance at the derivation site
+later — e.g. a companion gains an `implicit val` that conforms — stops the
+weave from using the method-local instance it previously used, with no
+diagnostic marking the switch. This is intended (Decision 1, pinned by the
+`PrecedenceAlg` test) and preserves the pre-M7 contract, but it is worth
+naming: it is the same class of surprise this milestone otherwise eliminated.
 
 **This appendix's own option-(b) hypothesis — emit an in-body
 `scala.compiletime.summonInline` and let post-macro inlining resolve it in the

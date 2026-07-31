@@ -34,6 +34,15 @@ import scala.language.experimental.macros
   * context-bound method (`def poly[A: Render](a: A)`) can supply its own
   * instance even though the derivation site never sees a concrete type to
   * summon against.
+  *
+  * Because derivation-site resolution runs first, an instance that later
+  * becomes available at the derivation site (e.g. a conforming `implicit val`
+  * added to the companion) silently takes over from a method-local instance
+  * the method was previously relying on — there is no diagnostic marking the
+  * switch. Two of the method's own implicit parameters conforming to the
+  * needed type is an error (`ambiguous method-local implicits for ...`,
+  * naming both); a conforming parameter that isn't declared `implicit` gets a
+  * hint naming it, rather than the plain missing-instance message.
   */
 object DeriveRaise {
 

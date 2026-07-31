@@ -43,6 +43,15 @@ import scala.annotation.experimental
   * instance even though the derivation site never sees a concrete type to
   * summon against.
   *
+  * Because derivation-site resolution runs first, an instance that later
+  * becomes available at the derivation site (e.g. a conforming `given` added
+  * to the companion) silently takes over from a method-local instance the
+  * method was previously relying on — there is no diagnostic marking the
+  * switch. Two of the method's own `using`/`implicit` parameters conforming
+  * to the needed type is an error (`ambiguous method-local givens for ...`,
+  * naming both); a conforming parameter that isn't declared `using`/`implicit`
+  * gets a hint naming it, rather than the plain missing-instance message.
+  *
   * On Scala 3.4+ the `-experimental` compiler flag is an alternative to the
   * annotation, but this repository targets the 3.3.x LTS line, where that flag does
   * not exist. Instances are not derived implicitly; declare them in the algebra's
