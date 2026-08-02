@@ -297,7 +297,30 @@ for M13.
 
 ## Open questions for Brian
 
-**Q1 — Is a `Trivial`-codomain sibling wanted, now or ever?**
+**Q1 — Is a `Trivial`-codomain sibling wanted, now or ever?** — **Answered
+2026-08-02: no, not in M13 or M14.**
+
+Not escalated, because the request scopes itself: the stated purpose is the
+case "when they're using `TraceableValue` for all three type parameters".
+A `Cod = Trivial` sibling is a different case by construction.
+
+The gap is real and worth naming rather than hiding: `TraceableRaiseAspect`
+pins `Cod`, so it does **not** serve `traceWithInputs[Trivial]` — the
+trace-the-inputs-but-not-the-return-value shape. A user wanting that still
+writes the four-parameter `given` by hand, exactly as today. Nothing regresses;
+the convenience simply does not reach that case.
+
+The in-repo evidence for the `Trivial` shape is
+`barRaiseAspectTrivialCod: RaiseAspect[Bar, TraceableValue, Trivial, TraceableValue]`,
+and it is a **test fixture** — added in M10 to prove `Err` stays pinned to
+`TraceableValue` when `Cod` is free. That is a property test, not a user-facing
+usage pattern, so it is not evidence of demand.
+
+Adding a sibling later is additive and cheap: another trait, another `derived`,
+no change to anything shipped here. Doing it now would be speculative
+generality for a shape nobody outside a fixture has asked for.
+
+*(Original question, preserved:)*
 
 `TraceableRaiseAspect[Alg]` pins `Cod = TraceableValue`, which serves
 `traceWithInputsAndOutputs` and `traceWithInputs[TraceableValue]`. It does

@@ -513,7 +513,7 @@ Two are Scala 3 `derives` ergonomics; one is packaging:
 - M15 extract `WeaveKnot` from `core` into its own cats-tagless-only module,
   at an unchanged fully-qualified name, so a backend that is not natchez can
   use it without depending on natchez →
-  `28-milestone-M15-weave-knot-module.md`
+  `28-milestone-M15-tagless-core-module.md`
 
 **Why M13 and M14 need new types at all.** `derives X` desugars to a
 synthesized `given X[Alg] = X.derived`, so `X` must be a **one-parameter** type

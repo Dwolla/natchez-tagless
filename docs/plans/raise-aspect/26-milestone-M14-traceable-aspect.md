@@ -270,7 +270,13 @@ algebra and a handful of `summon` checks; it reverted its code.
 
 ## Open questions for Brian
 
-**Q1 — Is a `Trivial`-codomain sibling wanted?** Identical in substance to
+**Q1 — Is a `Trivial`-codomain sibling wanted?** — **Answered 2026-08-02: no.**
+Same ruling as M13's Q1; see `24-milestone-M13-traceable-raise-aspect.md` for
+the reasoning. It applies *more* strongly here, since this document already
+records that the plain `Aspect` shape has no in-repo `Trivial` usage at all,
+not even a fixture.
+
+*(Original question, preserved:)* Identical in substance to
 M13's Q1, and it should get one answer covering both milestones rather than two.
 `traceWithInputs[Trivial]` — trace the inputs, do not render the return value —
 cannot be served by a `derives` clause under this design, because an algebra can
