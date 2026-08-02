@@ -2,9 +2,109 @@
 
 ## Status
 
-**Planned, not started.** The implementation plan is
-`25-milestone-M13-implementation-plan.md`. Ratify the Decisions section below
-before Task 1 starts.
+**Complete (2026-08-02).** Branch `milestone/m13-traceable-raise-aspect`,
+stacked on M12 at `5ad4469`. The Decisions section below was ratified as
+proposed and implemented as written; **Q1 was answered "no"** — Brian chose
+(a), no `Trivial`-codomain sibling, ruled in `abb64e4` — so this milestone
+ships exactly `TraceableRaiseAspect` and nothing else. The implementation plan
+is `25-milestone-M13-implementation-plan.md`; each task's brief, report, and
+per-commit review diff live under
+`.superpowers/sdd/25-milestone-M13-implementation-plan/`.
+
+**What landed, task by task:**
+
+- **Task 1** (`80b0528`) added `TraceableRaiseAspect.scala`
+  (`natchez-tagless-mtl/src/main/scala-3`): the trait, the implicit summoner
+  `apply`, and the non-inline `fromRaiseAspect` factory, plus the differential
+  oracle `HandWrittenBarRaiseAspect` and `TraceableRaiseAspectSpec`'s first
+  four tests (weave-for-weave `intercept` forwarding, hook forwarding, `mapK`
+  forwarding, and the positive subsumption assignment with no cast). 22/22 on
+  3.3.8 JVM with `-Xfatal-warnings` forced, JS linker green, 18/18 unchanged on
+  2.13.18/2.12.21 (new sources are Scala-3-only), `doc` clean.
+- **Task 2** (`1f08d7f`) added `@experimental inline def derived`, forwarding
+  to `fromRaiseAspect(DeriveRaise.aspect[...])`, plus `DerivesBarFixture.scala`
+  (`@experimental trait DerivesBar[F[_]] derives TraceableRaiseAspect`) and two
+  more spec tests proving the `derives` clause resolves and agrees with the
+  hand-written oracle on `intercept`. 24/24 on 3.3.8 (18 unchanged +6), 18/18
+  on 2.13.18/2.12.21, JS linker green, `doc` clean including the new `{{{ }}}`
+  doctest with `derives`/`@experimental` inside it.
+- **Task 3** (`522bb08`, fix round in `600aa1c`) added `DerivesBarTracingSpec`,
+  the end-to-end `InMemory` gate, and two subsumption tests confirming the
+  converse fails (`compileErrors`) and that `fromRaiseAspect` is the fix. A
+  review round found the first cut's raise-path assertion checked only
+  `history.size` and one entry — weaker than the suite it was meant to mirror
+  — and fixed it into a faithful, entry-by-entry mirror of
+  `RaiseTraceIntegrationSuite#assertRaisingHistory` (including `AttachError`'s
+  structural check and a second, IOLocal-backed raise test), plus made the
+  negative `compileErrors` test assert on the actual diagnostic text rather
+  than mere non-emptiness. 30/30 on 3.3.8 with `-Xfatal-warnings` forced, 18/18
+  unchanged on 2.13.18/2.12.21, JS linker green on all three, `doc` clean.
+
+**What diverged from the plan, and why:**
+
+- A working-tree process error, not a code defect: while Task 1's agent had
+  `TraceableRaiseAspect.scala` and its tests staged, a concurrent documentation
+  commit (`git add -A docs/...` followed by `git commit`, which commits the
+  whole index, not just the added paths) swept those staged files into a
+  documentation commit (`8315ea3`). No content was lost or altered
+  (`git diff 8315ea3 HEAD` was empty) — fixed by splitting the offending commit
+  into `abb64e4` (docs) and `80b0528` (Task 1's code), so the history now
+  correctly attributes each. The standing rule recorded for the rest of the
+  run: while an implementation agent is live in a shared working tree, either
+  don't commit, or commit explicit paths (`git commit -o <paths>`) rather than
+  the whole index — exactly the `git status`-before-`git add -A` discipline
+  CLAUDE.md already calls for.
+- Task 3's original raise-path test was materially weaker than the brief's
+  intent (see above) — caught and fixed in review, not shipped as-is.
+- No divergence from the plan's design (D1–D5): the trait, the one-way
+  subtype relationship, the Scala-3-only placement, the non-inline factory,
+  and the differential+end-to-end test shape all landed exactly as proposed.
+
+**Verification actually run** (final state, `+natchezTaglessMtlJVM/test`
+`+natchezTaglessMtlJS/Test/scalaJSLinkerResult` `+natchezTaglessMtlJVM/doc`):
+
+- 3.3.8 JVM: **30/30**, zero failures, zero errors (18 pre-existing + 12 new —
+  4 from Task 1, 2 from Task 2, 6 from Task 3's fix round).
+- 2.13.18 JVM: **18/18**, unchanged from `main` — confirms the new sources
+  reach only `src/main/scala-3`/`src/test/scala-3`.
+- 2.12.21 JVM: **18/18**, unchanged from `main`.
+- `natchezTaglessMtlJS/Test/scalaJSLinkerResult`: green on all three Scala
+  versions.
+- `natchezTaglessMtlJVM/doc`: succeeds, including the new `{{{ }}}` doctest on
+  `derived` (which contains `derives` and `@experimental` — argued-not-
+  demonstrated in the plan, now demonstrated in-tree).
+- Forced `-Xfatal-warnings` on 3.3.8: zero new warnings, in particular no
+  "anonymous class definition will be duplicated at each inline site" — the
+  non-inline `fromRaiseAspect` factory is doing its job.
+- `git diff --stat` against `5ad4469` shows **no** change to `RaiseAspect.scala`,
+  `WeaveInterpreter.scala`, `RaiseTraceWeaveOps.scala`, `RaiseRecorder.scala`,
+  `build.sbt`, or any pre-existing expected span history — confirmed directly,
+  not assumed.
+
+**Anything found along the way a later milestone needs:**
+
+- **The `set` command cannot resolve `crossProject`-synthesized project IDs**
+  (`natchezTaglessMtlJVM`/`natchezTaglessMtlJS`) as Scala expressions — only
+  `natchezTaglessMtl`, the actual `val` in `build.sbt`, resolves that way.
+  `show`, `project <id>`, and direct task invocation (`<id>/test`) use a
+  different, ID-based resolver and work fine. The workaround for forcing
+  `-Xfatal-warnings` on this module: `project natchezTaglessMtlJVM` first, then
+  a project-relative `set Test / scalacOptions += "-Xfatal-warnings"`. Worth
+  reusing verbatim in M14 or any future milestone touching this module.
+- **This module's `doctestSettings` strips `-Wunused` from `Test/scalacOptions`**
+  (`build.sbt:46-48`), so "forced fatal warnings, zero warnings" does not cover
+  unused imports in test sources here specifically — an unused `Id` import
+  slipped through for exactly that reason in Task 1's first cut and was caught
+  by review, not by the compiler. Worth remembering before trusting a clean
+  fatal-warnings run as proof of no dead imports in this module's tests.
+- **M14** (`TraceableAspect`, the analogous type for plain `Aspect`) is the
+  direct confirmation that M13's structural-analogue evidence (gathered before
+  M13 existed, against `Aspect`/`Derive.aspect` rather than the real
+  `RaiseAspect`/`DeriveRaise.aspect`) actually transfers — M13 having now
+  measured everything directly against the real types removes most of the risk,
+  but M14 should still re-observe each task-level check itself rather than
+  assume M13's results carry over unverified, per the plan's own stated
+  methodology.
 
 M13, M14 and M15 were planned together on 2026-08-02 and are independent of one
 another; M15 additionally prepares for **M16 (otel4s), which is planned and
