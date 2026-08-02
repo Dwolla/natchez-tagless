@@ -498,6 +498,56 @@ govern method parameters — `Handle`, `Local`, `Listen`, `Censor` and
 `mapK`, which keeps real transport. Whether to admit further capabilities is a
 separate decision the owner has not made; M12 keeps `Raise`-only recognition.
 
+Fourth round (2026-08-02) — three independent milestones, planned together.
+Two are Scala 3 `derives` ergonomics; one is packaging:
+
+- M13 `TraceableRaiseAspect` — a one-parameter subtype of `RaiseAspect` with
+  `Dom`, `Cod` and `Err` all pinned to `TraceableValue`, so a Scala 3 algebra
+  can say `derives TraceableRaiseAspect` instead of declaring a companion
+  instance with four type arguments →
+  `24-milestone-M13-traceable-raise-aspect.md`
+- M14 `TraceableAspect` — the same for cats-tagless's own `Aspect`, in `core`.
+  **Two pinned parameters, not three:** `Aspect[Alg, Dom, Cod]` has no `Err`;
+  that parameter is M10's and belongs to `RaiseAspect` alone →
+  `26-milestone-M14-traceable-aspect.md`
+- M15 extract `WeaveKnot` from `core` into its own cats-tagless-only module,
+  at an unchanged fully-qualified name, so a backend that is not natchez can
+  use it without depending on natchez →
+  `28-milestone-M15-weave-knot-module.md`
+
+**Why M13 and M14 need new types at all.** `derives X` desugars to a
+synthesized `given X[Alg] = X.derived`, so `X` must be a **one-parameter** type
+constructor *and* must have a companion object carrying `derived`.
+`RaiseAspect` takes four parameters and `Aspect` takes three, so neither can
+appear in a `derives` clause; and a type alias that pinned the extra parameters
+would have no companion to put `derived` on. A trait fixes both at once. This is
+also why upstream cats-tagless offers `derives Instrument` (`object Instrument
+extends DerivedInstrument`) but no `derives Aspect`. Both new types are Scala 3
+only — `derives` does not exist on Scala 2 — and both keep the existing
+`@experimental` requirement, which moves from the companion's `implicit val` to
+the algebra rather than appearing or disappearing.
+
+Both are strictly additive: the new type is a *subtype* of the one every
+existing demand is phrased in, so `WeaveInterpreter`, `RaiseTraceWeaveOps`,
+`TraceWeaveOps` and `WeaveKnot` are untouched. The converse does not hold — a
+wide instance is not a narrow one — and each milestone ships a
+`fromRaiseAspect` / `fromAspect` conversion for that direction.
+
+**Why M15 exists, and what the investigation found.** `WeaveKnot` is written
+against cats and cats-tagless and mentions natchez nowhere, but it ships inside
+the `natchez-tagless` artifact. `core` has MiMa enabled against seven real
+published versions, so the expectation was that moving the class out would
+require a `mimaBinaryIssueFilters` entry. It does not: `WeaveKnot` was
+introduced after `v0.2.6` and appears in **none** of the 21 artifacts MiMa
+compares against (verified by scanning all of them). The *general* rule is the
+opposite and is recorded in M15's document — mima builds its "new" package from
+the new jar alone and uses the classpath only to resolve referenced types, so a
+**published** class moved to a dependency does get reported as missing.
+
+**M16 (otel4s) is planned and is being researched separately.** M15 exists to
+prepare for it; M16's design and plan are not part of this round, and are not
+M13's, M14's or M15's work.
+
 ### Method-local `Dom`/`Cod`/`Err` instances (found in M4, resolved in M7)
 
 Originally, `Dom` and `Cod` instances (later joined by `Err`, added in M10) were
