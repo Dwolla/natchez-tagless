@@ -76,3 +76,11 @@ pull_request_rules:
       add:
       - scalacache
       remove: []
+- name: Label tagless-core PRs
+  conditions:
+  - files~=^tagless-core/
+  actions:
+    label:
+      add:
+      - tagless-core
+      remove: []

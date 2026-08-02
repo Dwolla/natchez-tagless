@@ -29,6 +29,7 @@ val disciplineMunitVersion = "2.0.0"
 val munitVersion = "1.2.0"
 
 lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
+  taglessCore,
   core,
   scalacache,
   raiseAspectCore,
@@ -47,6 +48,31 @@ lazy val doctestSettings: Seq[Def.Setting[?]] = Seq(
     _.filterNot(_.contains("Wunused"))
   },
 )
+
+// WeaveKnot is written against cats and cats-tagless only — it mentions natchez
+// nowhere — but it shipped inside the `natchez-tagless` artifact. Extracted here
+// so a backend module that isn't natchez (otel4s, M16) can use it without taking
+// on natchez, circe and log4cats to get it. `core` depends on this module, so the
+// class remains available, at the same fully-qualified name, to everything that
+// already had it.
+lazy val taglessCore = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("tagless-core"))
+  .settings(
+    name := "tagless-core",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %%% "cats-core" % catsVersion,
+      "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
+      "org.scalameta" %%% "munit" % munitVersion % Test,
+      "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
+    ),
+    // A brand-new artifact has no previous versions to be compatible with.
+    // Matches the four other unpublished modules in this build; note that
+    // sbt-typelevel's `tlVersionIntroduced` is the mechanism that would keep
+    // MiMa live from this module's first release onward, and all five modules
+    // will need that decision made before they are first published.
+    mimaPreviousArtifacts := Set.empty,
+  )
 
 lazy val core = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Full)
@@ -74,7 +100,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     ),
   )
   .settings(doctestSettings *)
-  .dependsOn(buildInfoForTests % Test)
+  .dependsOn(taglessCore, buildInfoForTests % Test)
 
 lazy val scalacache = crossProject(JVMPlatform)
   .crossType(CrossType.Pure)
