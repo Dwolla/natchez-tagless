@@ -5,12 +5,26 @@ import cats.mtl.Raise
 import cats.syntax.all._
 import cats.tagless.aop.Aspect
 import cats.{Eval, Functor, ~>}
-import com.dwolla.tagless.mtl.{OnRaise, RaiseArrow, RaisePull, RaiseAspect}
+import com.dwolla.tagless.mtl.{DeriveRaise, OnRaise, RaiseArrow, RaisePull, RaiseAspect}
 import munit.FunSuite
 import natchez.TraceableValue
 
 import scala.annotation.experimental
 import scala.collection.mutable.ListBuffer
+
+/** Deliberately declares ''both'' instances in one companion — the narrow one
+  * the `derives` clause synthesizes, and a hand-declared wide one — so
+  * [[TraceableRaiseAspectSpec]] can pin which of them implicit search picks.
+  * That situation is what a user creates by adding `derives
+  * TraceableRaiseAspect` to an algebra that already had a wide instance.
+  */
+trait Coexisting[F[_]] derives TraceableRaiseAspect:
+  def bar(i: Int)(using R: Raise[F, BarError]): F[String]
+
+@experimental
+object Coexisting:
+  implicit val wide: RaiseAspect[Coexisting, TraceableValue, TraceableValue, TraceableValue] =
+    DeriveRaise.aspect[Coexisting, TraceableValue, TraceableValue, TraceableValue]
 
 /** `TraceableRaiseAspect` adds no behaviour: it pins three type parameters so
   * that `derives` has a one-parameter type constructor to work with. These
@@ -145,6 +159,42 @@ class TraceableRaiseAspectSpec extends FunSuite {
     assert(errors.contains("Required:"), errors)
     assert(errors.contains("TraceableRaiseAspect[com.dwolla.tracing.mtl.Bar]"), errors)
     assert(errors.contains("RaiseAspect[com.dwolla.tracing.mtl.Bar"), errors)
+  }
+
+  /** Not a defect — ordinary Scala specificity — but a silent-shadowing hazard
+    * worth latching: an algebra that already has a hand-written wide instance
+    * doing something extra in `intercept` (redaction, an extra hook) and then
+    * gains a `derives TraceableRaiseAspect` clause quietly stops using the
+    * hand-written one, with no error and no warning. `-Xprint:typer` confirms
+    * the choice statically: the wide demand types to
+    * `Coexisting.derived$TraceableRaiseAspect`, the `derives`-synthesized given.
+    * The escape hatch is lexical scope, which still outranks implicit scope.
+    */
+  test("a companion's narrow derived instance silently outranks a wide one beside it, and a local wide instance outranks both") {
+    val fromCompanion: RaiseAspect[Coexisting, TraceableValue, TraceableValue, TraceableValue] =
+      summon[RaiseAspect[Coexisting, TraceableValue, TraceableValue, TraceableValue]]
+
+    assert(
+      fromCompanion eq summon[TraceableRaiseAspect[Coexisting]],
+      "a wide demand must resolve to the narrow given the derives clause synthesized"
+    )
+    assert(
+      fromCompanion ne Coexisting.wide,
+      "the hand-declared wide instance is the one that loses, silently"
+    )
+
+    val localWide: RaiseAspect[Coexisting, TraceableValue, TraceableValue, TraceableValue] =
+      DeriveRaise.aspect[Coexisting, TraceableValue, TraceableValue, TraceableValue]
+
+    locally {
+      implicit val shadow: RaiseAspect[Coexisting, TraceableValue, TraceableValue, TraceableValue] =
+        localWide
+
+      assert(
+        summon[RaiseAspect[Coexisting, TraceableValue, TraceableValue, TraceableValue]] eq localWide,
+        "a lexically scoped wide instance must beat the companion's narrow one"
+      )
+    }
   }
 
   test("...and fromRaiseAspect is how you get one anyway") {

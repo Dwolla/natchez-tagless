@@ -39,6 +39,20 @@ per-commit review diff live under
   negative `compileErrors` test assert on the actual diagnostic text rather
   than mere non-emptiness. 30/30 on 3.3.8 with `-Xfatal-warnings` forced, 18/18
   unchanged on 2.13.18/2.12.21, JS linker green on all three, `doc` clean.
+- **Whole-branch review fix round** (this branch's last commit; findings and
+  report in `.superpowers/sdd/25-milestone-M13-implementation-plan/`) —
+  documentation and tests only,
+  no change to `TraceableRaiseAspect`'s type, factory or `derived`. It corrected
+  the `@experimental` guidance, which was factually wrong in five places and
+  taught the worse of the two placements: the annotation belongs on the algebra's
+  **companion object**, not on the trait (D3 now carries the three-way
+  measurement). `DerivesBarFixture` moved its annotation off `trait DerivesBar`
+  onto `object DerivesBar` accordingly, and the `derived` doctest did the same
+  for `Validator`. It also added the wide/narrow coexistence test this document
+  had claimed existed but did not (`Coexisting` in `TraceableRaiseAspectSpec`),
+  named the `Cod = Trivial` gap in `TraceableRaiseAspect`'s class scaladoc, and
+  pointed `RaiseTraceIntegrationSuite` at its `DerivesBarTracingSpec` twin so a
+  new assertion there is not silently missed in the copy.
 
 **What diverged from the plan, and why:**
 
@@ -63,8 +77,9 @@ per-commit review diff live under
 **Verification actually run** (final state, `+natchezTaglessMtlJVM/test`
 `+natchezTaglessMtlJS/Test/scalaJSLinkerResult` `+natchezTaglessMtlJVM/doc`):
 
-- 3.3.8 JVM: **30/30**, zero failures, zero errors (18 pre-existing + 12 new —
-  4 from Task 1, 2 from Task 2, 6 from Task 3's fix round).
+- 3.3.8 JVM: **31/31**, zero failures, zero errors (18 pre-existing + 13 new —
+  4 from Task 1, 2 from Task 2, 6 from Task 3's fix round, 1 from the
+  whole-branch review fix round's coexistence test).
 - 2.13.18 JVM: **18/18**, unchanged from `main` — confirms the new sources
   reach only `src/main/scala-3`/`src/test/scala-3`.
 - 2.12.21 JVM: **18/18**, unchanged from `main`.
@@ -131,10 +146,14 @@ has a one-word spelling for "give me the obvious instance of this type class" �
 here:
 
 ```scala
-@experimental
 trait Bar[F[_]] derives TraceableRaiseAspect {
   def bar(i: Int)(using R: Raise[F, BarError]): F[String]
 }
+
+// @experimental goes on the companion, where the synthesized given lands —
+// not on the trait, which would make the algebra type itself experimental.
+@experimental
+object Bar
 ```
 
 No new capability, no new behaviour, no new law. One name instead of a
@@ -282,19 +301,43 @@ both worth saying out loud so nobody discovers them mid-implementation:
 `Symbol.newClass`), so `derived` must be too, and so must its call sites.
 
 **Measured, and this is the load-bearing ergonomics caveat:** on 3.3.8, the
-algebra itself (or an enclosing scope) must carry `@experimental`. A sibling
-`@experimental` definition in the same compilation unit is *not* enough. The
-exact diagnostic is
+`@experimental` annotation is required wherever `derived` is *invoked* from. A
+`derives` clause invokes it from a given the compiler synthesizes into the
+algebra's **companion object** (`lazy given val derived$TraceableRaiseAspect`,
+per `-Xprint:typer`), so **`@experimental` on the companion object is the right
+placement** — the trait stays unannotated. A sibling `@experimental` definition
+in the same compilation unit is *not* enough; with no annotation at all the
+diagnostic is
 
 ```
 method derived is marked @experimental and therefore may only be used in an experimental scope.
 ```
 
-reported at the `derives` clause. This is **not a regression** — the existing
-hand-written form already requires `@experimental` on the `implicit val` and on
-every use site (see `natchez-tagless-mtl/src/test/scala-3/com/dwolla/tracing/mtl/RaiseTraceIntegrationSpec.scala:9,18`,
-where both test classes carry it). The annotation moves from the companion's
-`implicit val` to the trait; it does not appear or disappear.
+reported at the `derives` clause.
+
+**All three placements were compiled against the real `TraceableRaiseAspect` on
+3.3.8** (originally documented here as "the algebra itself, or an enclosing
+scope", which was wrong — a companion object is not a scope enclosing its
+trait):
+
+| placement | result |
+| --- | --- |
+| nowhere | fails at the `derives` clause, diagnostic above |
+| **companion object only** | **compiles**; the given resolves at both the narrow and the wide type, and non-experimental code uses the algebra type freely |
+| the trait | compiles, but the annotation is viral: a plain `def describe[F[_]](b: Alg[F])` fails with `trait Alg is marked @experimental and therefore may only be used in an experimental scope` |
+
+The companion placement is **very nearly** not a regression: the hand-written
+form annotates a single `implicit val` inside an unannotated companion
+(`Scala3UsageNote`), whereas `derives` cannot annotate the synthesized given
+alone and so takes the whole companion — every companion member becomes
+experimental, not just the instance. Both leave the algebra *type* clean, and
+both require `@experimental` at the sites that summon the instance (see
+`natchez-tagless-mtl/src/test/scala-3/com/dwolla/tracing/mtl/RaiseTraceIntegrationSpec.scala:9,18`,
+where both test classes carry it). The trait placement is the one to avoid: it
+enlarges the tax from the instance declaration to the algebra's entire consumer
+surface. An algebra with no declared companion at all has nowhere else to put
+the annotation — declare an empty `@experimental object Alg` rather than
+annotating the trait.
 
 **D4 — No `Trivial`-codomain sibling in this milestone.** See Open questions.
 
@@ -357,7 +400,10 @@ cats-tagless-core 0.16.5 and natchez-core 0.3.10:
   being ignored.
 - `@experimental` on the trait, or on an enclosing object, is sufficient; a
   sibling `@experimental` definition in the same file is **not** (exact
-  diagnostic quoted in D3).
+  diagnostic quoted in D3). *(Incomplete, corrected post-implementation: the
+  spike never tried the **companion object**, which is both sufficient and the
+  placement to prefer — see D3's table. Nothing measured here was wrong; the
+  best option was simply not among the options measured.)*
 - An anonymous class directly inside the `inline def derived` produces the
   duplication warning; a `private` named class fails to compile at the call
   site; the non-inline factory compiles with **zero warnings** under
@@ -390,8 +436,15 @@ for M13.
 - That no existing implicit resolution changes. Nothing in the tree asks for
   `TraceableRaiseAspect`, and adding a subtype does not make a previously
   unambiguous search ambiguous *unless* both the wide and the narrow instance
-  are in scope for the same algebra. The tests deliberately construct that
-  situation once, to see what happens, rather than assuming it cannot arise.
+  are in scope for the same algebra. **Measured after the fact**, in
+  `TraceableRaiseAspectSpec`'s `Coexisting` fixture: with both in one companion,
+  a wide demand resolves to the narrow `derives`-synthesized given on ordinary
+  specificity — no ambiguity error and no warning (`-Xprint:typer` shows the
+  wide demand typing to `Coexisting.derived$TraceableRaiseAspect`). Lexical
+  scope still wins, so a local `implicit val` at the wide type beats the
+  companion's narrow given. Not a defect, but a silent-shadowing hazard: adding
+  `derives` to an algebra that already has a hand-written wide instance quietly
+  stops using it, with no diagnostic. The test above pins both directions.
 
 ---
 
@@ -452,7 +505,8 @@ than a later milestone — the two traits' scaladoc has to explain each other.
 
 - [ ] `trait TraceableRaiseAspect[Alg[_[_]]] extends RaiseAspect[Alg, TraceableValue, TraceableValue, TraceableValue]`
       exists in `com.dwolla.tracing.mtl`, in `natchez-tagless-mtl/src/main/scala-3`.
-- [ ] An algebra declared `@experimental trait X[F[_]] derives TraceableRaiseAspect`
+- [ ] An algebra declared `trait X[F[_]] derives TraceableRaiseAspect` with an
+      `@experimental object X` beside it
       compiles, and its instance traces end to end through the **unedited**
       existing syntax against `InMemory`, producing a command history equal to
       the one a hand-written instance produces.

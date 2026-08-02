@@ -23,6 +23,16 @@ import scala.annotation.experimental
   * converse is false, and [[TraceableRaiseAspect.fromRaiseAspect]] is how you
   * cross the other way.
   *
+  * Pinning `Cod` is what makes `derives` possible, and it is also the one shape
+  * this type does not serve: `traceWithInputs[Trivial]` demands a
+  * `RaiseAspect[Alg, TraceableValue, Trivial, TraceableValue]`, which a
+  * `TraceableRaiseAspect[Alg]` is not, so an algebra that only derives gets a
+  * missing-implicit error there. Serve that shape with a separate
+  * four-parameter `given`/`implicit val`
+  * (`DeriveRaise.aspect[Alg, TraceableValue, Trivial, TraceableValue]`);
+  * [[TraceableRaiseAspect.fromRaiseAspect]] does ''not'' close this gap, since
+  * it only converts an instance that is already at the pinned shape.
+  *
   * Scala 3 only — `derives` does not exist on Scala 2, and this type has no
   * other purpose. A cross-built algebra therefore cannot use `derives` in its
   * shared sources; that is inherent to the feature, not to this type.
@@ -62,11 +72,33 @@ object TraceableRaiseAspect:
     *
     * `@experimental` because `DeriveRaise.aspect` is: the derivation
     * synthesizes a class with `quotes.reflect`'s `Symbol.newClass`, which is
-    * experimental on the 3.3.x LTS line. The annotation is therefore required
-    * on the algebra carrying the `derives` clause, or on a scope enclosing it —
-    * a sibling `@experimental` definition in the same file is not enough. The
-    * hand-written spelling this replaces needed the same annotation on its
-    * `implicit val`, so this is a move, not a new tax.
+    * experimental on the 3.3.x LTS line.
+    *
+    * The annotation is required wherever `derived` is ''invoked'' from, and a
+    * `derives` clause invokes it from a given the compiler synthesizes into the
+    * algebra's '''companion object''' — so `@experimental` belongs on the
+    * companion, as below, not on the trait. A sibling `@experimental`
+    * definition elsewhere in the same file is not enough; with the annotation
+    * nowhere at all the `derives` clause itself reports `method derived is
+    * marked @experimental and therefore may only be used in an experimental
+    * scope`.
+    *
+    * Annotating the trait instead also compiles, and it is the placement to
+    * avoid: it makes the algebra ''type'' experimental, so the annotation goes
+    * viral across the algebra's whole consumer surface — an unrelated, untraced
+    * `def use[F[_]](v: Validator[F])` then fails with `trait Validator is
+    * marked @experimental and therefore may only be used in an experimental
+    * scope`. On the companion it reaches only the companion's own members, and
+    * every consumer of the algebra type is unaffected. This is still slightly
+    * more than the hand-written spelling costs — there the annotation sits on
+    * the single `implicit val` (see `Scala3UsageNote`), whereas `derives` has no
+    * way to annotate the synthesized given alone — but both leave the algebra
+    * type itself clean, and both require `@experimental` at the sites that
+    * summon the instance.
+    *
+    * The one case with no good answer: an algebra that declares no companion at
+    * all has nowhere to put the annotation but the trait. Declaring an empty
+    * `@experimental object Alg` alongside it avoids the virality.
     *
     * {{{
     *   import cats.Applicative
@@ -89,11 +121,12 @@ object TraceableRaiseAspect:
     *       }
     *   }
     *
-    *   @experimental
+    *   // no @experimental here: the algebra type stays usable from ordinary code
     *   trait Validator[F[_]] derives TraceableRaiseAspect {
     *     def validate(i: Int)(using R: Raise[F, ValidationError]): F[String]
     *   }
     *
+    *   // ...it goes here instead, where the synthesized given lands
     *   @experimental
     *   object Validator {
     *     def apply[F[_]: Applicative]: Validator[F] = new Validator[F] {

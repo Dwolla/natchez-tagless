@@ -30,6 +30,14 @@ import natchez._
   * `traceWithInputs[Trivial]` (M11) has a `RaiseAspect[Bar, TraceableValue, Trivial,
   * TraceableValue]` to resolve `WeaveInterpreter.fromRaiseAspect` against, exercising
   * that resolution at a `Cod` other than `Err`.
+  *
+  * '''This suite has a twin.''' `DerivesBarTracingSpec` (Scala 3 only, M13) holds a
+  * verbatim copy of [[raisingProgram]], [[raisingProgramHistory]] and
+  * [[assertRaisingHistory]] with `DerivesBar` in place of `Bar`, because those
+  * members are `private` here and this class is not abstracted over the algebra.
+  * Nothing links the two mechanically, so a ''new'' assertion added here — as
+  * `assertNoReturnValuePut` was — will not appear there and nothing will go red.
+  * If you extend this suite, decide deliberately whether the copy needs it too.
   */
 abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
   implicit def barRaiseAspect: RaiseAspect[Bar, TraceableValue, TraceableValue, TraceableValue]

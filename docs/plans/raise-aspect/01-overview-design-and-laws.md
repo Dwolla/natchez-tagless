@@ -524,8 +524,12 @@ would have no companion to put `derived` on. A trait fixes both at once. This is
 also why upstream cats-tagless offers `derives Instrument` (`object Instrument
 extends DerivedInstrument`) but no `derives Aspect`. Both new types are Scala 3
 only — `derives` does not exist on Scala 2 — and both keep the existing
-`@experimental` requirement, which moves from the companion's `implicit val` to
-the algebra rather than appearing or disappearing.
+`@experimental` requirement, which neither appears nor disappears but does
+change shape: `derives` synthesizes its given into the algebra's **companion
+object**, so the annotation goes on the companion, one step wider than the
+single `@experimental implicit val` it replaces. It must *not* go on the trait,
+which compiles but makes the algebra type itself experimental and therefore
+viral to every reference to it (measured on 3.3.8; see M13's D3).
 
 Both are strictly additive: the new type is a *subtype* of the one every
 existing demand is phrased in, so `WeaveInterpreter`, `RaiseTraceWeaveOps`,
