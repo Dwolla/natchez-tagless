@@ -75,6 +75,8 @@ document this plan implements, it records the MiMa investigation, and its
 **Modified:**
 
 - `build.sbt` — new `taglessCore` project; added to `tlCrossRootProject.aggregate`;
+- `.github/workflows/ci.yml` — **regenerated, not hand-edited.** See the note
+  below; this file was missing from the plan's original file list.
   `core` gains `.dependsOn(taglessCore)`.
 
 **Deliberately unchanged:** every other source file in the repository.
@@ -82,6 +84,23 @@ document this plan implements, it records the MiMa investigation, and its
 `core`, which now depends on `taglessCore`.
 
 ---
+
+> **Added 2026-08-02, after the M16 planning pass found it missing.** A new
+> module changes the generated CI workflow, and CI will fail without it.
+> `.github/workflows/ci.yml` enumerates **every module's target directory
+> explicitly** — see the `Make target directories` and `Compress target
+> directories` steps, which today list `scalacache/.jvm/target`,
+> `raise-aspect-core/.jvm/target`, `natchez-tagless-mtl/.js/target` and the
+> rest by name. Adding `tagless-core` changes what `sbt-typelevel` generates,
+> and `ci.yml` itself runs `sbt githubWorkflowCheck`, which fails when the
+> committed workflow has drifted from the generated one.
+>
+> So the build-wiring task must end with `sbt githubWorkflowGenerate` and
+> commit the resulting `ci.yml` diff. **Do not hand-edit the workflow** —
+> `githubWorkflowCheck` compares against generator output, so a hand-edit that
+> looks right will still fail. Verify by running `sbt githubWorkflowCheck`
+> locally and seeing it pass. The same applies to M16, whose plan already
+> carries this step.
 
 ## Task 1: create the module and move the class
 
