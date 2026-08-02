@@ -132,11 +132,11 @@ entirely in the build, not in the code.
 ### Shape
 
 ```scala
-lazy val weaveKnot = crossProject(JVMPlatform, JSPlatform)
+lazy val taglessCore = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
-  .in(file("weave-knot"))
+  .in(file("tagless-core"))
   .settings(
-    name := "weave-knot",
+    name := "tagless-core",
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % catsVersion,
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
@@ -147,8 +147,8 @@ lazy val weaveKnot = crossProject(JVMPlatform, JSPlatform)
   )
 ```
 
-with `weaveKnot` added to `tlCrossRootProject.aggregate(…)` and
-`core` gaining `.dependsOn(weaveKnot)`.
+with `taglessCore` added to `tlCrossRootProject.aggregate(…)` and
+`core` gaining `.dependsOn(taglessCore)`.
 
 ### The four questions the request asked to settle
 
@@ -286,17 +286,24 @@ dependency the milestone exists to remove.
 
 | Candidate | For | Against |
 | --- | --- | --- |
-| **`weave-knot`** (recommended) | matches the type name exactly; dir = artifact, as the `raise-aspect-*` family does; says what is in it | slightly generic as a standalone Maven coordinate under `com.dwolla` |
+| **`tagless-core`** (recommended) | matches the type name exactly; dir = artifact, as the `raise-aspect-*` family does; says what is in it | slightly generic as a standalone Maven coordinate under `com.dwolla` |
 | `tagless-knot` | names the ecosystem rather than the operation; reads better as a coordinate | `WeaveKnot` also does `instrument`, and "tagless knot" is vaguer about what it ties |
 | `cats-tagless-knot` | unambiguous about the ecosystem | invites confusion with an upstream `org.typelevel` artifact that does not exist, and M9 contemplates upstreaming |
 
-**The plan is written for `weave-knot`** and every occurrence is in `build.sbt`
+> **Ruled by Brian, 2026-08-02: the module is `tagless-core`.** The table below
+> is preserved as the reasoning that was put to him. He chose the broader name
+> over `weave-knot`, which answers the companion question too: this module is a
+> general home for natchez-free `com.dwolla.tagless` utilities, not a
+> single-type artifact. Anything added later that has no natchez dependency
+> belongs here rather than in a new module.
+
+**The plan is written for `tagless-core`** and every occurrence is in `build.sbt`
 plus the docs, so changing it is a five-minute edit *before* the first publish
 and a breaking change after. If you prefer another, say so at ratification.
 
 **Q2 — is anything else destined for this module?** Answering "no" is fine and
 is what the plan assumes (D6). Asking because the module's *name* depends on it:
-if it is only ever going to hold `WeaveKnot`, `weave-knot` is right; if it is to
+if it is only ever going to hold `WeaveKnot`, `tagless-core` is right; if it is to
 become the natchez-free `com.dwolla.tagless` utility module in general, then
 `tagless-knot` is wrong too and something like `cats-tagless-extras` would be
 the honest name. I have no evidence either way from the codebase, and M16's
