@@ -112,9 +112,13 @@ object TraceableAspect:
 Used as:
 
 ```scala
-@experimental
+// no @experimental here: the algebra type stays usable from ordinary code
 trait Foo[F[_]] derives TraceableAspect:
   def foo(i: Int): F[String]
+
+// ...it goes here instead, where the synthesized given lands
+@experimental
+object Foo
 ```
 
 **This exact code was compiled and run.** See Evidence — unlike M13, whose
@@ -231,12 +235,29 @@ algebra and a handful of `summon` checks; it reverted its code.
 - `trait Lookup[F[_]] derives TraceableAspect` compiles and produces a working
   instance. Runtime check through the inherited default `instrument`:
   `Lookup.get = v:k` — correct algebra name, method name and value.
-- **`@experimental` is required on the algebra** (or an enclosing scope). A
-  sibling `@experimental` definition in the same compilation unit is not
-  enough. The diagnostic is
-  `method derived is marked @experimental and therefore may only be used in an
-  experimental scope.`, reported at the `derives` clause. This matches the
-  requirement already documented for `DeriveRaise.aspect`
+- **`@experimental` is required, and where it goes matters.** A `derives`
+  clause invokes `derived` from a given the compiler synthesizes into the
+  algebra's companion object, so `@experimental` on the **companion object** is
+  the right placement — the trait stays unannotated. All three placements were
+  compiled against the real `TraceableAspect` on 3.3.8:
+
+  | placement | result |
+  | --- | --- |
+  | nowhere | fails at the `derives` clause: `method derived is marked @experimental and therefore may only be used in an experimental scope.` |
+  | **companion object only** | **compiles**; the given resolves at both the narrow and the wide type, and non-experimental code uses the algebra type freely |
+  | the trait | compiles, but the annotation is viral: an unrelated, untraced `def use[F[_]](v: Alg[F])` fails with `trait Alg is marked @experimental and therefore may only be used in an experimental scope` |
+
+  A sibling `@experimental` definition elsewhere in the same compilation unit is
+  *not* enough — a companion object is not "a scope enclosing" the trait, which
+  is why the trait placement (this document's own earlier claim) was wrong
+  rather than merely incomplete. The companion placement is **very nearly** not
+  a regression: `derives` cannot annotate the synthesized given alone, so it
+  takes the whole companion — every companion member becomes experimental, not
+  just the instance — where a hand-written instance needs only a single
+  `implicit val` annotated. Both leave the algebra *type* clean. An algebra with
+  no declared companion at all has nowhere else to put the annotation — declare
+  an empty `@experimental object Alg` rather than annotating the trait. This
+  matches the requirement already documented for `DeriveRaise.aspect`
   (`raise-aspect-macros/src/main/scala-3/com/dwolla/tagless/mtl/DeriveRaise.scala`
   scaladoc) and is a property of upstream: the whole of `object Derive` is
   `@experimental` (`cats/tagless/Derive.scala:28-29`).
@@ -300,10 +321,11 @@ case.
 - [ ] `trait TraceableAspect[Alg[_[_]]] extends Aspect[Alg, TraceableValue, TraceableValue]`
       exists in `com.dwolla.tracing`, under `core/shared/src/main/scala-3`, with
       `apply`, `fromAspect` and `@experimental inline derived` on its companion.
-- [ ] An algebra declared `@experimental trait X[F[_]] derives TraceableAspect`
-      traces end to end through the **unedited** `com.dwolla.tracing.syntax`
-      `traceWithInputsAndOutputs`, against `InMemory`, with a span history equal
-      to the one a hand-written `Aspect` instance produces.
+- [ ] An algebra declared `trait X[F[_]] derives TraceableAspect` with a
+      separate `@experimental object X` traces end to end through the
+      **unedited** `com.dwolla.tracing.syntax` `traceWithInputsAndOutputs`,
+      against `InMemory`, with a span history equal to the one a hand-written
+      `Aspect` instance produces.
 - [ ] The derived and hand-written instances agree on `weave` (algebra name,
       method name, domain names and rendered values, codomain target) and on
       `mapK`; and `instrument`, which neither implements, works on both.

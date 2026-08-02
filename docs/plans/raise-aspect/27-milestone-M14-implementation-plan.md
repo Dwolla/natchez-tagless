@@ -2,10 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let a Scala 3 user write
-`@experimental trait Foo[F[_]] derives TraceableAspect` instead of a
-companion-object `implicit val fooAspect: Aspect[Foo, TraceableValue,
-TraceableValue] = …`, and resolve the four-year-old `TODO` in
+**Goal:** Let a Scala 3 user write `trait Foo[F[_]] derives TraceableAspect`
+(with `@experimental` on `object Foo`, not the trait — see Global Constraints)
+instead of a companion-object `implicit val fooAspect: Aspect[Foo,
+TraceableValue, TraceableValue] = …`, and resolve the four-year-old `TODO` in
 `TraceWeaveCapturingInputsAndOutputs`' scaladoc that asks for exactly this.
 
 **Architecture:** A one-parameter `trait TraceableAspect[Alg[_[_]]]` extending
@@ -53,9 +53,18 @@ why.
 - The Scala 3 warning set is
   `-Wunused:{implicits,explicits,imports,locals,params,privates} -Wvalue-discard -Ykind-projector`.
   `-Ykind-projector` has no `:underscores`, so the placeholder is `*`.
-- **`@experimental` is required on any definition that mentions `derived`** —
-  the algebra carrying the `derives` clause, and any test class that summons the
-  instance. A sibling `@experimental` definition in the same file is not enough.
+- **`@experimental` is required, and where it goes matters.** A `derives`
+  clause invokes `derived` from a given the compiler synthesizes into the
+  algebra's companion object, so the annotation belongs on the **companion
+  object** — `object Foo`, not `trait Foo` — plus any test class that summons
+  the instance. Annotating the trait instead also compiles, but it is the
+  placement to avoid: it makes the algebra *type* experimental, so the
+  annotation goes viral across the algebra's whole consumer surface, including
+  untraced call sites that never touch the instance. A sibling `@experimental`
+  definition elsewhere in the same file is not enough — a companion object is
+  not "a scope enclosing" the trait — and with the annotation nowhere at all the
+  `derives` clause itself fails. See Task 2's `derived` scaladoc for the
+  three-way measurement.
 - **`core`'s test sources already declare top-level `Foo` and `Bar` in
   `com.dwolla.tracing`** (`ImplicitPrioritizationSpec.scala:33,39`). Do not reuse
   those names; this plan uses `Lookup`.
@@ -378,7 +387,8 @@ JS, with no filter."
     (cats-tagless-core 0.16.5, `cats/tagless/Derive.scala:28-29,53`)
 - Produces:
   - `@experimental inline def TraceableAspect.derived[Alg[_[_]]]: TraceableAspect[Alg]`
-  - `@experimental trait DerivesLookup[F[_]] derives TraceableAspect`
+  - `trait DerivesLookup[F[_]] derives TraceableAspect` with a separate
+    `@experimental object DerivesLookup`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -389,13 +399,14 @@ Append to `LookupFixture.scala`:
   * can be compared directly and the expected span history differs only in the
   * algebra name.
   *
-  * `@experimental` is required, and required on the algebra itself (or an
-  * enclosing scope) rather than merely somewhere in the file:
-  * `TraceableAspect.derived` is `@experimental` because the whole of
-  * cats-tagless's `object Derive` is, and the 3.3.x LTS line has no
+  * `@experimental` is required, and where it goes matters: a `derives` clause
+  * invokes `derived` from a given the compiler synthesizes into the algebra's
+  * companion object, so the annotation belongs on the companion — not the
+  * trait, which stays unannotated so the algebra type itself is usable from
+  * ordinary code. `TraceableAspect.derived` is `@experimental` because the
+  * whole of cats-tagless's `object Derive` is, and the 3.3.x LTS line has no
   * `-experimental` flag to opt out with.
   */
-@experimental
 trait DerivesLookup[F[_]] derives TraceableAspect:
   def get(key: String): F[String]
 
@@ -505,11 +516,31 @@ Append to `TraceableAspect.scala`'s companion, adding
   /** What a `derives TraceableAspect` clause calls.
     *
     * `@experimental` because cats-tagless's `object Derive` is annotated in its
-    * entirety. The annotation is therefore required on the algebra carrying the
-    * `derives` clause, or on a scope enclosing it — a sibling `@experimental`
-    * definition in the same file is not enough. On Scala 3.4+ the
-    * `-experimental` compiler flag is an alternative; this repository targets
-    * the 3.3.x LTS line, where that flag does not exist.
+    * entirety. The annotation is required wherever `derived` is ''invoked''
+    * from, and a `derives` clause invokes it from a given the compiler
+    * synthesizes into the algebra's '''companion object''' — so `@experimental`
+    * belongs on the companion, as below, not on the trait. A sibling
+    * `@experimental` definition elsewhere in the same file is not enough; with
+    * the annotation nowhere at all the `derives` clause itself reports `method
+    * derived is marked @experimental and therefore may only be used in an
+    * experimental scope`. On Scala 3.4+ the `-experimental` compiler flag is an
+    * alternative; this repository targets the 3.3.x LTS line, where that flag
+    * does not exist.
+    *
+    * Annotating the trait instead also compiles, and it is the placement to
+    * avoid: it makes the algebra ''type'' experimental, so the annotation goes
+    * viral across the algebra's whole consumer surface — an unrelated, untraced
+    * `def use[F[_]](v: Greeter[F])` would then fail with `trait Greeter is
+    * marked @experimental and therefore may only be used in an experimental
+    * scope`. On the companion it reaches only the companion's own members, and
+    * every consumer of the algebra type is unaffected. This is still slightly
+    * more than the hand-written spelling costs — there the annotation sits on
+    * a single `implicit val`, whereas `derives` has no way to annotate the
+    * synthesized given alone — but both leave the algebra type itself clean.
+    *
+    * The one case with no good answer: an algebra that declares no companion at
+    * all has nowhere to put the annotation but the trait. Declaring an empty
+    * `@experimental object Alg` alongside it avoids the virality.
     *
     * {{{
     *   import cats.Applicative
@@ -518,11 +549,12 @@ Append to `TraceableAspect.scala`'s companion, adding
     *
     *   import scala.annotation.experimental
     *
-    *   @experimental
+    *   // no @experimental here: the algebra type stays usable from ordinary code
     *   trait Greeter[F[_]] derives TraceableAspect {
     *     def greet(name: String): F[String]
     *   }
     *
+    *   // ...it goes here instead, where the synthesized given lands
     *   @experimental
     *   object Greeter {
     *     def apply[F[_]: Applicative]: Greeter[F] = new Greeter[F] {
@@ -547,8 +579,8 @@ Expected: PASS, 8 + 2 tests.
 If the failure is instead `Not found: given natchez.TraceableValue[…]` at the
 `derives` clause, the macro is genuinely running and reporting a missing
 instance — add it. If it is `method derived is marked @experimental`, the
-annotation is missing on the algebra or on the summoning class, not on
-`derived`.
+annotation is missing on the algebra's companion object or on the summoning
+class, not on `derived`.
 
 - [ ] **Step 5: Check the doctest ran, and that it did not leak to Scala 2**
 
@@ -793,13 +825,18 @@ and, after the closing `}}}`:
 
 ```
  * On Scala 3 the whole instance above collapses to a `derives` clause:
- * `@experimental trait Foo[F[_]] derives TraceableAspect`. See
- * `com.dwolla.tracing.TraceableAspect`, which pins `Dom` and `Cod` to
- * `TraceableValue` so that `derives` has the one-parameter type constructor it
- * requires. `@experimental` is needed because cats-tagless's `Derive` is
- * annotated; the 3.3.x LTS line has no `-experimental` flag to opt out with.
- * There is no Scala 2 equivalent — `derives` does not exist there — so a
- * cross-built algebra keeps the form above.
+ * `trait Foo[F[_]] derives TraceableAspect` with a separate `@experimental
+ * object Foo`. See `com.dwolla.tracing.TraceableAspect`, which pins `Dom` and
+ * `Cod` to `TraceableValue` so that `derives` has the one-parameter type
+ * constructor it requires. `@experimental` is still required, and ''where'' it
+ * goes matters: a `derives` clause invokes `derived` from a given the compiler
+ * synthesizes into the algebra's companion object, so the annotation belongs
+ * on the companion, not the trait — annotating the trait instead also
+ * compiles, but makes the algebra ''type'' experimental, forcing
+ * `@experimental` onto every reference to it, including untraced call sites
+ * that never touch the instance. The 3.3.x LTS line has no `-experimental`
+ * flag to opt out with. There is no Scala 2 equivalent — `derives` does not
+ * exist there — so a cross-built algebra keeps the form above.
 ```
 
 Verify the doctest still compiles on all three versions after the edit; the
@@ -867,10 +904,11 @@ readers at the one-word form."
 - [ ] `trait TraceableAspect[Alg[_[_]]] extends Aspect[Alg, TraceableValue, TraceableValue]`
       exists in `com.dwolla.tracing`, under `core/shared/src/main/scala-3`, with
       `apply`, `fromAspect` and `@experimental inline derived`.
-- [ ] `@experimental trait DerivesLookup[F[_]] derives TraceableAspect` compiles
-      and traces through the **unedited** `com.dwolla.tracing.syntax`, producing
-      the same span history as the hand-written `Aspect` for the same algebra —
-      literally the same function of the algebra name.
+- [ ] `trait DerivesLookup[F[_]] derives TraceableAspect` with a separate
+      `@experimental object DerivesLookup` compiles and traces through the
+      **unedited** `com.dwolla.tracing.syntax`, producing the same span history
+      as the hand-written `Aspect` for the same algebra — literally the same
+      function of the algebra name.
 - [ ] Derived and hand-written agree on `weave`'s algebra name, method name,
       rendered domain and codomain target, and on `mapK`; `instrument` is
       inherited and works.
