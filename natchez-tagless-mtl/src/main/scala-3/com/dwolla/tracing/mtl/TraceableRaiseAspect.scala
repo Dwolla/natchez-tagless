@@ -3,8 +3,10 @@ package com.dwolla.tracing.mtl
 import cats.Apply
 import cats.tagless.aop.Aspect
 import cats.~>
-import com.dwolla.tagless.mtl.{OnRaise, RaiseArrow, RaiseAspect}
+import com.dwolla.tagless.mtl.{DeriveRaise, OnRaise, RaiseArrow, RaiseAspect}
 import natchez.TraceableValue
+
+import scala.annotation.experimental
 
 /** A [[com.dwolla.tagless.mtl.RaiseAspect]] with all three of `Dom`, `Cod` and
   * `Err` pinned to `natchez.TraceableValue` — the shape every natchez user
@@ -55,3 +57,52 @@ object TraceableRaiseAspect:
 
       def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G, TraceableValue]): Alg[G] =
         underlying.mapK(af)(arrow)
+
+  /** What a `derives TraceableRaiseAspect` clause calls.
+    *
+    * `@experimental` because `DeriveRaise.aspect` is: the derivation
+    * synthesizes a class with `quotes.reflect`'s `Symbol.newClass`, which is
+    * experimental on the 3.3.x LTS line. The annotation is therefore required
+    * on the algebra carrying the `derives` clause, or on a scope enclosing it —
+    * a sibling `@experimental` definition in the same file is not enough. The
+    * hand-written spelling this replaces needed the same annotation on its
+    * `implicit val`, so this is a move, not a new tax.
+    *
+    * {{{
+    *   import cats.Applicative
+    *   import cats.mtl.Raise
+    *   import cats.syntax.all.*
+    *   import com.dwolla.tracing.mtl.TraceableRaiseAspect
+    *   import natchez.{TraceValue, TraceableValue}
+    *
+    *   import scala.annotation.experimental
+    *
+    *   sealed trait ValidationError extends Product with Serializable
+    *   final case class TooSmall(i: Int) extends ValidationError
+    *
+    *   object ValidationError {
+    *     implicit val traceableValue: TraceableValue[ValidationError] =
+    *       new TraceableValue[ValidationError] {
+    *         def toTraceValue(a: ValidationError): TraceValue = a match {
+    *           case TooSmall(i) => TraceValue.StringValue("too small: " + i.toString)
+    *         }
+    *       }
+    *   }
+    *
+    *   @experimental
+    *   trait Validator[F[_]] derives TraceableRaiseAspect {
+    *     def validate(i: Int)(using R: Raise[F, ValidationError]): F[String]
+    *   }
+    *
+    *   @experimental
+    *   object Validator {
+    *     def apply[F[_]: Applicative]: Validator[F] = new Validator[F] {
+    *       def validate(i: Int)(using R: Raise[F, ValidationError]): F[String] =
+    *         if (i < 0) R.raise(TooSmall(i)) else ("ok:" + i.toString).pure[F]
+    *     }
+    *   }
+    * }}}
+    */
+  @experimental
+  inline def derived[Alg[_[_]]]: TraceableRaiseAspect[Alg] =
+    fromRaiseAspect(DeriveRaise.aspect[Alg, TraceableValue, TraceableValue, TraceableValue])

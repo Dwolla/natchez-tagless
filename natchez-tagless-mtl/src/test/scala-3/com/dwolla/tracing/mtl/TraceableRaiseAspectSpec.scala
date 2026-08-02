@@ -4,11 +4,12 @@ import cats.data.EitherT
 import cats.mtl.Raise
 import cats.syntax.all._
 import cats.tagless.aop.Aspect
-import cats.{Eval, Functor, Id, ~>}
+import cats.{Eval, Functor, ~>}
 import com.dwolla.tagless.mtl.{OnRaise, RaiseArrow, RaisePull, RaiseAspect}
 import munit.FunSuite
 import natchez.TraceableValue
 
+import scala.annotation.experimental
 import scala.collection.mutable.ListBuffer
 
 /** `TraceableRaiseAspect` adds no behaviour: it pins three type parameters so
@@ -16,6 +17,7 @@ import scala.collection.mutable.ListBuffer
   * tests say exactly that — the wrapper forwards both abstract members to the
   * instance it was built from, unchanged.
   */
+@experimental
 class TraceableRaiseAspectSpec extends FunSuite {
   private type F[A] = Either[BarError, A]
 
@@ -103,5 +105,34 @@ class TraceableRaiseAspectSpec extends FunSuite {
   test("the narrow instance is accepted wherever the wide one is") {
     val asWide: RaiseAspect[Bar, TraceableValue, TraceableValue, TraceableValue] = narrow
     assert(asWide ne null)
+  }
+
+  test("the derives clause produces an instance, and it is the narrow type") {
+    val derived: TraceableRaiseAspect[DerivesBar] = summon[TraceableRaiseAspect[DerivesBar]]
+    assert(derived ne null)
+  }
+
+  test("the derived instance agrees with a hand-written one on intercept") {
+    val derivedRec = new Recorder
+    val handRec = new Recorder
+
+    // Same algebra shape, so the hand-written Bar reference is a valid oracle
+    // for DerivesBar once the algebra name is accounted for.
+    val derivedAlg =
+      summon[TraceableRaiseAspect[DerivesBar]]
+        .intercept(DerivesBar[F])(derivedRec.fk, OnRaise.noop[F, TraceableValue])
+    val handAlg =
+      HandWrittenBarRaiseAspect.instance
+        .intercept(Bar[F])(handRec.fk, OnRaise.noop[F, TraceableValue])
+
+    assertEquals(derivedAlg.bar(5)(using raiseF), handAlg.bar(5)(raiseF))
+    assertEquals(derivedAlg.bar(-1)(using raiseF), handAlg.bar(-1)(raiseF))
+
+    // identical but for the algebra name, which is the only thing that differs
+    assertEquals(
+      derivedRec.seen.toList,
+      handRec.seen.toList.map(_.replace("Bar.bar", "DerivesBar.bar"))
+    )
+    assertEquals(derivedRec.seen.toList, List("DerivesBar.bar(i)", "DerivesBar.bar(i)"))
   }
 }
