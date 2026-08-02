@@ -426,7 +426,7 @@ production code in it.
 | `WeaveArrows` | reduced to `codomainTarget`. `raisePull`, both `raiseLift` overloads, `eraseWeave` and the private `syntheticWeaveFunctor` delete; the file goes from 134 lines to ~25. |
 | `Synthetic` | **deleted outright**, along with the defect that motivated it. |
 | `WeaveInterpreter` | **shape unchanged** — its `apply` is already `intercept`'s signature. `fromAspect` unchanged. `fromRaiseAspect` becomes a one-liner and drops its `implicit syn: Synthetic[Cod]`. The low/high-priority resolution mechanism survives whole. |
-| `WeaveKnot` (in `core`) | untouched — already fused-shaped (`Alg[F] => Alg[F]`). |
+| `WeaveKnot` (in `core` at the time; moved to its own `tagless-core` module by M15) | untouched — already fused-shaped (`Alg[F] => Alg[F]`). |
 | natchez syntax | `traceWithInputs`/`traceWithInputsAndOutputs` signatures **unchanged**. `syntheticTraceableValue` and its 30-line caveat delete. `RaiseRecorder` untouched. |
 | Scala 2 macro | `raiseWeave` → the fused generator. `substituteCapabilities` and `Method#transformedParamLists` **survive** — `raiseMapK` is their sole caller (the spike's "provably dead" claim held only for the `intercept` path). |
 | Scala 3 macro | `deriveWeave` → `deriveInstrument`. |

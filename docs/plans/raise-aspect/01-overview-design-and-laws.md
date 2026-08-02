@@ -157,6 +157,19 @@ modules/
 > `RaiseArrow` and `RaisePull` are unchanged; `mapK` still does real transport.
 > See `22-milestone-M12-fused-derivation.md`.
 
+> **Amended 2026-08-02 by M15.** A fifth module joins the four above:
+> `tagless-core/`, artifact `tagless-core`, depending only on cats-core and
+> cats-tagless-core. `com.dwolla.tagless.WeaveKnot` moved into it out of `core`
+> (artifact `natchez-tagless`) as a byte-identical rename. Its fully-qualified
+> name is unchanged and `core` depends on the new module, so it stays reachable
+> from `natchez-tagless` — but note that **nothing depended on it**: `WeaveKnot`
+> was added after `v0.2.6`, appears in none of the previously published
+> artifacts, and has no caller anywhere in this repository. The compatibility
+> that dependency edge preserves is therefore a forward-looking design property,
+> not a live requirement; the same fact is why MiMa on `core` is clean without a
+> filter. The extraction exists so M16's otel4s module can use `WeaveKnot`
+> without depending on natchez. See `28-milestone-M15-tagless-core-module.md`.
+
 ### 3.2 Core types
 
 Algebras with method-level `Raise` parameters are functorial over a category
@@ -538,15 +551,34 @@ wide instance is not a narrow one — and each milestone ships a
 `fromRaiseAspect` / `fromAspect` conversion for that direction.
 
 **Why M15 exists, and what the investigation found.** `WeaveKnot` is written
-against cats and cats-tagless and mentions natchez nowhere, but it ships inside
-the `natchez-tagless` artifact. `core` has MiMa enabled against seven real
-published versions, so the expectation was that moving the class out would
-require a `mimaBinaryIssueFilters` entry. It does not: `WeaveKnot` was
-introduced after `v0.2.6` and appears in **none** of the 21 artifacts MiMa
-compares against (verified by scanning all of them). The *general* rule is the
-opposite and is recorded in M15's document — mima builds its "new" package from
-the new jar alone and uses the classpath only to resolve referenced types, so a
-**published** class moved to a dependency does get reported as missing.
+against cats and cats-tagless and mentions natchez nowhere, but it lived in
+`core`, whose artifact is `natchez-tagless`. `core` has MiMa enabled against
+seven real published versions, so the expectation was that moving the class out
+would require a `mimaBinaryIssueFilters` entry. It does not, and **M15 landed
+with no filter added**. Two separate pieces of evidence say so, and they cover
+different ground:
+
+- A **manual scan of 21 published jars** — 7 versions × the three classifiers
+  `_2.12`, `_2.13`, `_sjs1_2.13` — found zero `WeaveKnot` entries. That scan
+  **excludes Scala 3**; it is not the whole of what MiMa compares against.
+- **MiMa's own run**, which *does* cover Scala 3 (0.2.4–0.2.6, JVM and JS, per
+  `ThisBuild / tlVersionIntroduced := Map("3" -> "0.2.4")`), came back clean on
+  `coreJVM`, `coreJS` and `scalacacheJVM` across all three Scala versions.
+
+The reason is that `WeaveKnot` was introduced after `v0.2.6` and so was never
+published at all. The *general* rule is the opposite and is recorded in M15's
+document — mima builds its "new" package from the new jar alone and uses the
+classpath only to resolve referenced types, so a **published** class moved to a
+dependency does get reported as missing.
+
+The corollary is worth stating plainly, because it is easy to read this
+milestone as a compatibility exercise: `WeaveKnot` had **no consumers** — none
+published, none in this repository. `core`'s new dependency on `tagless-core`
+keeps the fully-qualified name reachable from `natchez-tagless` as a
+forward-looking design property (M15's D1), not because anything would break
+without it. Nothing in the test suite would notice if that edge were deleted,
+and MiMa would stay green; M16's otel4s module is the first thing that will
+actually reference the class, and its own compilation closes the gap for free.
 
 **M16 (otel4s) is planned and is being researched separately.** M15 exists to
 prepare for it; M16's design and plan are not part of this round, and are not

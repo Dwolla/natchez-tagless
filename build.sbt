@@ -50,11 +50,16 @@ lazy val doctestSettings: Seq[Def.Setting[?]] = Seq(
 )
 
 // WeaveKnot is written against cats and cats-tagless only — it mentions natchez
-// nowhere — but it shipped inside the `natchez-tagless` artifact. Extracted here
-// so a backend module that isn't natchez (otel4s, M16) can use it without taking
-// on natchez, circe and log4cats to get it. `core` depends on this module, so the
-// class remains available, at the same fully-qualified name, to everything that
-// already had it.
+// nowhere — but it lived in `core`, whose artifact is `natchez-tagless`. Extracted
+// here so a backend module that isn't natchez (otel4s, M16) can use it without
+// taking on natchez, circe and log4cats to get it. `core` still depends on this
+// module, so `com.dwolla.tagless.WeaveKnot` keeps its fully-qualified name and
+// stays reachable from `natchez-tagless`. That edge is a design choice, not a
+// compatibility rescue: WeaveKnot was added after v0.2.6, appears in none of the
+// published artifacts, and has no caller in this repository — so nothing in the
+// test suite would notice if the edge were dropped. M16's otel4s module will be
+// its first real user. See
+// docs/plans/raise-aspect/28-milestone-M15-tagless-core-module.md.
 lazy val taglessCore = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("tagless-core"))

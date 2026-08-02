@@ -155,30 +155,66 @@ matters.
 Do **not** edit either file. `git status` should show two renames and nothing
 else.
 
-- [ ] **Step 3: Run the build to verify it fails**
+- [ ] **Step 3: Prove the next step will do real work**
+
+> **Corrected 2026-08-02, during M15's Task 3.** This step originally read "Run
+> the build to verify it fails" and expected `coreJVM/Test/compile` to fail. It
+> cannot fail, and the step contradicted itself one sentence later: "the files
+> are simply invisible to the build" is the accurate half. Nothing in the
+> repository references `WeaveKnot` outside its own two files (the milestone
+> document's "What references `WeaveKnot`" section says exactly this), so
+> removing them from `core`'s source roots cannot break `core`'s compilation.
+> Task 1 hit the success and correctly treated it as correct behaviour rather
+> than stale output — but a reader who trusts the original wording would go
+> hunting for a phantom problem. The step's *intent* — make sure Step 4 is doing
+> real work rather than riding on stale output — is preserved below, satisfied
+> by a `clean` plus jar inspection instead, which is what Task 1 actually ran.
 
 ```bash
-sbt -batch "coreJVM/Test/compile"
+sbt -batch "coreJVM/clean" "coreJVM/Test/compile"
 ```
 
-Expected: failure. `core` no longer has the sources, and the new directory is
-not a project yet, so nothing compiles them — the files are simply invisible to
-the build. (If `coreJVM/Test/compile` *succeeds*, sbt has stale output; run
-`sbt clean` first and repeat. This step exists to make sure the next one is
-doing real work.)
+Expected: **success**, from a clean output directory. `core` no longer has the
+sources and the new directory is not a project yet, so the files are simply
+invisible to the build — and no `core` source refers to them, so nothing breaks.
+Because a green compile therefore proves nothing on its own, confirm the class
+actually left `core`'s output by packaging and looking inside the jars:
+
+```bash
+sbt -batch "coreJVM/package" "coreJS/package"
+for j in core/*/target/scala-*/natchez-tagless*.jar; do
+  echo "== $j"; unzip -l "$j" | grep -ci "WeaveKnot"
+done
+```
+
+Expected: `0` for every jar, from output that provably postdates the move.
 
 - [ ] **Step 4: Add the module to `build.sbt`**
 
 Insert after the `core` definition and before `scalacache`, so the file reads in
 dependency order:
 
+> **Corrected 2026-08-02, during M15's Task 3.** The comment below, as
+> originally drafted here and as landed in `c6e0a73`, ended with "the class
+> remains available … to everything that already had it" — and nothing had it.
+> `WeaveKnot` was never published (it postdates `v0.2.6`) and has no caller in
+> this repository, so the `core → tagless-core` edge preserves a
+> *forward-looking* design property (D1: the FQN does not change), not a live
+> compatibility requirement. The wording shown here is the corrected one, which
+> is what `build.sbt` now carries.
+
 ```scala
 // WeaveKnot is written against cats and cats-tagless only — it mentions natchez
-// nowhere — but it shipped inside the `natchez-tagless` artifact. Extracted here
-// so a backend module that isn't natchez (otel4s, M16) can use it without taking
-// on natchez, circe and log4cats to get it. `core` depends on this module, so the
-// class remains available, at the same fully-qualified name, to everything that
-// already had it.
+// nowhere — but it lived in `core`, whose artifact is `natchez-tagless`. Extracted
+// here so a backend module that isn't natchez (otel4s, M16) can use it without
+// taking on natchez, circe and log4cats to get it. `core` still depends on this
+// module, so `com.dwolla.tagless.WeaveKnot` keeps its fully-qualified name and
+// stays reachable from `natchez-tagless`. That edge is a design choice, not a
+// compatibility rescue: WeaveKnot was added after v0.2.6, appears in none of the
+// published artifacts, and has no caller in this repository — so nothing in the
+// test suite would notice if the edge were dropped. M16's otel4s module will be
+// its first real user. See
+// docs/plans/raise-aspect/28-milestone-M15-tagless-core-module.md.
 lazy val taglessCore = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("tagless-core"))
@@ -375,6 +411,17 @@ out which claim failed. (For the record, the *general* rule is that such a move
 from the new jar alone and uses the classpath only to resolve referenced types.
 So the surprise here would be that `WeaveKnot` turned out to have been published
 after all.)
+
+> **Resolved 2026-08-02, during M15's Task 3 — this branch did not fire, and
+> could not have.** MiMa ran clean on `coreJVM`, `coreJS` and `scalacacheJVM`,
+> all three Scala versions, and no filter was added. The contingency was already
+> a dead branch when it was written: `Analyzer.analyze` iterates the *old*
+> package's classes, so a class absent from every previous artifact has no way
+> to be reported missing from the new one — and two independent lines of
+> evidence say `WeaveKnot` is absent from every previous artifact (the manual
+> jar scan of 21 published jars, and MiMa's own comparison, which additionally
+> covers Scala 3). Kept for the general rule in its parenthetical, which is
+> still the thing worth remembering the next time a **published** class moves.
 
 - [ ] **Step 4: Prove transitive availability from every downstream module**
 
