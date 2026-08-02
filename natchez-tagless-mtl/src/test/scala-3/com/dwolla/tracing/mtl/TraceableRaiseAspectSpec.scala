@@ -135,4 +135,22 @@ class TraceableRaiseAspectSpec extends FunSuite {
     )
     assertEquals(derivedRec.seen.toList, List("DerivesBar.bar(i)", "DerivesBar.bar(i)"))
   }
+
+  test("a wide RaiseAspect does not satisfy a demand for the narrow type") {
+    // needs an explicit `String` annotation on Scala 3, or a cyclic-reference
+    // check fires and captures that error instead of the snippet's diagnostics
+    val errors: String = compileErrors(
+      "summon[TraceableRaiseAspect[Bar]](using HandWrittenBarRaiseAspect.instance)"
+    )
+    assert(
+      errors.nonEmpty,
+      "RaiseAspect[Bar, TraceableValue, TraceableValue, TraceableValue] must not be a TraceableRaiseAspect[Bar]"
+    )
+  }
+
+  test("...and fromRaiseAspect is how you get one anyway") {
+    val fixed: TraceableRaiseAspect[Bar] =
+      TraceableRaiseAspect.fromRaiseAspect(HandWrittenBarRaiseAspect.instance)
+    assert(fixed ne null)
+  }
 }
