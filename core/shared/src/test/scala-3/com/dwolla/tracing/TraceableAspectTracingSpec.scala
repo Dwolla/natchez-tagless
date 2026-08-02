@@ -16,9 +16,11 @@ import scala.annotation.experimental
   * `derives TraceableAspect` and nothing else traces exactly as one with a
   * hand-declared `Aspect` does.
   *
-  * Nothing here mentions `Derive`, declares an instance, or names `Aspect`. The
-  * two `expectedHistory` lists below differ only in the algebra name — that
-  * difference, and no other, is the whole claim.
+  * The `DerivesLookup` half mentions no `Derive`, declares no instance and
+  * names no `Aspect`; the `Lookup` half is the hand-written control, so it
+  * necessarily does all three. The two `expectedHistory` lists below differ
+  * only in the algebra name — that difference, and no other, is the whole
+  * claim.
   */
 @experimental
 class TraceableAspectTracingSpec extends InMemorySuite {

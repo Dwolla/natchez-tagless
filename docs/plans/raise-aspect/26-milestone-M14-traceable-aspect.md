@@ -2,14 +2,201 @@
 
 ## Status
 
-**Planned, not started.** The implementation plan is
-`27-milestone-M14-implementation-plan.md`. Ratify the Decisions section below
-before Task 1 starts.
+**Complete (2026-08-02).** Branch `milestone/m14-traceable-aspect`, stacked on
+M13 at `9fce741`. The Decisions section below (D1–D6) was ratified as proposed
+and implemented as written; **Q1 was answered "no"** — same ruling as M13's,
+recorded in Open questions — so this milestone ships exactly `TraceableAspect`
+and no `Trivial`-codomain sibling. The implementation plan is
+`27-milestone-M14-implementation-plan.md`; each task's brief, report, and
+per-commit review diff live under
+`.superpowers/sdd/27-milestone-M14-implementation-plan/`.
+
+A pre-flight commit (`fb61cc6`) corrected the `@experimental` placement rule in
+both M14 documents before any brief was written — three sites here, eight in the
+plan. The correction was re-measured against cats-tagless 0.16.5's real
+`Derive.aspect` rather than carried over from M13 on faith.
 
 M13, M14 and M15 were planned together on 2026-08-02 and are independent of one
 another. M14 is M13's idea one level down: the same `derives` ergonomics, for
 plain cats-tagless `Aspect` rather than this library's `RaiseAspect`, in `core`
 rather than `natchez-tagless-mtl`.
+
+**What landed, task by task:**
+
+- **Task 1** (`1c463fc`) added
+  `core/shared/src/main/scala-3/com/dwolla/tracing/TraceableAspect.scala` — the
+  trait, the implicit summoner `apply`, and the non-`inline` `fromAspect`
+  factory — plus `LookupFixture.scala` (the `Lookup` algebra and its
+  hand-written `Aspect` oracle) and the first four `TraceableAspectSpec` tests
+  (`weave` forwarding, `mapK` forwarding, inherited `instrument`, and the
+  positive subsumption assignment with no cast). coreJVM 3.3.8 **23/23**
+  (19 + 4 new), 2.13.18 and 2.12.21 **19/19** each, unchanged from `main`.
+- **Task 2** (`89ca776`) added `@experimental inline def derived`, the first
+  `derives TraceableAspect` algebra (`DerivesLookup`, with its `@experimental`
+  on the *companion object*), the negative `compileErrors` subsumption test, and
+  `TraceableAspectSerializationSpec`. coreJVM 3.3.8 **29/29**; 2.12/2.13
+  unchanged at 19/19 by construction.
+- **Task 3** (`842b297`) added `TraceableAspectTracingSpec`, the end-to-end
+  ergonomics gate: `DerivesLookup` traced through the **unedited**
+  `com.dwolla.tracing.syntax` against natchez `InMemory` produces the same span
+  history as the hand-written `Lookup` oracle, differing only in the algebra
+  name (both sides call one `historyFor(alg)` helper, so a hand-copied
+  coincidence is structurally impossible). It also folded in two Task 2 review
+  minors. coreJVM 3.3.8 **33/33**; 2.12/2.13 unchanged at 19/19.
+- **Task 4** (this commit) is documentation. It resolved the four-year-old
+  `TODO` in `TraceWeaveCapturingInputsAndOutputs`' scaladoc, scoped a false
+  sentence in `TraceableAspectTracingSpec`'s class scaladoc, and wrote this
+  status.
+
+**What diverged from the plan, and why:**
+
+- **The serialization spec's path.** Task 2's brief said
+  `core/jvm/src/test/scala/`; it landed at `core/jvm/src/test/scala-3/`. The
+  brief's path compiles on all three Scala versions, and the file references
+  `DerivesLookup`, which exists only under `core/shared/src/test/scala-3` — so
+  the brief's path would have been a hard compile failure on 2.12 and 2.13, not
+  a warning. sbt composes the platform and Scala-version source axes with no
+  build change, so the fix cost nothing. D5's premise ("`core` already has a JVM
+  test source directory") was right about the platform axis and silent about the
+  version axis.
+- **`roundTrips` → `roundTrip`.** Task 2's serialization helper never called
+  `readObject`, and its `bytes.size() > 0` assertion was tautological
+  (`ObjectOutputStream`'s constructor writes a four-byte header). It did gate
+  the real risk — `writeObject` throws `NotSerializableException` if
+  `fromAspect`'s wrapper captures something unserializable — but the plural name
+  asserted a round *trip* that did not happen, and that false claim had already
+  propagated into `89ca776`'s commit message. Task 3 renamed it, made it
+  actually deserialize through `ObjectInputStream`, and dropped the tautology.
+- No divergence from the design (D1–D6). The trait, the one-way subtype
+  relationship, the Scala-3-only placement, the non-`inline` factory, the
+  `TODO`-resolved-not-deleted treatment of the doctest, and the
+  differential-plus-end-to-end test shape all landed exactly as proposed.
+- The **arity correction** is carried in the shipped code, not only here:
+  `TraceableAspect`'s class scaladoc has a "(Two, not three: …)" paragraph
+  naming `com.dwolla.tracing.mtl.TraceableRaiseAspect` as the type the third
+  parameter belongs to. It is a backtick reference rather than a `[[…]]` link
+  on purpose — `core` does not depend on `natchez-tagless-mtl`, so a scaladoc
+  link would break `doc`.
+
+**Verification actually run** (final state, at Task 4):
+
+- `+coreJVM/test`: 2.12.21 **19/19**, 2.13.18 **19/19** — both identical to
+  `main` — and 3.3.8 **33/33** (19 pre-existing + 14 new: 4 from Task 1, 6 from
+  Task 2, 4 from Task 3). Zero failures, zero errors on every axis.
+- `ImplicitPrioritizationSpec` run deliberately rather than incidentally: 3/3 on
+  all three versions.
+- `+coreJS/Test/scalaJSLinkerResult`: green on all three Scala versions. **This
+  means the linker succeeded, not that any test ran** — see the carry-forward
+  below.
+- `+coreJVM/doc`: "Main Scala API documentation successful" on all three
+  versions, including the `{{{ }}}` doctest on `derived`, which contains both
+  `derives` and `@experimental` (argued-not-demonstrated in the plan, now
+  demonstrated in-tree).
+- **MiMa, via `mimaFindBinaryIssues`** — deliberately *not*
+  `mimaReportBinaryIssues`, which prints nothing on success and so cannot
+  distinguish "clean" from "compared against nothing". 34 comparisons, every one
+  `(List(), List())`: `coreJVM` and `coreJS` each against 7 previous artifacts
+  on 2.12.21, 7 on 2.13.18 and 3 on 3.3.8 (`tlVersionIntroduced` limits the
+  Scala 3 axis to 0.2.4–0.2.6). **No `mimaBinaryIssueFilters` entry was added at
+  any point in this milestone.**
+- **The inline-duplication invariant, re-checked on a clean 3.3.8 rebuild**
+  (`coreJVM/clean` then `coreJVM/Test/compile`, so the artifacts provably
+  postdate the last source edit): exactly **one**
+  `com/dwolla/tracing/TraceableAspect$$anon$1.class` in
+  `core/jvm/target/scala-3.3.8/classes/` and **zero** in `test-classes/`,
+  despite two inline sites (`DerivesLookup`'s `derives` clause and the doctest's
+  `Greeter`). Zero occurrences of "duplicated at each inline site" anywhere in
+  the build log. The non-`inline` `fromAspect` factory is doing its job.
+- **Warnings:** exactly the four pre-existing Scala 3 unused-import warnings in
+  `core/shared/src/main/scala/com/dwolla/tracing/syntax/`
+  (`InstrumentableAndTraceableOps.scala:4`,
+  `ResourceInitializationSpanOps.scala:5`,
+  `InstrumentableAndTraceableInKleisliOps.scala:5`, `TraceParamsOps.scala:4`)
+  and no others. `-Xfatal-warnings` cannot be forced on this module for that
+  reason; the specific regression it would have guarded against — the inline
+  duplication warning — was grepped for directly instead. Per M12's precedent
+  the four are flagged, not fixed here.
+- `git status` at Task 4 shows exactly two modified files
+  (`TraceWeaveCapturingInputsAndOutputs.scala`,
+  `TraceableAspectTracingSpec.scala`) and `git diff --name-only fb61cc6..HEAD`
+  over `core/shared/src/main/scala/` shows the *only* pre-existing main source
+  touched in the whole milestone is that one scaladoc.
+  `TraceWeaveOps.scala`, `WeaveInterpreter.scala`, `WeaveKnot`, `build.sbt` and
+  every expected span history are untouched — confirmed directly, not assumed.
+
+**How the `TODO` was resolved** (D6, as executed). The scaladoc example stays
+verbatim; only its comment changed, from
+`// TODO reintroduce derived instance when cats-tagless-macros supports Scala 3`
+to a two-line note saying the instance is hand-written so the example compiles
+on 2.12 and 2.13, and pointing at a paragraph **outside** the `{{{ }}}` block.
+That placement is load-bearing and was verified rather than assumed: everything
+inside the block is extracted by sbt-doctest and compiled on all three Scala
+versions, where `derives` is a syntax error on two of them. Proof: the
+regenerated
+`core/jvm/target/scala-{2.12,2.13,3.3.8}/src_managed/test/com/dwolla/tracing/TraceWeaveCapturingInputsAndOutputsDoctest.scala`
+differ from their pre-edit selves **only in those comment lines** — code
+byte-identical after comment stripping, same SHA-256 on all three — and the new
+paragraph appears in none of them.
+
+**Anything found along the way a later milestone needs:**
+
+- **`coreJS` runs zero munit tests, and reports success anyway.** Found during
+  Task 1; **pre-existing on `main`, not introduced by M14**, and raised with
+  Brian. `build.sbt:65-67` declares `munit-cats-effect`, `scalacheck-effect` and
+  `scalacheck-effect-munit` with `%%` instead of `%%%` inside `core`'s **shared**
+  `crossProject` `.settings()` block, where every neighbouring dependency
+  correctly uses `%%%`. (Line 73's `%%` is fine — it is inside `.jvmSettings`.)
+  `coreJS/Test/definedTests` lists only the four scalacheck doctests on all
+  three Scala versions. **Consequence for M15 and M16: a green `coreJS/test`
+  means nothing.** Every "JS green" claim about `core` anywhere in this stack —
+  M14's included — means the linker succeeded, never that tests ran. Not fixed
+  here: the M14 plan forbids `build.sbt` changes, and the three-word fix will
+  likely surface previously-unrun JS tests, which is its own task. The exact
+  mechanism (JVM artifacts on a Scala.js classpath registering no test
+  framework, while linking still succeeds) is *not* fully confirmed; the
+  zero-test observation and the `%%`/`%%%` discrepancy both are.
+- **`derives TraceableAspect` links fine under Scala.js.** The restriction is
+  **Scala 3 versus Scala 2, not JVM versus JS.** Do not describe these types as
+  JVM-only.
+- **`@experimental` is needed only where the given is *summoned*.** Refining
+  what the Evidence section below records: the sbt-doctest-generated wrapper
+  around `derived`'s example is unannotated and compiles, so a scope enclosing a
+  `derives` clause needs the annotation only when it actually summons the
+  synthesized given, not merely because the clause is lexically inside it.
+- **The `@experimental`-on-the-companion placement is not a clean wash.**
+  `derives` has no way to annotate the synthesized given alone, so
+  `@experimental object Alg` makes *every* companion member experimental, where
+  the hand-written spelling annotates one `implicit val`. Both leave the algebra
+  *type* clean, which is the property that matters; an algebra with no declared
+  companion should declare an empty `@experimental object Alg` rather than
+  annotate the trait.
+- **`cats.tagless.aop.Aspect` 0.16.5 has exactly two abstract members**:
+  `weave` (`Aspect.scala:39`) and inherited `FunctorK.mapK` (`FunctorK.scala:29`).
+  `instrument` (`Aspect.scala:40-41`) is **concrete** and deliberately left
+  inherited — verified against the published sources jar, not assumed.
+- **Three more copies of the same `TODO` survive in `core`, and M14's answer
+  does not fit any of them.** They are at
+  `TraceInstrumentation.scala:30`, `RootSpanProvidingFunctionK.scala:31` (both
+  `implicit val fooInstrument: Instrument[Foo]`) and
+  `TraceWeaveCapturingInputs.scala:72`
+  (`implicit val fooTracingAspect: Aspect.Domain[Foo, TraceableValue]`, i.e.
+  `Aspect[Foo, TraceableValue, Trivial]`). The two `Instrument` ones are
+  answered by **upstream's** `derives Instrument`
+  (`object Instrument extends DerivedInstrument`, `Instrument.scala:37`), not by
+  `TraceableAspect`; the `Aspect.Domain` one is the `Cod = Trivial` shape that
+  **Q1 deliberately declined to build**, so it has no answer today. Left
+  untouched on purpose — pointing any of them at `TraceableAspect` would be
+  false. Each needs its own, different note; that is a follow-up task, not
+  M14's.
+- **The one-anon-class invariant is guarded only by prose and a manual `ls`.**
+  CI has no fatal warnings — the four pre-existing unused imports would fail
+  every build if it did — so a future regression would warn and be ignored. Keep
+  the manual check in the checklist of any task that touches `derived`.
+- **Forcing `-Xfatal-warnings` on a `crossProject`:** `set` cannot resolve
+  `crossProject`-synthesized IDs as Scala expressions. `project coreJVM` first,
+  then a project-relative `set Test / scalacOptions += "-Xfatal-warnings"`. (M13
+  recorded this for `natchezTaglessMtl`; it applies verbatim to `core`, where it
+  is nonetheless unusable because of the four pre-existing warnings.)
 
 ### Correction to the request: three type parameters, not four
 
