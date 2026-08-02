@@ -94,6 +94,16 @@ package com.dwolla.tracing
   * module's test sources for the annotation placement, or `DeriveRaise`'s own
   * scaladoc in `raise-aspect-macros`.
   *
+  * There is also a shorter Scala-3-only spelling for exactly this natchez shape:
+  * an algebra can declare its instance with a `derives` clause instead of the
+  * companion-object `implicit val` above — see
+  * `com.dwolla.tracing.mtl.TraceableRaiseAspect`, which pins `Dom`, `Cod` and
+  * `Err` to `TraceableValue` so that `derives` has a one-parameter type
+  * constructor to work with. The `@experimental` requirement is unchanged; it
+  * just moves from the `implicit val` to the algebra itself. There is no Scala 2
+  * equivalent — `derives` does not exist there — so a cross-built algebra keeps
+  * the companion-object declaration shown in the worked example above.
+  *
   * ==The Submarine caveat==
   *
   * A raise that crosses the traced wrapper before being rescued still surfaces in
