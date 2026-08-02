@@ -11,8 +11,11 @@ import scala.annotation.experimental
   * `ImplicitPrioritizationSpec` already declares top-level `Foo` and `Bar` in
   * this package.
   *
-  * Lives in `src/test/scala-3` because Task 2 gives it a `derives` clause,
-  * which is a syntax error on the 2.12 and 2.13 axes.
+  * `Lookup` itself takes no `derives` clause — it is the hand-written oracle
+  * the derived instance is compared against. The whole file lives in
+  * `src/test/scala-3` because its sibling `DerivesLookup` below carries a
+  * `derives` clause, which is a syntax error on the 2.12 and 2.13 axes, and
+  * because the specs that compare the two need both in scope together.
   */
 trait Lookup[F[_]]:
   def get(key: String): F[String]
