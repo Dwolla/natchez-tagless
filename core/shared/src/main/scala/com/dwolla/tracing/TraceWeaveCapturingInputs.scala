@@ -68,8 +68,18 @@ object TraceWeaveCapturingInputs {
  *   }
  *
  *   object Foo {
- *     implicit val fooTracingAspect: Aspect.Domain[Foo, TraceableValue] = { // Derive.instrument
- *       // TODO reintroduce derived instance when cats-tagless-macros supports Scala 3
+ *     implicit val fooTracingAspect: Aspect.Domain[Foo, TraceableValue] = {
+ *       // hand-written, and no `derives` clause can shorten it. `derives`
+ *       // needs a one-parameter type constructor, which three-parameter
+ *       // `Aspect` is not; `com.dwolla.tracing.TraceableAspect` supplies that
+ *       // shape by pinning both `Dom` and `Cod` to `TraceableValue`, and
+ *       // `Aspect.Domain[Foo, TraceableValue]` is
+ *       // `Aspect[Foo, TraceableValue, Trivial]`, so `Cod` is wrong and
+ *       // `TraceableAspect` structurally cannot serve it. An explicit
+ *       // `Derive.aspect[Foo, TraceableValue, Trivial]` does exist — in
+ *       // cats-tagless-core on Scala 3, in cats-tagless-macros on Scala 2 —
+ *       // but this example compiles on 2.12, 2.13 and 3, and `core` depends
+ *       // on cats-tagless-core only.
  *       new Aspect.Domain[Foo, TraceableValue] {
  *         override def weave[F[_]](af: Foo[F]): Foo[Aspect.Weave[F, TraceableValue, Trivial, *]] =
  *           new Foo[Aspect.Weave[F, TraceableValue, Trivial, *]] {

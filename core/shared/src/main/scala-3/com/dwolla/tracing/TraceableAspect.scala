@@ -1,7 +1,7 @@
 package com.dwolla.tracing
 
 import cats.tagless.Derive
-import cats.tagless.aop.Aspect
+import cats.tagless.aop.{Aspect, Instrumentation}
 import cats.~>
 import natchez.TraceableValue
 
@@ -25,6 +25,21 @@ import scala.annotation.experimental
   * the converse is false, and [[TraceableAspect.fromAspect]] is how you cross
   * the other way.
   *
+  * '''Adding `derives TraceableAspect` to an algebra that already has a wide
+  * instance silently replaces it.''' Because a `TraceableAspect[Alg]` is the
+  * more specific type, the given the `derives` clause synthesizes into the
+  * companion outranks a hand-declared
+  * `implicit val fooTracingAspect: Aspect[Foo, TraceableValue, TraceableValue]`
+  * sitting beside it — for an `Aspect` demand, and for an `Instrument` demand
+  * too, since `Aspect extends Instrument`. Any custom `weave` behaviour in the
+  * hand-written instance (a redacted argument, an extra field) disappears from
+  * every `traceWithInputsAndOutputs` and `instrumentAndTrace` call site, with
+  * no error and no warning. This is ordinary Scala specificity, not a defect,
+  * but it is worth knowing before adding the clause: either delete the
+  * hand-written instance, or keep it and skip `derives`. Where you need the
+  * hand-written one at a particular call site anyway, lexical scope still
+  * outranks implicit scope, so a local `implicit val` wins.
+  *
   * Scala 3 only — `derives` does not exist on Scala 2, and this type has no
   * other purpose. A cross-built algebra therefore cannot use `derives` in its
   * shared sources; that is inherent to the feature.
@@ -45,6 +60,18 @@ object TraceableAspect:
     *
     * Public because it is independently useful: it is the only way to turn a
     * hand-written or Scala 2-derived `Aspect` into the narrow type.
+    *
+    * All ''three'' of `Aspect`'s members are forwarded, not just the two
+    * abstract ones. `instrument` is concrete upstream — `mapK(weave(af))` via
+    * `Aspect.Weave.instrumentationK` — but it is concrete precisely so an
+    * implementation can replace that derivation, and an implementation that
+    * has done so is the interesting case. Forwarding only `weave` and `mapK`
+    * would re-derive `instrument` from the default here and silently discard
+    * the override, which `instrumentAndTrace` and
+    * `instrumentAndTraceWithRootSpans` would then be quietly built on. This is
+    * the one place `fromAspect` differs from its
+    * `com.dwolla.tracing.mtl.TraceableRaiseAspect` sibling, whose underlying
+    * type has no concrete members to lose.
     */
   def fromAspect[Alg[_[_]]](
       underlying: Aspect[Alg, TraceableValue, TraceableValue]
@@ -55,6 +82,9 @@ object TraceableAspect:
 
       def mapK[F[_], G[_]](af: Alg[F])(fk: F ~> G): Alg[G] =
         underlying.mapK(af)(fk)
+
+      override def instrument[F[_]](af: Alg[F]): Alg[Instrumentation[F, *]] =
+        underlying.instrument(af)
 
   /** What a `derives TraceableAspect` clause calls.
     *

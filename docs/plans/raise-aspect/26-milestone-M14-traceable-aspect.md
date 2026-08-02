@@ -9,7 +9,10 @@ recorded in Open questions — so this milestone ships exactly `TraceableAspect`
 and no `Trivial`-codomain sibling. The implementation plan is
 `27-milestone-M14-implementation-plan.md`; each task's brief, report, and
 per-commit review diff live under
-`.superpowers/sdd/27-milestone-M14-implementation-plan/`.
+`.superpowers/sdd/27-milestone-M14-implementation-plan/`. A whole-branch review
+of `f7591ac` followed, and its five findings — one of them a real defect in
+`fromAspect` — were fixed in one further commit; see **Post-review fix round**
+below.
 
 A pre-flight commit (`fb61cc6`) corrected the `@experimental` placement rule in
 both M14 documents before any brief was written — three sites here, eight in the
@@ -43,8 +46,10 @@ rather than `natchez-tagless-mtl`.
   name (both sides call one `historyFor(alg)` helper, so a hand-copied
   coincidence is structurally impossible). It also folded in two Task 2 review
   minors. coreJVM 3.3.8 **33/33**; 2.12/2.13 unchanged at 19/19.
-- **Task 4** (this commit) is documentation. It resolved the four-year-old
-  `TODO` in `TraceWeaveCapturingInputsAndOutputs`' scaladoc, scoped a false
+- **Task 4** (this commit) is documentation. It resolved the `TODO` in
+  `TraceWeaveCapturingInputsAndOutputs`' scaladoc — introduced in `d0dfcf9`
+  (2023-11-28, "remove cats-tagless-macros in preparation for adding Scala 3 to
+  the build"), so two years eight months old, not four years — scoped a false
   sentence in `TraceableAspectTracingSpec`'s class scaladoc, and wrote this
   status.
 
@@ -174,6 +179,8 @@ paragraph appears in none of them.
   `weave` (`Aspect.scala:39`) and inherited `FunctorK.mapK` (`FunctorK.scala:29`).
   `instrument` (`Aspect.scala:40-41`) is **concrete** and deliberately left
   inherited — verified against the published sources jar, not assumed.
+  ("Deliberately left inherited" was the wrong call in `fromAspect`, and the
+  whole-branch review caught it; see the fix round below.)
 - **Three more copies of the same `TODO` survive in `core`, and M14's answer
   does not fit any of them.** They are at
   `TraceInstrumentation.scala:30`, `RootSpanProvidingFunctionK.scala:31` (both
@@ -186,8 +193,9 @@ paragraph appears in none of them.
   `TraceableAspect`; the `Aspect.Domain` one is the `Cod = Trivial` shape that
   **Q1 deliberately declined to build**, so it has no answer today. Left
   untouched on purpose — pointing any of them at `TraceableAspect` would be
-  false. Each needs its own, different note; that is a follow-up task, not
-  M14's.
+  false. Each needs its own, different note. **Done in the fix round below**,
+  once the review pointed out that leaving one of four answered and three
+  asserting a precondition M14 itself disproved is the incoherent state.
 - **The one-anon-class invariant is guarded only by prose and a manual `ls`.**
   CI has no fatal warnings — the four pre-existing unused imports would fail
   every build if it did — so a future regression would warn and be ignored. Keep
@@ -197,6 +205,102 @@ paragraph appears in none of them.
   then a project-relative `set Test / scalacOptions += "-Xfatal-warnings"`. (M13
   recorded this for `natchezTaglessMtl`; it applies verbatim to `core`, where it
   is nonetheless unusable because of the four pre-existing warnings.)
+
+### Post-review fix round (2026-08-02)
+
+The whole-branch review of `f7591ac` returned five findings — two Important,
+three Minor — all fixed in one commit on top of it. Findings and evidence:
+`.superpowers/sdd/27-milestone-M14-implementation-plan/final-review-findings.md`;
+fix report: `final-fix-report.md` beside it.
+
+- **`fromAspect` silently discarded a custom `instrument` override — a real
+  defect, not a hazard.** The wrapper forwarded `weave` and `mapK` and nothing
+  else, so `fromAspect(x).instrument` re-derived from `Aspect`'s inherited
+  default instead of calling `x.instrument`. A user who hand-wrote an `Aspect`
+  with a custom `instrument`, narrowed it, and then called `instrumentAndTrace`
+  or `instrumentAndTraceWithRootSpans` got the default weave-then-`mapK`
+  behaviour with no error and no warning. Reproduced before fixing: with the
+  oracle overriding `instrument` to answer `("HandWrittenLookup", "lookedUp")`,
+  the narrowed instance answered `Lookup` for the algebra name. Fixed by adding
+  `override def instrument[F[_]](af: Alg[F]): Alg[Instrumentation[F, *]] =
+  underlying.instrument(af)` to the wrapper — the signature read out of the
+  0.16.5 sources jar, `cats/tagless/aop/Aspect.scala:40-41`, not transcribed.
+
+  **Worth recording as a finding rather than quietly fixing, because it
+  explains why `fromAspect` is not a trivially-correct delegation.** M14
+  inherited its shape from M13's `fromRaiseAspect`, which genuinely is one:
+  `RaiseAspect` has two abstract members and no concrete ones, so forwarding
+  the abstract members forwards everything. `Aspect` has three members, and the
+  third is concrete *precisely so implementations can replace it*. Copying the
+  M13 shape across without re-counting the members is what produced the bug —
+  and M14's own status notes above had already recorded that `instrument` is
+  concrete, so the fact was known and its consequence still missed.
+  **M16 faces the same question when it mirrors these interpreters for
+  otel4s:** for every narrowing wrapper, enumerate the supertype's *concrete*
+  overridable members too, not just the abstract ones it is forced to
+  implement, and forward each. The compiler will not ask.
+
+  The tests were blind to it for the same reason the code was wrong: the
+  differential oracle, `HandWrittenLookupAspect.instance`, took `instrument`'s
+  default, so the `instrument` test could only ever confirm the default and
+  could never detect missing delegation. The oracle now overrides `instrument`
+  with answers the default cannot produce, and the test asserts narrow against
+  wide. A second test keeps the default path covered through `DerivesLookup`,
+  whose derived instance does not override `instrument`.
+
+- **The M13 silent-shadowing hazard reproduces here, and now has a fixture, a
+  test and a scaladoc paragraph.** Adding `derives TraceableAspect` to an
+  algebra that already carries a companion
+  `implicit val fooTracingAspect: Aspect[Foo, TraceableValue, TraceableValue]`
+  — the exact pattern `TraceWeaveCapturingInputsAndOutputs`' scaladoc
+  recommends, immediately above the paragraph M14 added telling readers to add
+  the clause — silently replaces it. Ordinary Scala specificity, not a defect,
+  but strictly more reachable than M13's version: `Aspect` is upstream's widely
+  implemented type class, and because `Aspect extends Instrument` an
+  `Instrument` demand is captured too. `Coexisting` in `LookupFixture.scala`
+  mirrors `com.dwolla.tracing.mtl.Coexisting`, and one named test in
+  `TraceableAspectSpec` pins all three directions: companion-narrow beats
+  companion-wide, the `Instrument` demand goes the same way, and a
+  lexically-scoped wide instance beats both. The hazard is named in
+  `TraceableAspect`'s class scaladoc and in a short cross-reference at the
+  `TraceWeaveCapturingInputsAndOutputs` example itself.
+
+- **The negative subsumption test asserted only `nonEmpty`**, so it stayed
+  green for any compile error at all — a fixture rename or an unrelated typo
+  included. Now asserts on `"Required:"` and both type names, matching
+  `TraceableRaiseAspectSpec.scala:156-161`, which had it right four commits
+  earlier.
+
+- **"The four-year-old `TODO`" was false.** `git log -S` puts the text's
+  introduction at `d0dfcf9`, 2023-11-28 — two years eight months. Both
+  documents now cite the introducing commit and date instead of an age.
+
+- **The three surviving `TODO`s asserted a precondition M14 itself
+  disproved.** All three read "when cats-tagless-macros supports Scala 3";
+  cats-tagless 0.16.5 does. The real reason all four doctests keep hand-written
+  instances is that they compile on 2.12 and 2.13, where `derives` does not
+  exist and `core` does not depend on cats-tagless-macros. The three answers
+  differ and are written out separately: `TraceInstrumentation.scala` and
+  `RootSpanProvidingFunctionK.scala` point at **upstream's** `derives
+  Instrument`; `TraceWeaveCapturingInputs.scala` says plainly that no `derives`
+  clause can serve `Aspect[Foo, TraceableValue, Trivial]`, since
+  `TraceableAspect` pins `Cod` to `TraceableValue`, and names the explicit
+  `Derive.aspect[Foo, TraceableValue, Trivial]` that does exist.
+
+**Verification after the fix round.** `coreJVM/test` 3.3.8 **35/35** (33 + 2 new
+tests), 2.13.18 **19/19**, 2.12.21 **19/19** — the 2.x axes unchanged, as they
+must be for a Scala-3-only change. `coreJS/Test/fastLinkJS` green on all three
+(**linker only** — see the `%%`/`%%%` carry-forward above; `coreJS/test` was
+additionally unrunnable here for want of a `node` binary). `coreJVM/doc` and
+`coreJS/doc` successful on all three. `mimaFindBinaryIssues` on `coreJVM` and
+`coreJS`, three previous artifacts each on 3.3.8, all `(List(), List())`; **no
+`mimaBinaryIssueFilters` entry added**. Adding a concrete member to a
+non-`inline` factory's anonymous class is binary-compatible, confirmed rather
+than assumed. The one-anon-class invariant re-checked on a clean 3.3.8 rebuild:
+exactly one `TraceableAspect$$anon$1.class` in `classes/`, zero in
+`test-classes/`, zero occurrences of "duplicated at each inline site". Warnings
+unchanged at the same four pre-existing unused imports. No `build.sbt` change,
+no new dependency.
 
 ### Correction to the request: three type parameters, not four
 

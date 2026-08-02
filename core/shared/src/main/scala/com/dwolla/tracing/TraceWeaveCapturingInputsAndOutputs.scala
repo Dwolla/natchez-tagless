@@ -107,6 +107,12 @@ object TraceWeaveCapturingInputsAndOutputs {
  * flag to opt out with. There is no Scala 2 equivalent — `derives` does not
  * exist there — so a cross-built algebra keeps the form above.
  *
+ * Adding the clause to an algebra that keeps the `fooTracingAspect` above is
+ * not a way to have both: the synthesized given is the more specific type, so
+ * it silently outranks the hand-written wide one and any custom behaviour in
+ * it disappears, with no error and no warning. Pick one. See
+ * `com.dwolla.tracing.TraceableAspect` for the full note.
+ *
  * Ensure that `TraceableValue` instances exist for all the method
  * parameter and return types in the algebra, or you'll see
  * compile-time errors similar to this:

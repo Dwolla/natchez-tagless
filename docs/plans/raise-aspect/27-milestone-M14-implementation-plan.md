@@ -5,8 +5,10 @@
 **Goal:** Let a Scala 3 user write `trait Foo[F[_]] derives TraceableAspect`
 (with `@experimental` on `object Foo`, not the trait — see Global Constraints)
 instead of a companion-object `implicit val fooAspect: Aspect[Foo,
-TraceableValue, TraceableValue] = …`, and resolve the four-year-old `TODO` in
-`TraceWeaveCapturingInputsAndOutputs`' scaladoc that asks for exactly this.
+TraceableValue, TraceableValue] = …`, and resolve the `TODO` in
+`TraceWeaveCapturingInputsAndOutputs`' scaladoc that asks for exactly this —
+introduced in `d0dfcf9` (2023-11-28, "remove cats-tagless-macros in preparation
+for adding Scala 3 to the build").
 
 **Architecture:** A one-parameter `trait TraceableAspect[Alg[_[_]]]` extending
 `cats.tagless.aop.Aspect` with `Dom` and `Cod` pinned to
