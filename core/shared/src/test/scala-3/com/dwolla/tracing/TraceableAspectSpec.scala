@@ -6,10 +6,17 @@ import munit.FunSuite
 import natchez.TraceValue.StringValue
 import natchez.TraceableValue
 
+import scala.annotation.experimental
+
 /** `TraceableAspect` adds no behaviour: it pins two type parameters so that
   * `derives` has a one-parameter type constructor to work with. These tests say
   * exactly that.
+  *
+  * `@experimental` on the class because it summons the given `derives
+  * TraceableAspect` synthesized into `DerivesLookup`'s `@experimental`
+  * companion.
   */
+@experimental
 class TraceableAspectSpec extends FunSuite {
   private val wide = HandWrittenLookupAspect.instance
   private val narrow: TraceableAspect[Lookup] = TraceableAspect.fromAspect(wide)
@@ -51,5 +58,39 @@ class TraceableAspectSpec extends FunSuite {
   test("the narrow instance is accepted wherever the wide one is") {
     val asWide: Aspect[Lookup, TraceableValue, TraceableValue] = narrow
     assert(asWide ne null)
+  }
+
+  test("the derives clause produces an instance, and it is the narrow type") {
+    val derived: TraceableAspect[DerivesLookup] = summon[TraceableAspect[DerivesLookup]]
+    assert(derived ne null)
+  }
+
+  test("the derived instance agrees with the hand-written one, modulo the algebra name") {
+    val derivedImpl: DerivesLookup[Id] = DerivesLookup[Id]
+    val d = summon[TraceableAspect[DerivesLookup]].weave(derivedImpl).get("k")
+    val h = wide.weave(impl).get("k")
+
+    assertEquals(d.algebraName, "DerivesLookup")
+    assertEquals(h.algebraName, "Lookup")
+    assertEquals(d.codomain.name, h.codomain.name)
+    assertEquals(d.codomain.target, h.codomain.target)
+    assertEquals(
+      d.domain.map(_.map(a => a.name -> a.instance.toTraceValue(a.target.value))),
+      h.domain.map(_.map(a => a.name -> a.instance.toTraceValue(a.target.value)))
+    )
+  }
+
+  test("a wide Aspect does not satisfy a demand for the narrow type") {
+    assert(
+      compileErrors(
+        "summon[TraceableAspect[Lookup]](using HandWrittenLookupAspect.instance)"
+      ).nonEmpty,
+      "Aspect[Lookup, TraceableValue, TraceableValue] must not be a TraceableAspect[Lookup]"
+    )
+  }
+
+  test("...and fromAspect is how you get one anyway") {
+    val fixed: TraceableAspect[Lookup] = TraceableAspect.fromAspect(HandWrittenLookupAspect.instance)
+    assert(fixed ne null)
   }
 }

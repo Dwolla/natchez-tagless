@@ -5,6 +5,8 @@ import cats.{Applicative, ~>}
 import cats.syntax.all.*
 import natchez.TraceableValue
 
+import scala.annotation.experimental
+
 /** M14's fixture algebra. Named `Lookup` rather than `Foo`/`Bar` because
   * `ImplicitPrioritizationSpec` already declares top-level `Foo` and `Bar` in
   * this package.
@@ -38,3 +40,23 @@ object HandWrittenLookupAspect:
       def mapK[F[_], G[_]](af: Lookup[F])(fk: F ~> G): Lookup[G] =
         new Lookup[G]:
           def get(key: String): G[String] = fk(af.get(key))
+
+/** The point of M14, declared. Structurally identical to `Lookup`, so the two
+  * can be compared directly and the expected span history differs only in the
+  * algebra name.
+  *
+  * `@experimental` is required, and where it goes matters: a `derives` clause
+  * invokes `derived` from a given the compiler synthesizes into the algebra's
+  * companion object, so the annotation belongs on the companion — not the
+  * trait, which stays unannotated so the algebra type itself is usable from
+  * ordinary code. `TraceableAspect.derived` is `@experimental` because the
+  * whole of cats-tagless's `object Derive` is, and the 3.3.x LTS line has no
+  * `-experimental` flag to opt out with.
+  */
+trait DerivesLookup[F[_]] derives TraceableAspect:
+  def get(key: String): F[String]
+
+@experimental
+object DerivesLookup:
+  def apply[F[_]: Applicative]: DerivesLookup[F] = new DerivesLookup[F]:
+    def get(key: String): F[String] = s"v:$key".pure[F]
