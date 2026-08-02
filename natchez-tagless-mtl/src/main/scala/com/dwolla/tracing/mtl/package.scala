@@ -99,10 +99,17 @@ package com.dwolla.tracing
   * companion-object `implicit val` above — see
   * `com.dwolla.tracing.mtl.TraceableRaiseAspect`, which pins `Dom`, `Cod` and
   * `Err` to `TraceableValue` so that `derives` has a one-parameter type
-  * constructor to work with. The `@experimental` requirement is unchanged; it
-  * just moves from the `implicit val` to the algebra itself. There is no Scala 2
-  * equivalent — `derives` does not exist there — so a cross-built algebra keeps
-  * the companion-object declaration shown in the worked example above.
+  * constructor to work with. `@experimental` is still required, and ''where''
+  * it goes matters: a `derives` clause invokes `derived` from a given the
+  * compiler synthesizes into the algebra's companion object, so the annotation
+  * belongs on the '''companion''' — `trait Validator[F[_]] derives
+  * TraceableRaiseAspect` with a separate `@experimental object Validator`.
+  * Annotating the trait also compiles, but makes the algebra ''type''
+  * experimental, which forces `@experimental` onto every reference to it,
+  * including untraced call sites that never touch the instance. There is no
+  * Scala 2 equivalent — `derives` does not exist there — so a cross-built
+  * algebra keeps the companion-object declaration shown in the worked example
+  * above.
   *
   * ==The Submarine caveat==
   *

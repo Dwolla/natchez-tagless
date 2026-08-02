@@ -62,9 +62,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "io.circe" %%% "circe-core" % "0.14.16",
       "org.typelevel" %%% "scalac-compat-features" % "0.1.5",
       "org.tpolecat" %%% "natchez-testkit" % "0.3.10" % Test,
-      "org.typelevel" %% "munit-cats-effect" % "2.2.0" % Test,
-      "org.typelevel" %% "scalacheck-effect" % "2.1.0" % Test,
-      "org.typelevel" %% "scalacheck-effect-munit" % "2.1.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+      "org.typelevel" %%% "scalacheck-effect" % "2.1.0" % Test,
+      "org.typelevel" %%% "scalacheck-effect-munit" % "2.1.0" % Test,
       "io.circe" %%% "circe-generic" % "0.14.16" % Test,
     ),
   )

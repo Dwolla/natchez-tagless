@@ -15,14 +15,15 @@ import scala.annotation.experimental
   * `src/test/scala`, which is compiled on 2.12 and 2.13 as well, where a
   * `derives` clause is a syntax error.
   *
-  * `@experimental` is required, and it is required on the algebra itself (or an
-  * enclosing scope) rather than merely somewhere in the file:
-  * `TraceableRaiseAspect.derived` is `@experimental` because
-  * `DeriveRaise.aspect` is, and on the 3.3.x LTS line there is no
-  * `-experimental` flag to opt out with. The pre-M13 spelling needed the same
-  * annotation on the companion's `implicit val`, so nothing is lost here.
+  * `@experimental` is required somewhere — `TraceableRaiseAspect.derived` is
+  * `@experimental` because `DeriveRaise.aspect` is, and on the 3.3.x LTS line
+  * there is no `-experimental` flag to opt out with — and this fixture shows
+  * the placement `TraceableRaiseAspect.derived`'s scaladoc recommends: on the
+  * '''companion object''', where the `derives` clause's synthesized given
+  * actually lands, and not on the trait. Annotating the trait compiles too, but
+  * makes the algebra type experimental and so viral to every reference to it.
+  * A sibling `@experimental` definition elsewhere in the file is not enough.
   */
-@experimental
 trait DerivesBar[F[_]] derives TraceableRaiseAspect:
   def bar(i: Int)(using R: Raise[F, BarError]): F[String]
 
