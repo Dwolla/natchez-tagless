@@ -142,10 +142,9 @@ class TraceableRaiseAspectSpec extends FunSuite {
     val errors: String = compileErrors(
       "summon[TraceableRaiseAspect[Bar]](using HandWrittenBarRaiseAspect.instance)"
     )
-    assert(
-      errors.nonEmpty,
-      "RaiseAspect[Bar, TraceableValue, TraceableValue, TraceableValue] must not be a TraceableRaiseAspect[Bar]"
-    )
+    assert(errors.contains("Required:"), errors)
+    assert(errors.contains("TraceableRaiseAspect[com.dwolla.tracing.mtl.Bar]"), errors)
+    assert(errors.contains("RaiseAspect[com.dwolla.tracing.mtl.Bar"), errors)
   }
 
   test("...and fromRaiseAspect is how you get one anyway") {
