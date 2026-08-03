@@ -20,10 +20,20 @@ trait Foo[F[_]] {
   *
   * Value equality cannot see an interpreter that runs the underlying call
   * twice: both runs produce the same answer, so `assertEquals` is satisfied
-  * either way. An interpreter that needs `Monad` — which every interpreter
+  * either way. An interpreter that needs `FlatMap` — which every interpreter
   * after `TracerInstrumentation` does — can very easily use
   * `fa.codomain.target` more than once, so the count is the only assertion
   * that catches it.
+  *
+  * '''It cannot catch one under `Id`''', though, so the "ran exactly once"
+  * assertions belong in `SpanContentSpec` (over `IO`) and never in
+  * `TracerTransparencySpec`. `Aspect.Advice.apply` takes its `adviceTarget`
+  * ''strictly'' — it stores `val target = adviceTarget` — so under `Id` the
+  * underlying method has already run, once, by the time the `Weave` exists.
+  * Re-reading `fa.codomain.target` then re-reads a `val` and runs nothing.
+  * This was checked, not assumed: an interpreter mutated to evaluate its
+  * target twice leaves `TracerTransparencySpec` green while failing the
+  * counts in the `IO` suite.
   */
 final class FooCallCounts {
   private var greetRuns = 0

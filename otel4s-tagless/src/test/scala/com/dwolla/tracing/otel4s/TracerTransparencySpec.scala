@@ -17,13 +17,16 @@ import org.typelevel.otel4s.trace.Tracer
   *
   * Two things make this suite worth having anyway, and neither is the obvious
   * one. Parametricity already forbids an interpreter with signature
-  * `apply[A](fa: Weave[F, ToAnyValue, Cod, A]): F[A]` and nothing but
-  * `Tracer[F]` from inventing an `A`, so "the value survives" is close to a
-  * tautology at the type level. What is not tautological:
+  * `apply[A](fa: Weave[F, ToAnyValue, Cod, A]): F[A]` from inventing an `A` —
+  * the only `F[A]` in scope is `fa.codomain.target` — so "the value survives"
+  * is close to a tautology at the type level. A `FlatMap[F]` bound does not
+  * loosen that; it only lets an interpreter evaluate the target more than
+  * once, which for a deterministic algebra yields the same value again. What
+  * is not tautological:
   *
-  *  1. It is the only place the interpreters' return values are checked at all
-  *     — `SpanContentSpec` exists to read spans, and until this milestone it
-  *     could not even see a returned value.
+  *  1. It is the only place the interpreters' return values are checked
+  *     anywhere but the JVM — `SpanContentSpec` covers the JVM and nothing
+  *     covers Scala.js but this file.
   *  1. It pins the '''constraint set''' at compile time. `Id` has no
   *     `MonadError[Id, Throwable]`, so the moment an interpreter picks up a
   *     `MonadCancelThrow` or `Async` bound, this file stops compiling — where a
@@ -68,6 +71,20 @@ class TracerTransparencySpec extends FunSuite {
 
     assertEquals(greeting, underlying.greet("world", 2))
     assertEquals(pong, underlying.ping())
+  }
+
+  // No count assertion here, deliberately: under Id the underlying call has
+  // already run by the time the Weave exists, so re-reading
+  // `fa.codomain.target` re-runs nothing and a double-invoking interpreter
+  // would still leave the counts at 1. The "ran exactly once" assertion for
+  // this interpreter lives in SpanContentSpec, over IO. See FooCallCounts.
+  test("TracerWeaveCapturingInputsAndOutputs returns exactly what the underlying call returns") {
+    val counts = new FooCallCounts
+    val underlying = underlyingFoo(counts)
+    val traced: Foo[Id] = underlying.weave.mapK(TracerWeaveCapturingInputsAndOutputs[Id])
+
+    assertEquals(traced.greet("world", 2), underlying.greet("world", 2))
+    assertEquals(traced.ping(), underlying.ping())
   }
 
   // Tracer.noop's SpanBuilder#modifyState is `this` — it never applies the

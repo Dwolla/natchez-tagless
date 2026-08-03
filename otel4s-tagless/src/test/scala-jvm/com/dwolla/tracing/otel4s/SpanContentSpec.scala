@@ -26,10 +26,16 @@ class SpanContentSpec extends CatsEffectSuite {
   /** Runs `f` with a recording `Tracer[IO]` and returns both what it produced
     * and the spans it finished.
     *
-    * The result is returned, not discarded, because an interpreter that records
-    * the right attributes while handing the caller a ''different'' value than
-    * the underlying algebra produced would otherwise satisfy every assertion
-    * this suite can make.
+    * The result is returned so a test can name the expected value once and then
+    * assert that the span records that same value — '''not''' as a defense
+    * against an interpreter that hands back something else. Parametricity
+    * already forbids that: `apply[A](fa: Weave[…, A]): F[A]` has no way to
+    * conjure an `A`, and the only `F[A]` in scope is `fa.codomain.target`.
+    * Adding `FlatMap[F]` does not change that; it only makes it possible to
+    * evaluate the target more than ''once'', and for this deterministic fixture
+    * every evaluation yields the same value, so equality cannot see it. The
+    * `FooCallCounts` assertions are what catch that, and they only work here,
+    * over `IO` — see `FooCallCounts` for why `Id` cannot host them.
     */
   protected def resultAndSpansFrom[A](f: Tracer[IO] => IO[A]): IO[(A, List[SpanData])] =
     TracesTestkit.inMemory[IO]().use { testkit =>
@@ -137,6 +143,66 @@ class SpanContentSpec extends CatsEffectSuite {
 
     resultAndSpansFrom { implicit tracer =>
       underlyingFoo(counts).weave.mapK(TracerWeaveCapturingInputs[IO, ToAnyValue]).ping()
+    }.map { case (pong, spans) =>
+      assertEquals(pong, ())
+      assertEquals(counts.ping, 1)
+      assertEquals(spans.map(_.getName), List("Foo.ping"))
+      assertEquals(spans.map(attributesOf(_).size), List(0))
+      assertEquals(spans.map(attributesOf(_)), List(Attributes.empty))
+    }
+  }
+
+  test("TracerWeaveCapturingInputsAndOutputs records the parameters and the return value") {
+    val counts = new FooCallCounts
+
+    resultAndSpansFrom { implicit tracer =>
+      underlyingFoo(counts).weave.mapK(TracerWeaveCapturingInputsAndOutputs[IO]).greet("world", 2)
+    }.map { case (greeting, spans) =>
+      assertEquals(greeting, "hello worldhello world")
+      // This interpreter is the first in the module that *could* run the
+      // underlying effect twice — it has a FlatMap[F] and threads the value
+      // through `flatTap` — so the count is load-bearing here in a way it is
+      // not above. It has to be asserted in this suite: see FooCallCounts.
+      assertEquals(counts.greet, 1)
+      assertEquals(spans.map(_.getName), List("Foo.greet"))
+      // The decoded tree, not the rendered text: `times` is a LongValue, and
+      // an AnyValue map does not preserve key order.
+      //
+      // returnValue comes back as a plain String attribute, not an AnyValue
+      // one, and that is the Java SDK doing what it documents:
+      // AttributesBuilder#put(AttributeKey, Object) automatically narrows an
+      // AttributeType.VALUE whose Value has a simple equivalent, so
+      // `put(valueKey(k), Value.of("a"))` *is* `put(stringKey(k), "a")`.
+      // The parameters map has no simple equivalent, so it stays AnyValue.
+      // The interpreter passes AnyValue in both cases; the narrowing is
+      // downstream of it and is good news — backends index simple attributes.
+      assertEquals(
+        spans.map(attributesOf(_)),
+        List(Attributes(
+          Attribute[AnyValue](
+            "Foo.greet.parameters",
+            AnyValue.map(Map(
+              "name" -> AnyValue.string("world"),
+              "times" -> AnyValue.long(2L),
+            )),
+          ),
+          Attribute("Foo.greet.returnValue", "hello worldhello world"),
+        ))
+      )
+    }
+  }
+
+  // D3, corrected 2026-08-02, applied to the *return value* this time: ping()
+  // is both zero-parameter and Unit-returning, so both candidate attributes
+  // would be empty and both are omitted rather than recorded as
+  // `MapValue({})`/`EmptyValue`. ToAnyValue[Unit] is unchanged — it still
+  // encodes `()` to AnyValue.empty; only the interpreter's decision about
+  // whether to spend an attribute slot on that is.
+  test("TracerWeaveCapturingInputsAndOutputs records no attributes at all for ping()") {
+    val counts = new FooCallCounts
+
+    resultAndSpansFrom { implicit tracer =>
+      underlyingFoo(counts).weave.mapK(TracerWeaveCapturingInputsAndOutputs[IO]).ping()
     }.map { case (pong, spans) =>
       assertEquals(pong, ())
       assertEquals(counts.ping, 1)
