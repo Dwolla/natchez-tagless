@@ -325,6 +325,43 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
     // docs/plans/raise-aspect/28-milestone-M15-tagless-core-module.md.
     mimaPreviousArtifacts := Set.empty,
   )
+  // Span *content* can only be asserted with a testkit: every otel4s span type
+  // is sealed and its Unsealed variant is private[otel4s], so a recording
+  // Tracer cannot be hand-rolled. The cross-platform testkit
+  // (otel4s-sdk-trace-testkit) has not been released at 1.0.x — it stops at
+  // 0.19.0 — so at otel4s 1.0.1 the only option is the JVM one. Cross-platform
+  // coverage lives in TracerTransparencySpec, which needs no testkit.
+  //
+  // `%%` is correct here and only here: .jvmSettings has no JS artifact to
+  // resolve. Everything in the shared settings block above uses `%%%`.
+  //
+  // Both the dependencies and the source directory are gated on
+  // `isOtel4sScalaVersion` for the same reason the shared block is: otel4s
+  // publishes no _2.12 artifact, so an ungated coordinate here 404s at
+  // `update` under `++ 2.12` even though this module compiles nothing there.
+  // The source directory needs the gate independently — `.jvmSettings` are
+  // appended after the shared block, so an unconditional `+=` would put
+  // scala-jvm back onto the 2.12 source path that the shared `:=` just
+  // emptied.
+  .jvmSettings(
+    libraryDependencies ++= {
+      if (isOtel4sScalaVersion.value)
+        Seq(
+          "org.typelevel" %% "otel4s-oteljava-trace-testkit" % otel4sVersion % Test,
+          // AttributeConverters, for decoding a span's Java Attributes back
+          // into the otel4s model. The testkit pulls it in transitively and
+          // exposes its types in its own signatures, but SpanContentSpec names
+          // it directly, so it is declared directly.
+          "org.typelevel" %% "otel4s-oteljava-common" % otel4sVersion % Test,
+          "org.typelevel" %% "munit-cats-effect" % "2.2.0" % Test,
+        )
+      else Seq.empty
+    },
+    Test / unmanagedSourceDirectories ++= {
+      if (isOtel4sScalaVersion.value) Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm")
+      else Seq.empty
+    },
+  )
   .settings(doctestSettings *)
   .dependsOn(taglessCore)
 
