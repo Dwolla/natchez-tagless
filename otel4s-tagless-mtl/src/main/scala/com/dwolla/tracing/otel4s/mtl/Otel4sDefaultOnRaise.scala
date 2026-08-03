@@ -32,8 +32,12 @@ import org.typelevel.otel4s.trace.Tracer
   *
   * '''Known limitation (D4).''' A method that raises, rescues internally via
   * `Handle.allow`, and raises again fires this hook twice against the same
-  * span, and the second `addAttributes` call overwrites the first — there is
-  * no accumulation across two raises within one method call.
+  * span: there is no accumulation across two raises within one method call.
+  * The second call always overwrites `raise.error.type`, but it overwrites
+  * `raise.error.value` only when the second error renders non-empty — the D7
+  * omit-when-empty rule below means a second error rendering to
+  * `AnyValue.empty` writes no value key, leaving the ''first'' raise's value
+  * standing beside the ''second'' raise's type.
   *
   * The instance requires `Tracer[F]` and `FlatMap[F]`; under `Tracer.noop`,
   * `currentSpanOrNoop` yields a noop span whose `addAttributes` does nothing,

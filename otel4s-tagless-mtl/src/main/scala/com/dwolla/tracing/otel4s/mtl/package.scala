@@ -124,9 +124,12 @@ package com.dwolla.tracing.otel4s
   * has one lossy case worth knowing: '''a second raise overwrites the first.'''
   * The hook is attached to the `Raise[F, E]` handed into the method, so a
   * method that raises, rescues internally via `Handle.allow`, and raises again
-  * fires the hook twice against the same span, and the second
-  * `addAttributes` overwrites both keys. An event would have recorded both with
-  * timestamps. This is unusual, and it is documented rather than designed
+  * fires the hook twice against the same span. The second `addAttributes`
+  * overwrites `raise.error.type`, but overwrites `raise.error.value` only if
+  * the second error renders non-empty — the omit-when-empty rule above means a
+  * second error rendering to `AnyValue.empty` writes no value key at all,
+  * leaving the ''first'' raise's value standing beside the ''second'' raise's
+  * type. An event would have recorded both with timestamps. This is unusual, and it is documented rather than designed
   * around; the reasons for attributes are parity with the natchez module and
   * the fact that every backend can filter and aggregate on span attributes,
   * whereas events get flattened into pseudo-spans or rendered as logs.
@@ -148,13 +151,26 @@ package com.dwolla.tracing.otel4s
   *     `raise` runs. The woven `Aspect.Weave` is data handed to the
   *     interpreter, never a carrier a capability is transported across, so no
   *     `Functor` is ever synthesized for it. Note this is a constraint of
-  *     `RaiseAspect#intercept`, not of the syntax: `traceWithInputs` and
-  *     `traceWithInputsAndOutputs` here demand exactly what their non-mtl
-  *     counterparts in `com.dwolla.tracing.otel4s.syntax` demand, so moving a
-  *     call site between the two import lines changes nothing about what the
-  *     caller must provide. (An earlier design decision claimed otherwise; it
-  *     is recorded, retracted, in D9 of
+  *     `RaiseAspect#intercept`, not of the syntax: neither syntax method
+  *     declares an `Apply[F]`, because `WeaveInterpreter.fromRaiseAspect`
+  *     resolves that one in the caller's scope. (An earlier design decision
+  *     claimed `traceWithInputs` had to declare it; it is recorded,
+  *     retracted, in D9 of
   *     `docs/plans/raise-aspect/32-milestone-M17-otel4s-tagless-mtl.md`.)
+  *   - '''Switching an import is free for `traceWithInputsAndOutputs`, not
+  *     for `traceWithInputs`.''' `traceWithInputsAndOutputs` demands exactly
+  *     what its non-mtl counterpart in `com.dwolla.tracing.otel4s.syntax`
+  *     demands — both declare `FlatMap[F]`. `traceWithInputs` does not: the
+  *     non-mtl one declares no effect constraint, while this one resolves a
+  *     `RaiseRecorder[F, ToAnyValue]`, and absent a user-supplied `OnRaise`
+  *     that resolves through [[Otel4sDefaultOnRaise]], declared
+  *     `[F[_] : FlatMap : Tracer]`. A caller taking the default recorder
+  *     therefore has to supply `FlatMap[F]`; a caller supplying its own
+  *     `OnRaise[F, ToAnyValue]` needs only what that hook needs.
+  *     `RaiseTracerConstraintSpec` pins both directions. (The natchez pair
+  *     really is identical here, because `NatchezDefaultOnRaise` needs only
+  *     `Trace[F]` — which is how this claim reached otel4s without its
+  *     premises.)
   *   - `Handle[F, E]` parameters are rejected at derivation time, with a
   *     message pointing at this design: `Handle` ''consumes'' `F`
   *     (`handleWith` takes an `F[A]`), so — unlike `Raise`, which only ever

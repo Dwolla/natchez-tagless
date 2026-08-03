@@ -371,9 +371,13 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
 //
 // 2.12 containment is identical to otel4sTagless's, for the identical reason —
 // see that project's comment above for why this is done by emptying the module
-// rather than by narrowing crossScalaVersions. All four gates are required, and
-// the .jvmSettings test-source-directory gate is required *separately*, because
-// .jvmSettings are appended after the shared `:=` that empties the list.
+// rather than by narrowing crossScalaVersions. All six `isOtel4sScalaVersion`
+// gates are required: the otel4s-core-trace coordinate, the Compile and Test
+// source directories, `publish / skip`, and — separately, because .jvmSettings
+// are appended after the shared `:=` that empties the list — the .jvmSettings
+// testkit coordinates and the .jvmSettings scala-jvm test-source directory.
+// The seventh gate below, on scala-3-jvm, tests `== "3"` instead; that already
+// excludes 2.12, so it needs no `isOtel4sScalaVersion` of its own.
 lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("otel4s-tagless-mtl"))

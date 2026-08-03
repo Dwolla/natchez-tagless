@@ -319,11 +319,22 @@ counterpart of `natchez-tagless-mtl`, file for file.
 | this module's syntax | the mtl module's syntax |
 | --- | --- |
 | `com.dwolla.tracing.otel4s.syntax._` | `com.dwolla.tracing.otel4s.mtl.syntax._` |
-| `traceWithInputs` / `traceWithInputsAndOutputs` | same names, same signatures |
+| `traceWithInputsAndOutputs` | same name, same signature |
+| `traceWithInputs` | same name; the default recorder adds a `FlatMap[F]` |
 | `instrumentAndTrace` | — (`Instrument` is a plain-`Aspect` notion) |
 
-The signatures are identical, so switching a call site is one import line. The
-two syntax packages cannot be wildcard-imported into the same scope — that
+Switching a call site is one import line for `traceWithInputsAndOutputs`, whose
+signature matches exactly — both versions declare `FlatMap[F]`. It is not quite
+free for `traceWithInputs`: this module's declares no effect constraint at all,
+while the mtl one resolves a `RaiseRecorder[F, ToAnyValue]`, and with no
+user-supplied `OnRaise[F, ToAnyValue]` in scope that resolves through
+`Otel4sDefaultOnRaise`, declared `[F[_] : FlatMap : Tracer]`. So a caller on the
+default recorder must supply a `FlatMap[F]` it did not need here; a caller
+supplying its own `OnRaise` needs only what that hook needs. (`natchez-tagless`
+and `natchez-tagless-mtl` *are* an exact match on both methods — their default
+recorder needs only `Trace[F]`.)
+
+The two syntax packages cannot be wildcard-imported into the same scope — that
 reintroduces the ambiguity the split exists to avoid. The mtl syntax resolves
 *either* a plain `Aspect` or a `RaiseAspect` for the algebra, via
 `WeaveInterpreter`, so it is a strict superset: an algebra with no `Raise`

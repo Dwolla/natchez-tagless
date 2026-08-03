@@ -49,7 +49,12 @@ from `natchez-tagless-mtl` into a common place."
   Parameter and suppression both removed. This is the milestone's most
   substantive lesson: a wrong claim about language semantics in a design
   decision propagated into a signature, a suppression and scaladoc before
-  anything caught it.
+  anything caught it. **The retraction then over-corrected**, concluding the
+  two `traceWithInputs` signatures are identical; the final review found a
+  real divergence by another route (the default `RaiseRecorder` resolves
+  through `Otel4sDefaultOnRaise`, which needs `FlatMap[F]`). Both errors and
+  the final truth are recorded under D9, and the constraint set is now pinned
+  by `RaiseTracerConstraintSpec` instead of by prose.
 - **Six defects were found in the plan's own prose, five of them in
   uncompiled code sketches.** A task-ordering error (Task 3's test importing a
   package object Task 4 created); a doctest whose stated proof of D2 did not
@@ -470,16 +475,53 @@ code review caught the error and settled it empirically: with a compile probe
 on both 2.13.18 and 3.3.8, dropping the parameter from `traceWithInputs`
 leaves the `RaiseAspect` path resolving exactly as before.
 
-**Consequence:** `traceWithInputs`'s signature needs no `Apply[F]`, and is
-therefore identical to the non-mtl otel4s `traceWithInputs` after all —
-restoring the property this design doc wanted throughout, that switching a
-call site between the two syntax packages changes nothing about what the
-caller must provide. There is no divergence to document, and the `@nowarn`
-that had suppressed the correct warning was removed along with the parameter.
+**Consequence:** `traceWithInputs`'s signature needs no `Apply[F]`, and the
+`@nowarn` that had suppressed the correct warning was removed along with the
+parameter. The retraction originally went on to conclude that the two
+`traceWithInputs` signatures are therefore identical and that there is no
+divergence to document. **That conclusion was also wrong** — see the further
+correction below.
 
 Left in place, retracted rather than deleted, so the next person who wonders
 about `Apply[F]` on this method finds the wrong reasoning, why it was wrong,
 and how it was settled — instead of silently finding nothing.
+
+#### Further correction (final review): the retraction over-corrected
+
+**Then believed:** with `Apply[F]` gone, the mtl `traceWithInputs` and the
+non-mtl `com.dwolla.tracing.otel4s.syntax.TracerWeaveOps#traceWithInputs`
+demand the same thing of a caller, so switching an import is free.
+
+**This is also wrong**, by a different route than the original D9. The
+divergence is real; it just is not `Apply[F]` and it does not come from
+`WeaveInterpreter`. The mtl method declares `R: RaiseRecorder[F, ToAnyValue]`,
+which is resolved in the *caller's* scope. With no user-supplied `OnRaise[F,
+ToAnyValue]` there, it resolves via `RaiseRecorder.fromDefault` to
+`Otel4sDefaultOnRaise.otel4sDefaultOnRaise`, declared
+`[F[_] : FlatMap : Tracer]` — the only `DefaultOnRaise[F, ToAnyValue]` in the
+build. So a caller on the default recorder must supply `FlatMap[F]`, and the
+non-mtl `traceWithInputs` (`T: Tracer[F]`, `A: Aspect[Alg, ToAnyValue, Cod]`)
+demands no effect constraint at all. The extra demand is **conditional on how
+`RaiseRecorder` resolves**, not on the signature: a caller with its own
+`OnRaise[F, ToAnyValue]` needing only `Applicative[F]`, or nothing, pays
+nothing. `traceWithInputsAndOutputs` is genuinely unaffected — it declares
+`FlatMap[F]` in both packages, so the default recorder asks for nothing new.
+
+**Why the wording survived two passes:** it was inherited verbatim from the
+natchez sibling, where it is true — `NatchezDefaultOnRaise` needs only
+`Trace[F]`, and the non-mtl natchez `traceWithInputs` already declares
+`Apply[F]`. A claim carried across the backend boundary did not carry its
+premises with it.
+
+**How settled:** read off the declarations
+(`Otel4sDefaultOnRaise.scala:43`, `RaiseRecorder.scala:41`,
+`otel4s-tagless/.../syntax/TracerWeaveOps.scala:25-27`) and then pinned by
+test rather than by prose: `RaiseTracerConstraintSpec` probes
+`traceWithInputs` at an *abstract* `F` — the existing suite runs entirely at
+`F = IO`, where `FlatMap` is always present, which is why neither the original
+error nor this one was catchable. It asserts that the default-recorder call
+fails to compile without `FlatMap[F]`, compiles with it, and compiles without
+it when a user `OnRaise` supplies the recorder instead.
 
 ## Non-goals
 

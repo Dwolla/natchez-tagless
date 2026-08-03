@@ -661,10 +661,18 @@ implicit parameter can serve as a candidate when resolving a later one in the
 same list. It cannot — an implicit parameter list is resolved as a whole from
 the caller's scope — and a compile probe on 2.13.18 and 3.3.8 settled it. The
 parameter and the `@nowarn` that had been added to silence the resulting (true
-positive) unused-parameter warning were both removed, restoring the property
-the design wanted throughout: the two syntax packages' signatures are
-identical, so switching an import changes nothing about what the caller must
-provide. The retraction is left in the M17 document rather than deleted.
+positive) unused-parameter warning were both removed. The retraction then
+over-corrected, concluding the two syntax packages' signatures are identical;
+M17's final review found that a divergence does exist, by another route.
+`traceWithInputsAndOutputs` really does match — both versions declare
+`FlatMap[F]` — but the mtl `traceWithInputs` resolves a `RaiseRecorder[F,
+ToAnyValue]` that, absent a user-supplied `OnRaise`, comes from
+`Otel4sDefaultOnRaise`'s `[F[_] : FlatMap : Tracer]`, while the non-mtl otel4s
+`traceWithInputs` declares no effect constraint at all. The demand is
+conditional on that resolution, and it is an otel4s-only problem: the natchez
+default needs only `Trace[F]`. Both the wrong reasoning and this correction are
+left in the M17 document rather than deleted, and the constraint set is now
+pinned by a compile test at an abstract `F`.
 
 **The `Raise`-error/otel4s interaction, measured.** Under `Handle.allowF` over
 a `MonadThrow` `F`, cats-mtl's submarine encoding makes a raise a real
