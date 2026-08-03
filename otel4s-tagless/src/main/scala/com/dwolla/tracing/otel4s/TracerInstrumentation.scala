@@ -39,6 +39,45 @@ object TracerInstrumentation {
  * `Tracer[F]` is the only constraint: `spanBuilder`, `build` and `surround`
  * ask nothing of `F` at the call site — the same profile as the natchez
  * version, which needs only `Trace[F]`.
+ *
+ * {{{
+ *   import cats.effect.IO
+ *   import cats.tagless.aop._
+ *   import cats.~>
+ *   import com.dwolla.tracing.otel4s.syntax._
+ *   import org.typelevel.otel4s.trace.Tracer
+ *
+ *   trait Foo[F[_]] {
+ *     def foo: F[Unit]
+ *   }
+ *
+ *   // hand-written so this compiles on 2.13 as well as 3, where the whole
+ *   // instance collapses to `trait Foo[F[_]] derives Instrument` — upstream's
+ *   // own derivation, which needs nothing from this library
+ *   implicit val fooInstrument: Instrument[Foo] = new Instrument[Foo] {
+ *     override def instrument[F[_]](af: Foo[F]): Foo[Instrumentation[F, *]] =
+ *     new Foo[Instrumentation[F, *]] {
+ *       override def foo: Instrumentation[F, Unit] = Instrumentation(af.foo, "Foo", "foo")
+ *     }
+ *
+ *     override def mapK[F[_], G[_]](af: Foo[F])(fk: F ~> G): Foo[G] =
+ *     new Foo[G] {
+ *       override def foo: G[Unit] = fk(af.foo)
+ *     }
+ *   }
+ *
+ *   val myFoo: Foo[IO] = new Foo[IO] {
+ *     override def foo: IO[Unit] = IO.unit
+ *   }
+ *
+ *   // A real application summons this from `TracerProvider[F].get(name)`,
+ *   // supplied by a backend module — `otel4s-oteljava` on the JVM,
+ *   // `otel4s-sdk` cross-platform. This library never provides one.
+ *   implicit val tracer: Tracer[IO] = Tracer.noop[IO]
+ *
+ *   // every call to `traced.foo` now runs inside a span named `Foo.foo`
+ *   val traced: Foo[IO] = myFoo.instrumentAndTrace
+ * }}}
  */
 class TracerInstrumentation[F[_]: Tracer] extends (Instrumentation[F, *] ~> F) {
   override def apply[A](fa: Instrumentation[F, A]): F[A] =

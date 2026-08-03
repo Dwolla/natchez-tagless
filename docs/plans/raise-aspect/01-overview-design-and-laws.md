@@ -170,6 +170,23 @@ modules/
 > filter. The extraction exists so M16's otel4s module can use `WeaveKnot`
 > without depending on natchez. See `28-milestone-M15-tagless-core-module.md`.
 
+> **Amended 2026-08-03 by M16.** A sixth module joins them: `otel4s-tagless/`,
+> artifact `otel4s-tagless`, package `com.dwolla.tracing.otel4s`. It mirrors
+> `natchez-tagless`'s three plain-`Aspect` tracing interpreters
+> (`TracerInstrumentation`, `TracerWeaveCapturingInputs`,
+> `TracerWeaveCapturingInputsAndOutputs`) and their syntax against otel4s, with
+> its own `ToAnyValue[-A]` type class in the `Dom`/`Cod` positions because
+> otel4s ships nothing of that kind. It depends on `otel4s-core-trace`, cats,
+> cats-tagless-core and `tagless-core` — **never on natchez**, which is what
+> M15's extraction was for. Nothing `Raise`-shaped is in it: there is no otel4s
+> counterpart to `natchez-tagless-mtl`.
+>
+> **It is the one module with no 2.12 artifact**, and that is availability, not
+> a drop: otel4s has never published a `_2.12` artifact at any version, so the
+> module compiles nothing and ships nothing on 2.12 while every other module in
+> the build keeps publishing `_2.12` unchanged. See
+> `30-milestone-M16-otel4s-module.md`.
+
 ### 3.2 Core types
 
 Algebras with method-level `Raise` parameters are functorial over a category

@@ -80,6 +80,57 @@ object TracerWeaveCapturingInputs {
  * `Alg[Weave.Domain[F, ToAnyValue, *]]` using
  * `Aspect.Domain[Alg, ToAnyValue].weave`, and turned back into an `Alg[F]` with
  * `.mapK(TracerWeaveCapturingInputs[F, Cod])`.
+ *
+ * {{{
+ *   import cats.effect.IO
+ *   import cats.tagless._
+ *   import cats.tagless.aop._
+ *   import cats.~>
+ *   import com.dwolla.tracing.otel4s.ToAnyValue
+ *   import com.dwolla.tracing.otel4s.syntax._
+ *   import org.typelevel.otel4s.trace.Tracer
+ *
+ *   trait Foo[F[_]] {
+ *     def greet(name: String, times: Int): F[String]
+ *   }
+ *
+ *   // Hand-written, and no `derives` clause can shorten it: `derives` needs a
+ *   // one-parameter type constructor and `Aspect` takes three. On Scala 2 an
+ *   // explicit `Derive.aspect[Foo, ToAnyValue, Trivial]` lives in
+ *   // cats-tagless-macros, which this module does not depend on.
+ *   implicit val fooAspect: Aspect.Domain[Foo, ToAnyValue] = new Aspect.Domain[Foo, ToAnyValue] {
+ *     override def weave[F[_]](af: Foo[F]): Foo[Aspect.Weave[F, ToAnyValue, Trivial, *]] =
+ *     new Foo[Aspect.Weave[F, ToAnyValue, Trivial, *]] {
+ *       override def greet(name: String, times: Int): Aspect.Weave[F, ToAnyValue, Trivial, String] =
+ *       Aspect.Weave[F, ToAnyValue, Trivial, String](
+ *         "Foo",
+ *         List(List(
+ *           Aspect.Advice.byValue[ToAnyValue, String]("name", name),
+ *           Aspect.Advice.byValue[ToAnyValue, Int]("times", times),
+ *         )),
+ *         Aspect.Advice[F, Trivial, String]("greet", af.greet(name, times))
+ *       )
+ *     }
+ *
+ *     override def mapK[F[_], G[_]](af: Foo[F])(fk: F ~> G): Foo[G] =
+ *     new Foo[G] {
+ *       override def greet(name: String, times: Int): G[String] = fk(af.greet(name, times))
+ *     }
+ *   }
+ *
+ *   val myFoo: Foo[IO] = new Foo[IO] {
+ *     override def greet(name: String, times: Int): IO[String] = IO.pure("hello " + name)
+ *   }
+ *
+ *   // A real application summons this from `TracerProvider[F].get(name)`,
+ *   // supplied by a backend module. This library never provides one.
+ *   implicit val tracer: Tracer[IO] = Tracer.noop[IO]
+ *
+ *   // `traced.greet("world", 2)` opens a span named `Foo.greet` carrying one
+ *   // attribute, `Foo.greet.parameters`, whose value is the map
+ *   // `{"name": "world", "times": 2}`. No Apply[IO] was needed to get here.
+ *   val traced: Foo[IO] = myFoo.traceWithInputs[Trivial]
+ * }}}
  */
 class TracerWeaveCapturingInputs[F[_]: Tracer, Cod[_]] extends (Weave[F, ToAnyValue, Cod, *] ~> F) {
   override def apply[A](fa: Weave[F, ToAnyValue, Cod, A]): F[A] =

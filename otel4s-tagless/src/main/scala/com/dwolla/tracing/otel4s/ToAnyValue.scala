@@ -39,6 +39,52 @@ import org.typelevel.otel4s.AnyValue
   * Contravariant because `A` occurs only in negative position, matching
   * otel4s's own `Attributes.Make[-A]`; that is what lets a `List[String]` or
   * `Vector[Long]` parameter resolve the generic `Seq` instance.
+  *
+  * '''What the `otel4s-oteljava` backend does to the encoded value.''' This
+  * module always hands otel4s an `AnyValue`, but the OpenTelemetry Java SDK
+  * narrows a `VALUE`-typed attribute on the way out — see
+  * `TracerWeaveCapturingInputsAndOutputs`'s scaladoc and the module README for
+  * the full table and the two consequences that surprise people. In short: a
+  * scalar leaf, and a non-empty homogeneous sequence of scalar leaves, arrive
+  * as ordinary typed attributes; a map, a byte array, an empty sequence and a
+  * heterogeneous one stay structured.
+  *
+  * '''A type with no instance is a compile error''' at the point the `Aspect`
+  * is derived. In practice the `Show` fallback means nearly everything has one,
+  * so the likelier failure is silence: a domain type records its `Show`
+  * rendering when a structured value was wanted. Write the instance you want
+  * and it wins, because the companion's own instances outrank the fallback.
+  *
+  * {{{
+  *   import com.dwolla.tracing.otel4s.ToAnyValue
+  *   import org.typelevel.otel4s.AnyValue
+  *
+  *   // BigDecimal and BigInt ship no instance of their own, so they reach the
+  *   // Show fallback and record as strings — where natchez's TraceableValue
+  *   // accepted them as numbers. This is the silent case above.
+  *   val viaShow: AnyValue = ToAnyValue[BigDecimal].toAnyValue(BigDecimal("1.50"))
+  *
+  *   // A hand-written instance is how a sensitive or badly-Shown type is kept
+  *   // out of the trace, and it outranks the fallback. `instance` exists so
+  *   // the result type is AnyValue and never one of its subtypes.
+  *   final class Password(val value: String)
+  *
+  *   implicit val passwordToAnyValue: ToAnyValue[Password] =
+  *   ToAnyValue.instance[Password](_ => AnyValue.string("redacted"))
+  *
+  *   val redacted: AnyValue = ToAnyValue[Password].toAnyValue(new Password("hunter2"))
+  *
+  *   // Option.empty[String], never a bare `None`. `ToAnyValue` is
+  *   // contravariant and `None`'s type is `None.type`, so the search for the
+  *   // element instance is a *diverging* implicit expansion rather than a
+  *   // clean miss, and the error names `mapToAnyValue` instead of the Option.
+  *   // The same goes for `Nil`: write `List.empty[String]`.
+  *   val absent: AnyValue = ToAnyValue[Option[String]].toAnyValue(Option.empty[String])
+  *
+  *   // the generic Seq and Map instances nest to any depth
+  *   val nested: AnyValue = ToAnyValue[List[List[Int]]].toAnyValue(List(List(1, 2)))
+  *   val keyed: AnyValue = ToAnyValue[Map[String, Int]].toAnyValue(Map("k" -> 1))
+  * }}}
   */
 trait ToAnyValue[-A] {
   def toAnyValue(a: A): AnyValue

@@ -23,6 +23,31 @@ M13, M14 and M15 were planned together on 2026-08-02 and are independent of one
 another. **M15 exists to prepare for M16 (otel4s), which is planned and is being
 researched separately.** M16's design and plan are not in this round.
 
+**M15's purpose was met on 2026-08-03: M16 landed and consumes `tagless-core`.**
+The `otel4s-tagless` module `.dependsOn(taglessCore)` and reaches
+`com.dwolla.tagless.WeaveKnot` with no natchez anywhere on its classpath —
+exactly the thing this extraction existed to make possible. See
+`30-milestone-M16-otel4s-module.md`.
+
+**Q2's answer, now that M16 has run: `WeaveKnot` and nothing more.** M16 needed
+no other natchez-free `com.dwolla.tagless` utility — not a shared fixture, not a
+`Weave` helper, not an attribute abstraction. The three otel4s interpreters are
+written directly against `cats.tagless.aop.Aspect`, and the module's own
+`ToAnyValue` and `WeaveAttributesOps` are otel4s-specific by construction (they
+name `AnyValue` and `Attributes`), so they belong in `otel4s-tagless` and could
+not move here. The broader name still looks right — it cost nothing and leaves
+room — but as of M16 the module remains a one-type artifact, and the "yes, more
+is destined for this module" answer has not yet been cashed by anything.
+
+**Q1's `WeaveKnot`-coverage gap is closed, by the one line the note below
+warned might be dropped.** M16's Task 6 doctest on
+`TracerWeaveCapturingInputsAndOutputs` calls
+`WeaveKnot.weave[Foo, IO, ToAnyValue, ToAnyValue](…)` and is compiled and run on
+2.13.18 and 3.3.8, JVM and JS. `core.dependsOn(taglessCore)` is still
+unprotected — that edge is a different one — but `WeaveKnot` itself now has a
+caller in this repository, and `otel4sTagless.dependsOn(taglessCore)` would fail
+to compile if it were removed.
+
 **What landed, task by task:**
 
 - **Task 1** (`c6e0a73`, "refactor: extract WeaveKnot into its own
@@ -113,6 +138,17 @@ Two consequences a later milestone should know:
    `core.dependsOn(taglessCore)` stays untested indefinitely, and whoever drops
    it should know that is the tradeoff being made, rather than have it happen
    silently.
+
+   **Update, 2026-08-03: M16 wrote that doctest and it landed.**
+   `WeaveKnot.weave` is called from
+   `TracerWeaveCapturingInputsAndOutputs`'s scaladoc example, compiled and run
+   on 2.13.18 and 3.3.8, JVM and JS. So `WeaveKnot` now has a caller and
+   `otel4sTagless.dependsOn(taglessCore)` is exercised. **The `core` edge
+   specifically is still unprotected** — nothing in `core`, `scalacache` or
+   `natchezTaglessMtl` references `WeaveKnot`, so deleting
+   `core.dependsOn(taglessCore)` would still go unnoticed by the suite. The
+   paragraph above stands for that edge; only the "nothing calls it at all" half
+   is now out of date.
 2. **The MiMa result proves less than it looks like it proves.** A clean MiMa
    run on `core` after this move is consistent both with "the move was safe" and
    with "MiMa was never going to see this class either way". It is the latter.
@@ -227,19 +263,22 @@ run covers all 34. Both came back with no `WeaveKnot`.
   release with a real public API (`WeaveKnot.instrument`, `WeaveKnot.weave`,
   `WeaveKnot.apply`). The idiomatic fix is `tlVersionIntroduced :=
   Map(...)` on the project in place of the `Set.empty`, which keeps MiMa live
-  from the module's first release onward. **Four sibling modules carry the
+  from the module's first release onward. **Five sibling modules carry the
   same mechanical `Set.empty`, but not the same history** — `raiseAspectCore`,
-  `raiseAspectLaws`, `raiseAspectMacros` and `natchezTaglessMtl`, at
-  `build.sbt:157,196,224,245` (they were `108,139,159,172` before this
-  milestone inserted `taglessCore`, `139,170,190,203` immediately after, and
-  moved again to their current lines when the same warning above was copied to
-  each bare site) — never had MiMa coverage coming, so nothing was taken from
-  them.
-  `WeaveKnot`'s is the one case, of the five, with a concrete class whose
+  `raiseAspectLaws`, `raiseAspectMacros`, `natchezTaglessMtl` and, since M16
+  (2026-08-03), `otel4sTagless` — none of them ever had MiMa coverage coming, so
+  nothing was taken from them. (The first four were at `build.sbt:157,196,224,245`
+  when this was written; they were `108,139,159,172` before this milestone
+  inserted `taglessCore`, `139,170,190,203` immediately after, and moved again
+  when the same warning above was copied to each bare site. M16 inserted
+  `otel4sTagless` after `natchezTaglessMtl`, so read the current file rather
+  than these numbers.)
+  `WeaveKnot`'s is the one case, of the six, with a concrete class whose
   protection was actively removed. The M15 plan mandated `Set.empty` verbatim,
-  so changing it was out of scope here. **This belongs on a release
-  checklist**, not in a task report: it is one decision covering all five
-  modules and it must be made before the next publish.
+  so changing it was out of scope here, and M16 recorded the same hazard rather
+  than fixing it. **This belongs on a release checklist**, not in a task report:
+  it is one decision covering all six modules and it must be made before the
+  next publish.
 - **The "not one line changed" claim is contingent on a rename-aware git
   invocation.** `git show --stat HEAD -- <new-path-only>` reports a **38-line
   add** for `WeaveKnot.scala`, because restricting the pathspec to only the new

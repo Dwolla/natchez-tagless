@@ -2,8 +2,243 @@
 
 ## Status
 
-**Planned, not started.** The implementation plan is
-`31-milestone-M16-implementation-plan.md`.
+**Complete (2026-08-03).** Branch `milestone/m16-otel4s-module`, stacked on
+M15's `f9cf321`. The implementation plan is
+`31-milestone-M16-implementation-plan.md`; each task's brief and report live
+under `.superpowers/sdd/31-milestone-M16-implementation-plan/`. D1 (as
+replaced), D2–D10 shipped as written.
+
+### What landed, task by task
+
+- **Task 1** (`7610c89`, "feat: add the otel4s-tagless module and its ToAnyValue
+  type class") added the `otel4sTagless` cross-project, `ToAnyValue` with every
+  instance in D1's table, `ToAnyValueSpec` and `ToAnyValueResolutionSpec`, and
+  the regenerated `ci.yml`/`.mergify.yml`.
+- **Task 2** (`4bdc4f9`, "feat: add TracerInstrumentation and the module's test
+  harness") added `TracerInstrumentation`, `FooFixture`, the cross-platform
+  `TracerTransparencySpec` and the JVM-only `SpanContentSpec`, plus the
+  `.jvmSettings` testkit dependencies.
+- **Task 3** (`8ffeb96`, "feat: add TracerWeaveCapturingInputs and
+  Weave#asAttributes") added the second interpreter, `WeaveAttributesOps`,
+  `WeaveAttributesOpsSpec` — and `syntax/package.scala`, which the plan had
+  assigned to Task 5. See divergences.
+- **Task 4** (`bf08a39`, "feat: add TracerWeaveCapturingInputsAndOutputs") added
+  the third interpreter and its span-content cases.
+- **Task 5** (`4f1cada`, "feat: add the otel4s syntax package") added
+  `TracerWeaveOps`, `InstrumentableAndTraceableOps`, and the two extra traits on
+  the package object's `extends` list.
+- **Task 6** (this commit) is documentation: the scaladoc examples, the module
+  README, and this reconciliation.
+
+### What diverged from the plan, and why
+
+- **`syntax/package.scala` landed in Task 3, not Task 5 — and that was
+  forced, not opportunistic.** Task 3's own brief told the interpreter to
+  `import com.dwolla.tracing.otel4s.syntax._`, and the conversion that supplies
+  `asAttributes` is a member of `trait ToWeaveAttributesOps`. Scala 2 has no
+  top-level `def`, so there is no way for that import to reach the conversion
+  without a package object; Task 3's Step 2 failed with `object syntax is not a
+  member of package com.dwolla.tracing.otel4s` before the file existed. It
+  landed at minimum size — the plan's Task 5 scaladoc verbatim, with one trait
+  on the `extends` list instead of three — so Task 5's job on that file shrank
+  to adding the other two.
+- **The 2.12 exclusion is implemented by emptying the module, not by narrowing
+  `crossScalaVersions`.** The document's *Shape* section below still shows
+  `crossScalaVersions := Seq(Scala213, "3.3.8")`; that does not work. sbt's `++`
+  excludes such a project from the version *switch* but leaves it in the root
+  aggregate (`sbt.Cross.switchScalaVersion` acts on `included` only), so
+  `natchez-tagless-rootJVM/test` under `++ 2.12` still evaluates the stranded
+  2.13 module and dies resolving `tagless-core_2.13`. sbt-typelevel's
+  `tlSkipIrrelevantScalas` has been deprecated and inert since 0.5.0. What
+  shipped instead: no project-level `crossScalaVersions` at all, the otel4s
+  coordinate gated on a new `isOtel4sScalaVersion` setting, both
+  `unmanagedSourceDirectories` emptied on 2.12, and `publish / skip := true` on
+  2.12. The rejected alternative — `crossScalaVersions := Nil` on `rootJVM`/
+  `rootJS` plus a build-wide rewrite of every generated CI sbt step — honours
+  the literal instruction but fights `CrossRootProject` and blows up on
+  sbt-typelevel's derived `scalaVersion := crossScalaVersions.value.last`.
+- **The containment mechanism leaked twice, and both leaks were found by
+  negative control rather than by review.** (1) A new otel4s coordinate added
+  *without* the `isOtel4sScalaVersion` gate leaves every `otel4sTagless*/test`
+  green while `natchez-tagless-rootJVM` `++ 2.12` `test` goes red at `update`
+  with a 404 — Task 2 hoisted the testkit out of the gate deliberately,
+  reproduced the `ResolveException`, and restored it. (2) The JVM test *source
+  directory* needs its own gate: `.jvmSettings` are appended after the shared
+  settings block, so a bare `Test / unmanagedSourceDirectories += …` runs after
+  the shared `:=` that empties the list and puts `scala-jvm` straight back onto
+  the 2.12 source path. Measured both ways. **Any future `.jvmSettings`
+  source-directory addition has the same hazard.**
+- **`spansFrom` grew a `resultAndSpansFrom` underneath it.** Task 2's review
+  asked for `spansFrom`'s parameter to widen from `Tracer[IO] => IO[Unit]` to
+  `IO[Any]`, so the suite could assert the returned value. Task 3 pushed back —
+  correctly: `spansFrom` *discards* the result and `Any` erases the type, so
+  widening the parameter cannot make any test assert a value. It followed the
+  intent instead, adding
+  `resultAndSpansFrom[A](f: Tracer[IO] => IO[A]): IO[(A, List[SpanData])]` with
+  `spansFrom` as a one-line delegate.
+- **Those value assertions are still not falsifiable, even with `FlatMap`.**
+  In `apply[A](fa: Weave[F, ToAnyValue, Cod, A]): F[A]` the only `A`-shaped term
+  reachable is `fa.codomain.target`; `Tracer[F]` yields no `A`, and
+  `Cod[A] = ToAnyValue[A]` is a contravariant encoder that consumes an `A` and
+  cannot produce one. `FlatMap` does not change that — it only makes a
+  *repeated* evaluation expressible, and for a deterministic fixture every
+  evaluation yields the same value. Confirmed by mutation: a double-invocation
+  mutant passes every value assertion and fails only on `FooCallCounts`. Both
+  scaladocs say so.
+
+### What the plan left open, and what the answers turned out to be
+
+- **The priority ladder held with no `NotGiven` guards**, identically on
+  2.13.18 and 3.3.8, JVM and JS. `grep -rn "NotGiven" otel4s-tagless/src` is
+  empty and no `scalac-compat-features` dependency was added. D2 stands.
+- **Contravariance caused no ambiguity anywhere.** Probed live on both axes:
+  `List`/`Vector` reach the generic `Seq` instance; `Some[String]` reaches the
+  `Option` instance; `Set[Int]` falls to `Show`; `Array[Byte]` and `Instant`
+  produce a clean "could not find implicit value". The invariance fallback D1
+  named was not needed. **One sharp edge, and it is a documentation problem
+  rather than a design one:** `ToAnyValue[Nothing]` is a *diverging implicit
+  expansion*, not a clean miss, so a bare `None` or `Nil` literal fails with
+  `diverging implicit expansion … starting with method mapToAnyValue`.
+  `Option.empty[String]` and `List.empty[String]` both work, and the weave path
+  is unaffected because parameter types come from the algebra's signature. The
+  exposure is a REPL call or a doc example; the doctests use the explicit forms
+  and `ToAnyValue`'s scaladoc says why.
+- **`LocalContextProvider[IO]` needs no wiring.** It resolves via
+  `LocalProvider.liftFromLiftIO` (low priority) plus the `implicit object
+  Contextual` in oteljava's `Context` companion, so `TracesTestkit.inMemory[IO]()`
+  compiles as upstream's examples show.
+- **`AttributeConverters` does have a public entry point.**
+  `AttributeConverters.AttributesHasToScala#toScala` is public and round-trips
+  `AttributeType.VALUE` back into `AnyValue`, so `SpanContentSpec` compares
+  otel4s `AnyValue` structure with its lawful `Hash` rather than walking the
+  Java `Value` tree. The `Explicit` object the spike named is private; the
+  syntax is not.
+- **Q3 is still open.** Brian has not ruled. Current default remains no, on
+  YAGNI grounds — but note the spike changed the question: under `AnyValue` a
+  circe fallback would be a *structural* `Json => AnyValue` mapping rather than
+  a stringified attribute, which is materially more attractive than the version
+  first raised. See *Open questions*.
+
+### The narrowing rule — discovered during implementation, not planned for
+
+The plan assumed an `AnyValue` attribute arrives as an `AnyValue` attribute. On
+the `otel4s-oteljava` backend it usually does not.
+`AttributeConverters.Explicit.toJavaAttributes` calls
+`builder.put(key.name, anyValue.toJava)`, which lands in
+`ArrayBackedAttributesBuilder.put(AttributeKey, T)`; that sees
+`key.getType() == VALUE && value instanceof Value` and delegates to a private
+`putValue` whose own comment reads *"Convert VALUE type to narrower type when
+possible"*. Byte-identical in `opentelemetry-api` 1.63.0 (what this build
+resolves) and 1.64.0. Derived by a 16-type probe against the real SDK:
+
+| encoded `AnyValue` | arrives as |
+| --- | --- |
+| `StringValue` / `LongValue` / `DoubleValue` / `BooleanValue` | `STRING` / `LONG` / `DOUBLE` / `BOOLEAN` |
+| `SeqValue`, non-empty and homogeneous in one of those four scalars | the matching `*_ARRAY` |
+| `SeqValue`, empty | `VALUE` |
+| `SeqValue`, heterogeneous or of nested seqs/maps/bytes/empties | `VALUE` |
+| `MapValue`, empty or not — always, including `parameters` | `VALUE` |
+| `ByteArrayValue` | `VALUE` |
+| `EmptyValue` | `VALUE`, but the interpreter's guard omits the attribute first |
+
+Two consequences, both of which an intermediate summary got wrong and which the
+README and `TracerWeaveCapturingInputsAndOutputs`'s scaladoc now state: **arrays
+narrow too** ("only structured values stay `VALUE`" is false), and **the same
+attribute key can change type between two calls of the same method** — a
+`Seq[String]` return value is `VALUE` when empty and `STRING_ARRAY` when not,
+and an `Option[String]` return value is absent for `None` and `STRING` for
+`Some`. **The rule is scoped to `otel4s-oteljava`**; the pure-Scala
+`otel4s-sdk` backend was not checked.
+
+### Verification actually run
+
+Counts are per Scala version, not read off an aggregate, and are identical on
+**2.13.18** and **3.3.8**:
+
+| project | tests | 2.12 |
+| --- | --- | --- |
+| `otel4sTaglessJVM` | **28** | 0, by construction |
+| `otel4sTaglessJS` | **21** | 0, by construction |
+
+JS is JVM minus the seven `scala-jvm` (`SpanContentSpec`) tests. The five
+generated `*Doctest` objects appear in `Test/definedTests` on both platforms and
+their bodies compile and initialise, but they declare no ScalaCheck properties,
+so they contribute **0** to those totals; the compile is the assertion.
+
+- `sbt -J-Xmx6g "+test"` green (the heap flag is an environment need — see
+  below); `sbt "project natchez-tagless-rootJVM" "++ 2.12" "test"` and its
+  `rootJS` twin green, six suites each, with the otel4s module contributing no
+  suite.
+- Zero compiler warnings under forced `-Xfatal-warnings`, verified after a
+  `clean` so the compile provably re-ran. The one `[warn]` is the pre-existing,
+  repo-wide `multiple main classes detected` on JS runs, which is an sbt *task*
+  warning, appears in `coreJS` today, and does not fail under fatal warnings.
+- `+otel4sTaglessJVM/doc` succeeds on both supported Scala versions.
+- `+coreJVM/mimaReportBinaryIssues` and `+coreJS/mimaReportBinaryIssues` green —
+  M16 moved nothing out of `core`.
+- `sbt githubWorkflowCheck` passes; `ci.yml` and `.mergify.yml` were regenerated
+  in Task 1 and unchanged since.
+- `git diff --stat main...HEAD` touches only `otel4s-tagless/`, `build.sbt`,
+  `.github/workflows/ci.yml`, `.mergify.yml` and `docs/`.
+- **The omission rule is proven end to end against the real SDK, and proven to
+  come from the guard rather than from SDK tolerance.** With the `parameters`
+  guard removed, `ping()`'s span carries an empty `MapValue`; with the
+  `returnValue` guard removed it carries
+  `Foo.ping.returnValue -> AnyValue.EmptyValueImpl()`. The SDK round-trips both
+  happily. The zero is ours.
+
+### Anything a later milestone needs
+
+- **`otel4s-tagless` is the sixth module shipping
+  `mimaPreviousArtifacts := Set.empty`.** That is a permanent hardcode, not a
+  "not yet published" marker that expires: nothing suppresses publishing on
+  2.13/3, so the module **will** ship a real public API at the next release and
+  MiMa will not catch a breaking change after that. The fix is
+  `tlVersionIntroduced := Map(…)` in place of `Set.empty` — one decision
+  covering all six modules, **needed before the next publish**. Recorded here as
+  a carry-forward; M16 did not fix it. See *Anything a later milestone needs* in
+  `28-milestone-M15-tagless-core-module.md`.
+- **Span content is unverified on Scala.js, knowingly and by Brian's
+  ratification.** There is no otel4s testkit at 1.0.1 that works there:
+  `otel4s-oteljava-trace-testkit` publishes no `_sjs1_` artifact at any version,
+  and the cross-platform `otel4s-sdk-trace-testkit` stops at 0.19.0. JS gets the
+  cross-platform `Tracer.noop` suite and nothing more. Revisit when
+  `otel4s-sdk-trace-testkit` reaches 1.0.x.
+- **Whether real backends *render* `kvlistValue` span attributes is
+  unverified**, and it is the single biggest practical unknown in the design.
+  The OTLP wire format is confirmed end to end; whether Jaeger, Tempo,
+  Honeycomb, Datadog or an intermediate collector renders or flattens them on
+  ingest was never tested. In the README, not buried here.
+- **On 2.12 the module compiles nothing and ships nothing — which is not the
+  same as doing nothing.** `rootJS` under `++ 2.12` still runs `fastLinkJS` over
+  an empty test source set and writes
+  `otel4s-tagless/.js/target/scala-2.12/otel4s-tagless-test-fastopt`. Containment
+  holds — no otel4s coordinate resolves, no source compiles, no test is defined,
+  `publish / skip` is true — but a log grep for "otel4s-tagless" is not zero.
+- **`doctestOnlyCodeBlocksMode := true` compiles every `{{{ }}}` block in
+  main-source scaladoc, on both supported axes and both platforms.** Compiler
+  output, prose and shell transcripts go in backticks; anything in triple braces
+  must actually compile. Task 5 lost a build to a quoted compiler error inside
+  triple braces.
+- **`sbt "+test"` over the whole build needs more heap than the default on this
+  machine.** At Task 6 it died with `java.lang.OutOfMemoryError: Java heap
+  space` compiling `natchez-tagless-mtl` and `raise-aspect-macros` test sources
+  on 3.3.8, after 2.12 and 2.13 had passed. `sbt -J-Xmx6g "+test"` is green.
+  This is a local environment limit, not a regression — the Scala 3 macro
+  modules are what grew, not anything M16 added — but a full-build run that dies
+  there should not be read as a failure.
+- **The pre-existing 2.12/JS doctest warning in `natchez-tagless-mtl` is still
+  open** (`packageDoctest.scala:25`, "The outer reference in this type test
+  cannot be checked at run time"), so the forced-`-Xfatal-warnings` standard
+  cannot yet be applied build-wide. Raised to Brian during Task 2; not M16's to
+  fix.
+
+---
+
+Everything below this Status section is the pre-implementation record, written
+in the present tense of 2026-08-02. Where it and the section above disagree —
+notably the `crossScalaVersions` narrowing in *Shape* — the section above is
+what shipped.
 
 **Q1 and Q2 are ratified (Brian, 2026-08-02).** The artifact is
 **`otel4s-tagless`**, directory `otel4s-tagless/`, sbt project `otel4sTagless`.

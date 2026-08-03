@@ -47,15 +47,34 @@ object TracerWeaveCapturingInputsAndOutputs {
  * `name -> AnyValue.empty` ''entry'' inside the map. Only a whole top-level
  * attribute is worth suppressing, because only a whole attribute costs a slot.
  *
- * Both attributes are handed to otel4s as `AnyValue`, but on the
- * `otel4s-oteljava` backend `returnValue` usually does not ''arrive'' as one.
- * The OpenTelemetry Java SDK documents that
- * `AttributesBuilder#put(AttributeKey, Object)` narrows an
- * `AttributeType.VALUE` whose `Value` has a simple equivalent, so a
- * `String`-valued return lands as a plain `STRING` attribute, a `Long`-valued
- * one as `LONG`, and so on. That is worth knowing when writing queries, and it
- * is the better outcome: backends index simple attributes. The `parameters`
- * map has no simple equivalent, so it stays a structured value.
+ * '''Both attributes are handed to otel4s as `AnyValue`, and on the
+ * `otel4s-oteljava` backend the Java SDK narrows most of them back down before
+ * they are stored.''' `ArrayBackedAttributesBuilder#put` sees an
+ * `AttributeType.VALUE` key holding a `Value` and delegates to a private
+ * `putValue` whose own comment reads "Convert VALUE type to narrower type when
+ * possible". What arrives, observed against the real SDK rather than inferred:
+ *
+ *  - a `StringValue`, `LongValue`, `DoubleValue` or `BooleanValue` arrives as
+ *    `STRING`, `LONG`, `DOUBLE` or `BOOLEAN`;
+ *  - a '''non-empty, homogeneous''' `SeqValue` of one of those four scalars
+ *    arrives as the matching `*_ARRAY` — so arrays narrow too, and "only
+ *    structured values stay `VALUE`" is wrong;
+ *  - an '''empty''' `SeqValue`, a heterogeneous one, or one of nested
+ *    sequences, maps, byte arrays or empty values stays `VALUE`;
+ *  - a `MapValue` stays `VALUE` '''always''', empty or not — which includes
+ *    every `parameters` attribute this interpreter writes;
+ *  - a `ByteArrayValue` stays `VALUE`.
+ *
+ * Two consequences are worth planning for. First, `parameters` is the only
+ * attribute here that is reliably structured; `returnValue` usually is not, and
+ * that is the better outcome, because backends index simple attributes.
+ * Second, '''the same attribute key can change type between two calls of the
+ * same method.''' A `Seq[String]` return value arrives as `VALUE` when the
+ * sequence is empty and as `STRING_ARRAY` when it is not; an `Option[String]`
+ * return value produces no attribute at all for `None` and a `STRING` for
+ * `Some`. A backend that infers a schema from the first sample it sees will
+ * see that. This is Java-SDK behaviour, byte-identical in `opentelemetry-api`
+ * 1.63.0 and 1.64.0; the pure-Scala `otel4s-sdk` backend has not been checked.
  *
  * There is an asymmetry with `TracerWeaveCapturingInputs` worth knowing about.
  * That interpreter encodes nothing under a noop `Tracer`, because
@@ -112,6 +131,68 @@ object TracerWeaveCapturingInputsAndOutputs {
  * `FlatMap[F]` is the constraint, matching the natchez version: the return
  * value has to be sequenced after the call that produced it, but nothing here
  * needs `pure`.
+ *
+ * A plain `.mapK` traces only the calls that cross the algebra's boundary: if
+ * one method of the implementation calls another directly, the inner call is
+ * invisible. `com.dwolla.tagless.WeaveKnot.weave` ties the knot so the
+ * implementation calls the ''traced'' version of itself and the inner call gets
+ * its own child span.
+ *
+ * {{{
+ *   import cats.effect.IO
+ *   import cats.tagless.aop._
+ *   import cats.~>
+ *   import com.dwolla.tagless.WeaveKnot
+ *   import com.dwolla.tracing.otel4s.{ToAnyValue, TracerWeaveCapturingInputsAndOutputs}
+ *   import org.typelevel.otel4s.trace.Tracer
+ *
+ *   trait Foo[F[_]] {
+ *     def greet(name: String): F[String]
+ *     def greetTwice(name: String): F[String]
+ *   }
+ *
+ *   implicit val fooAspect: Aspect[Foo, ToAnyValue, ToAnyValue] = new Aspect[Foo, ToAnyValue, ToAnyValue] {
+ *     override def weave[F[_]](af: Foo[F]): Foo[Aspect.Weave[F, ToAnyValue, ToAnyValue, *]] =
+ *     new Foo[Aspect.Weave[F, ToAnyValue, ToAnyValue, *]] {
+ *       override def greet(name: String): Aspect.Weave[F, ToAnyValue, ToAnyValue, String] =
+ *       Aspect.Weave[F, ToAnyValue, ToAnyValue, String](
+ *         "Foo",
+ *         List(List(Aspect.Advice.byValue[ToAnyValue, String]("name", name))),
+ *         Aspect.Advice[F, ToAnyValue, String]("greet", af.greet(name))
+ *       )
+ *
+ *       override def greetTwice(name: String): Aspect.Weave[F, ToAnyValue, ToAnyValue, String] =
+ *       Aspect.Weave[F, ToAnyValue, ToAnyValue, String](
+ *         "Foo",
+ *         List(List(Aspect.Advice.byValue[ToAnyValue, String]("name", name))),
+ *         Aspect.Advice[F, ToAnyValue, String]("greetTwice", af.greetTwice(name))
+ *       )
+ *     }
+ *
+ *     override def mapK[F[_], G[_]](af: Foo[F])(fk: F ~> G): Foo[G] =
+ *     new Foo[G] {
+ *       override def greet(name: String): G[String] = fk(af.greet(name))
+ *       override def greetTwice(name: String): G[String] = fk(af.greetTwice(name))
+ *     }
+ *   }
+ *
+ *   // A real application summons this from `TracerProvider[F].get(name)`,
+ *   // supplied by a backend module. This library never provides one.
+ *   implicit val tracer: Tracer[IO] = Tracer.noop[IO]
+ *
+ *   // `self.value` is the *traced* algebra, so `greetTwice` produces three
+ *   // spans: `Foo.greetTwice` and two nested `Foo.greet`s. Constructing the
+ *   // implementation directly and calling `.traceWithInputsAndOutputs` on it
+ *   // would produce only the outer one.
+ *   val traced: Foo[IO] = WeaveKnot.weave[Foo, IO, ToAnyValue, ToAnyValue](
+ *     self => new Foo[IO] {
+ *       override def greet(name: String): IO[String] = IO.pure("hello " + name)
+ *       override def greetTwice(name: String): IO[String] =
+ *       self.value.greet(name).flatMap(a => self.value.greet(name).map(b => a + " " + b))
+ *     },
+ *     TracerWeaveCapturingInputsAndOutputs[IO]
+ *   )
+ * }}}
  */
 class TracerWeaveCapturingInputsAndOutputs[F[_]: FlatMap: Tracer]
   extends (Weave[F, ToAnyValue, ToAnyValue, *] ~> F) {
