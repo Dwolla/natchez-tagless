@@ -25,6 +25,12 @@ corroborating evidence. That is verified by this plan, not assumed.
 > reader is most likely to trust; see the numbers above and the "Clarified"
 > note under "The honest problem, and what the investigation found" in
 > `28-milestone-M15-tagless-core-module.md` for the same correction.
+>
+> The same conflation survives in this document's pre-implementation
+> contingency prose, checklist items and draft commit message, which are kept
+> as the historical record rather than rewritten. **Wherever "21" appears
+> below, read it as "21 hand-scanned published jars", not "everything MiMa
+> checks".**
 
 **Tech Stack:** sbt with sbt-typelevel 0.8.6 (`sbt-typelevel-ci-release`,
 `-settings`, `-mergify`), MiMa via `TypelevelMimaPlugin`, Scala 2.12.21 /
@@ -436,9 +442,12 @@ after all.)
 > a dead branch when it was written: `Analyzer.analyze` iterates the *old*
 > package's classes, so a class absent from every previous artifact has no way
 > to be reported missing from the new one — and two independent lines of
-> evidence say `WeaveKnot` is absent from every previous artifact (the manual
-> jar scan of 21 published jars, and MiMa's own comparison, which additionally
-> covers Scala 3). Kept for the general rule in its parenthetical, which is
+> evidence say `WeaveKnot` is absent from every previous artifact. The manual
+> jar scan covered 21 jars; MiMa's own comparison set for `core` is 34, so the
+> scan's 13-jar shortfall is 7 × `_sjs1_2.12` plus 6 × Scala 3, and MiMa covers
+> all of them. See the 34/21/13 breakdown in
+> `28-milestone-M15-tagless-core-module.md`. Kept for the general rule in its
+> parenthetical, which is
 > still the thing worth remembering the next time a **published** class moves.
 
 - [ ] **Step 4: Prove transitive availability from every downstream module**
