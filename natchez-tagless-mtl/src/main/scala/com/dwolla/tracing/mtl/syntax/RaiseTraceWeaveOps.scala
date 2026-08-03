@@ -2,7 +2,7 @@ package com.dwolla.tracing.mtl
 package syntax
 
 import cats.{Apply, FlatMap}
-import com.dwolla.tagless.mtl.WeaveInterpreter
+import com.dwolla.tagless.mtl.{RaiseRecorder, WeaveInterpreter}
 import com.dwolla.tracing.{TraceWeaveCapturingInputs, TraceWeaveCapturingInputsAndOutputs}
 import natchez.{Trace, TraceableValue}
 

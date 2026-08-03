@@ -2,6 +2,7 @@ package com.dwolla.tracing.mtl
 package syntax
 
 import cats.effect.IO
+import com.dwolla.tagless.mtl.RaiseRecorder
 import munit.CatsEffectSuite
 import natchez.{Trace, TraceableValue}
 
@@ -24,7 +25,7 @@ class RaiseRecorderPrioritySpec extends CatsEffectSuite {
       """import cats.effect.IO
 import natchez.{Trace, TraceableValue}
 import com.dwolla.tagless.mtl.OnRaise
-import com.dwolla.tracing.mtl.syntax.RaiseRecorder
+import com.dwolla.tagless.mtl.RaiseRecorder
 implicit val trace: Trace[IO] = Trace.Implicits.noop[IO]
 implicit val userOnRaise: OnRaise[IO, TraceableValue] = new OnRaise[IO, TraceableValue] {
   def apply[E](e: E)(implicit ev: TraceableValue[E]): IO[Unit] = IO.unit
