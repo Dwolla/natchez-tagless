@@ -1,6 +1,9 @@
 package com.dwolla.tracing.otel4s
 
 import cats.effect.IO
+import cats.tagless.aop.Aspect
+import cats.~>
+import com.dwolla.tagless.WeaveKnot
 import com.dwolla.tracing.otel4s.syntax._
 import io.opentelemetry.sdk.trace.data.SpanData
 import munit.CatsEffectSuite
@@ -71,6 +74,24 @@ class SpanContentSpec extends CatsEffectSuite {
     */
   protected def underlyingFoo(counts: FooCallCounts): Foo[IO] =
     Foo.counting[IO](counts)(f => IO(f()))
+
+  /** The `WeaveKnot` wiring from `TracerWeaveCapturingInputsAndOutputs`'s
+    * doctest, in the same shape: `self.value` is the ''traced'' algebra, so the
+    * two `inner` calls made from inside `outer` go back through the interpreter
+    * and each opens its own span. Constructing the implementation directly and
+    * calling `.traceWithInputsAndOutputs` on it would produce only the outer
+    * span.
+    */
+  protected def tracedNested(implicit tracer: Tracer[IO]): Nested[IO] =
+    WeaveKnot.weave[Nested, IO, ToAnyValue, ToAnyValue](
+      self => new Nested[IO] {
+        override def inner(name: String): IO[String] = IO.pure("hello " + name)
+
+        override def outer(name: String): IO[String] =
+          self.value.inner(name).flatMap(a => self.value.inner(name).map(b => a + " " + b))
+      },
+      TracerWeaveCapturingInputsAndOutputs[IO]
+    )
 
   test("each method call opens one span named algebraName.methodName") {
     val counts = new FooCallCounts
@@ -211,4 +232,84 @@ class SpanContentSpec extends CatsEffectSuite {
       assertEquals(spans.map(attributesOf(_)), List(Attributes.empty))
     }
   }
+
+  // "Introduces a new child span" is the headline claim of all three
+  // interpreters, and the WeaveKnot doctest on
+  // TracerWeaveCapturingInputsAndOutputs promises three spans, the two inner
+  // ones nested inside the outer. Every other span-content case above makes
+  // exactly one span, so none of them observes a parent/child relationship at
+  // all: an interpreter that opened root spans, or a WeaveKnot wiring where
+  // `self.value` escaped the parent's context, would leave them green while
+  // every production trace came out flat. This is that test, and it is also
+  // the module's first executable use of M15's `dependsOn(taglessCore)` edge —
+  // WeaveKnot lives there.
+  //
+  // Asserted on span/parent/trace *ids*. `finishedSpans` reports spans in
+  // completion order, so the children arrive before the parent, and names
+  // alone cannot tell a child from a second root.
+  test("WeaveKnot nests each inner call inside the outer call's span") {
+    resultAndSpansFrom { implicit tracer =>
+      tracedNested.outer("world")
+    }.map { case (greeting, spans) =>
+      assertEquals(greeting, "hello world hello world")
+      assertEquals(spans.size, 3)
+
+      val outer = spans.filter(_.getName == "Nested.outer")
+      val inner = spans.filter(_.getName == "Nested.inner")
+      assertEquals(outer.size, 1)
+      assertEquals(inner.size, 2)
+
+      val parentSpanId = outer.head.getSpanId
+      // Both children name the outer span as their parent, and they really are
+      // two distinct spans rather than one span recorded twice.
+      assertEquals(inner.map(_.getParentSpanId), List(parentSpanId, parentSpanId))
+      assertEquals(inner.map(_.getSpanId).distinct.size, 2)
+
+      // One trace, rooted at the outer span.
+      assertEquals(spans.map(_.getTraceId).distinct, List(outer.head.getTraceId))
+      assert(!outer.head.getParentSpanContext.isValid, "the outer span should be a root span")
+    }
+  }
+}
+
+/** A two-method algebra whose `outer` calls its own `inner`, twice.
+  *
+  * Separate from `Foo` because the point is the self-call: `Foo`'s methods are
+  * leaves, so no wiring of `Foo` can produce a nested span. JVM-only alongside
+  * `SpanContentSpec` because span structure, like span content, needs the
+  * testkit to observe.
+  */
+trait Nested[F[_]] {
+  def outer(name: String): F[String]
+  def inner(name: String): F[String]
+}
+
+object Nested {
+  // Hand-written for the same reason Foo's is: no cats-tagless-macros
+  // dependency on Scala 2, and identical on both Scala versions.
+  implicit val nestedAspect: Aspect[Nested, ToAnyValue, ToAnyValue] =
+    new Aspect[Nested, ToAnyValue, ToAnyValue] {
+      override def weave[F[_]](af: Nested[F]): Nested[Aspect.Weave[F, ToAnyValue, ToAnyValue, *]] =
+        new Nested[Aspect.Weave[F, ToAnyValue, ToAnyValue, *]] {
+          override def outer(name: String): Aspect.Weave[F, ToAnyValue, ToAnyValue, String] =
+            Aspect.Weave[F, ToAnyValue, ToAnyValue, String](
+              "Nested",
+              List(List(Aspect.Advice.byValue[ToAnyValue, String]("name", name))),
+              Aspect.Advice[F, ToAnyValue, String]("outer", af.outer(name))
+            )
+
+          override def inner(name: String): Aspect.Weave[F, ToAnyValue, ToAnyValue, String] =
+            Aspect.Weave[F, ToAnyValue, ToAnyValue, String](
+              "Nested",
+              List(List(Aspect.Advice.byValue[ToAnyValue, String]("name", name))),
+              Aspect.Advice[F, ToAnyValue, String]("inner", af.inner(name))
+            )
+        }
+
+      override def mapK[F[_], G[_]](af: Nested[F])(fk: F ~> G): Nested[G] =
+        new Nested[G] {
+          override def outer(name: String): G[String] = fk(af.outer(name))
+          override def inner(name: String): G[String] = fk(af.inner(name))
+        }
+    }
 }

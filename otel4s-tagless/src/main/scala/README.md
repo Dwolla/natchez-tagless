@@ -188,10 +188,38 @@ exists reports as missing on Scala 3, check the imports first.
 
 | value | `natchez-tagless` records | here |
 | --- | --- | --- |
+| a type with both a circe `Encoder` and a `Show` | its JSON, via `nonPrimitiveTraceValueViaJson` | its `Show` rendering — there is no circe fallback here |
 | `()` | the string `"()"` | `AnyValue.empty` (and the attribute is omitted if it is the whole value) |
 | `None` | the string `"None"` | `AnyValue.empty` |
 | `Float` | a `Float` | widened to the exact `Double` — `0.1f` records as `0.10000000149011612` |
 | `BigDecimal`, `BigInt` | numbers | strings, via the `Show` fallback — no instance ships |
+
+**The first row is the one that changes your data without telling you.** In
+`com.dwolla.tracing.ToTraceValue`, `nonPrimitiveTraceValueViaJson` is declared in
+`LowPriorityTraceableValueInstances`, which *extends* the trait holding the
+`Show` fallback, so for a type that has both an `Encoder` and a `Show` the JSON
+encoding wins — `ImplicitPrioritizationSpec` pins exactly that. `ToAnyValue` has
+no circe fallback at all, only the `Show` one. So a `Money` that traces today as
+`{"cents":150}` compiles unchanged after the import moves to
+`com.dwolla.tracing.otel4s.syntax._` and records its `Show` rendering instead:
+different attribute value, no warning, no compile error. (A type with an
+`Encoder` and no `Show` fails to compile here, which is the loud, easy case.)
+
+The two fallbacks also differ in *how they arrive*, which compounds it.
+`natchez.TraceableValue`'s own companion carries only six primitive instances;
+both of this repo's fallbacks are members of traits, reachable only through
+`import com.dwolla.tracing.LowPriorityTraceableValueInstances._`, so a file that
+omits that import gets neither. `ToAnyValue`'s `Show` fallback is a member of
+`LowPriorityToAnyValueInstances`, which `object ToAnyValue` extends — it is in
+the companion's implicit scope and applies with no import at all. One edit
+therefore drops an opt-in JSON encoding and picks up an unconditional `Show`
+one.
+
+Whether a structural `Json => AnyValue` fallback should ship here is still open
+(Q3 in `docs/plans/raise-aspect/30-milestone-M16-otel4s-module.md`). Even if the
+answer stays "no", a migrating user has to be told the fallback is gone. Until
+then, write the `ToAnyValue` instance you want: it lives in the companion of
+your own type and outranks the `Show` fallback.
 
 The `Float` widening is exact in the IEEE-754 sense and inexact-looking in
 print. The alternative, `_.toString.toDouble`, prints prettily by silently

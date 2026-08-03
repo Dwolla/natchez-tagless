@@ -157,13 +157,20 @@ Counts are per Scala version, not read off an aggregate, and are identical on
 
 | project | tests | 2.12 |
 | --- | --- | --- |
-| `otel4sTaglessJVM` | **28** | 0, by construction |
+| `otel4sTaglessJVM` | **29** | 0, by construction |
 | `otel4sTaglessJS` | **21** | 0, by construction |
 
-JS is JVM minus the seven `scala-jvm` (`SpanContentSpec`) tests. The five
-generated `*Doctest` objects appear in `Test/definedTests` on both platforms and
-their bodies compile and initialise, but they declare no ScalaCheck properties,
-so they contribute **0** to those totals; the compile is the assertion.
+JS is JVM minus the eight `scala-jvm` (`SpanContentSpec`) tests. There are
+**seven** `{{{ }}}` blocks, spread across **five** source files; sbt-doctest
+generates one `*Doctest` object per file, so five of them appear in
+`Test/definedTests` on both platforms. Their bodies compile and initialise, but
+they declare no ScalaCheck properties, so they contribute **0** to those totals;
+the compile is the assertion.
+
+**Amended 2026-08-03** by the post-review fix commit: the JVM count moved from
+28 to 29 with the addition of `SpanContentSpec`'s span-nesting test, which is
+the module's only executable proof that `WeaveKnot` produces child spans — see
+the *Post-review fixes* note below.
 
 - `sbt -J-Xmx6g "+test"` green (the heap flag is an environment need — see
   below); `sbt "project natchez-tagless-rootJVM" "++ 2.12" "test"` and its
@@ -232,6 +239,51 @@ so they contribute **0** to those totals; the compile is the assertion.
   cannot be checked at run time"), so the forced-`-Xfatal-warnings` standard
   cannot yet be applied build-wide. Raised to Brian during Task 2; not M16's to
   fix.
+
+### Post-review fixes (2026-08-03)
+
+Task 6's review and the whole-branch review approved M16 for merge after three
+items, all landed in one follow-up commit:
+
+- **The divergence table in the module README gained the circe row.** For a
+  domain type carrying both a circe `Encoder` and a `Show`,
+  `com.dwolla.tracing.ToTraceValue`'s `nonPrimitiveTraceValueViaJson` outranks
+  the `Show` fallback — it is declared in `LowPriorityTraceableValueInstances`,
+  which *extends* the trait the `Show` fallback lives in, and
+  `ImplicitPrioritizationSpec` pins it. `ToAnyValue` has only the `Show`
+  fallback, so migrating a file's import records a different value with no
+  compile error. The scoping compounds it: `natchez.TraceableValue`'s own
+  companion holds nothing but six primitive instances, so both of this repo's
+  natchez fallbacks require `import LowPriorityTraceableValueInstances._`, while
+  `ToAnyValue`'s `Show` fallback sits in a trait the *companion* extends and
+  therefore applies with no import. Q3 stays open; the divergence is documented
+  either way.
+- **The `KeySelect` comment in `TracerWeaveCapturingInputsAndOutputs` was
+  false and is corrected.** `ToAnyValue#toAnyValue` is declared `: AnyValue`, so
+  the `val returnValue: AnyValue` ascription is a no-op at that site; the
+  ascription is kept for symmetry and the comment now says so and points at
+  `WeaveAttributesOps.asAttributes`, where `AnyValue.map` genuinely returns
+  `MapValue` and the widening is load-bearing.
+- **Span nesting is now tested.** Every other span-content case makes exactly
+  one span, so nothing observed a parent/child relationship: an interpreter
+  opening root spans would have left all 28 tests green with every production
+  trace flat. `SpanContentSpec` gained a `WeaveKnot` +
+  `TracerWeaveCapturingInputsAndOutputs` case over a two-method `Nested`
+  algebra, asserting on span/parent/trace **ids** — three spans, both
+  `Nested.inner` spans carrying the `Nested.outer` span id as parent, two
+  distinct child span ids, one trace, outer is the root. It is also the first
+  executable use of M15's `dependsOn(taglessCore)` edge. Two mutations confirm
+  it discriminates: `.root` inserted before `.build` in the interpreter, and the
+  inner calls hoisted out of `outer` into the test body (which keeps the span
+  count at three) — each fails that one test on the parent-span-id assertion and
+  nothing else.
+
+The seven follow-ups the reviews recorded — the untested error path, the
+uncommitted narrowing-table regression test, the missing abstract-`F` constraint
+assertion for `traceWithInputsAndOutputs`, `TracerTransparencySpec`'s unread
+`counts` parameter, `resultAndSpansFrom`'s scaladoc, the span-name string
+derived in three places, and the unhomed foreign-package syntax proof — were
+deliberately left for a later round.
 
 ---
 
