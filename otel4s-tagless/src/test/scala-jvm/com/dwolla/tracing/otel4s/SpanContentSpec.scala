@@ -1,7 +1,7 @@
 package com.dwolla.tracing.otel4s
 
 import cats.effect.IO
-import cats.tagless.syntax.all._
+import com.dwolla.tracing.otel4s.syntax._
 import io.opentelemetry.sdk.trace.data.SpanData
 import munit.CatsEffectSuite
 import org.typelevel.otel4s.oteljava.AttributeConverters._
@@ -76,7 +76,7 @@ class SpanContentSpec extends CatsEffectSuite {
     val counts = new FooCallCounts
 
     resultAndSpansFrom { implicit tracer =>
-      underlyingFoo(counts).instrument.mapK(TracerInstrumentation[IO]).greet("world", 2)
+      underlyingFoo(counts).instrumentAndTrace.greet("world", 2)
     }.map { case (greeting, spans) =>
       assertEquals(greeting, "hello worldhello world")
       assertEquals(counts.greet, 1)
@@ -88,7 +88,7 @@ class SpanContentSpec extends CatsEffectSuite {
     val counts = new FooCallCounts
 
     spansFrom { implicit tracer =>
-      underlyingFoo(counts).instrument.mapK(TracerInstrumentation[IO]).greet("world", 2)
+      underlyingFoo(counts).instrumentAndTrace.greet("world", 2)
     }.map(spans => assertEquals(spans.map(attributesOf(_).size), List(0)))
   }
 
@@ -100,7 +100,7 @@ class SpanContentSpec extends CatsEffectSuite {
     val counts = new FooCallCounts
 
     resultAndSpansFrom { implicit tracer =>
-      underlyingFoo(counts).instrument.mapK(TracerInstrumentation[IO]).ping()
+      underlyingFoo(counts).instrumentAndTrace.ping()
     }.map { case (pong, spans) =>
       assertEquals(pong, ())
       assertEquals(counts.ping, 1)
@@ -113,7 +113,7 @@ class SpanContentSpec extends CatsEffectSuite {
     val counts = new FooCallCounts
 
     resultAndSpansFrom { implicit tracer =>
-      underlyingFoo(counts).weave.mapK(TracerWeaveCapturingInputs[IO, ToAnyValue]).greet("world", 2)
+      underlyingFoo(counts).traceWithInputs[ToAnyValue].greet("world", 2)
     }.map { case (greeting, spans) =>
       assertEquals(greeting, "hello worldhello world")
       assertEquals(counts.greet, 1)
@@ -142,7 +142,7 @@ class SpanContentSpec extends CatsEffectSuite {
     val counts = new FooCallCounts
 
     resultAndSpansFrom { implicit tracer =>
-      underlyingFoo(counts).weave.mapK(TracerWeaveCapturingInputs[IO, ToAnyValue]).ping()
+      underlyingFoo(counts).traceWithInputs[ToAnyValue].ping()
     }.map { case (pong, spans) =>
       assertEquals(pong, ())
       assertEquals(counts.ping, 1)
@@ -156,7 +156,7 @@ class SpanContentSpec extends CatsEffectSuite {
     val counts = new FooCallCounts
 
     resultAndSpansFrom { implicit tracer =>
-      underlyingFoo(counts).weave.mapK(TracerWeaveCapturingInputsAndOutputs[IO]).greet("world", 2)
+      underlyingFoo(counts).traceWithInputsAndOutputs.greet("world", 2)
     }.map { case (greeting, spans) =>
       assertEquals(greeting, "hello worldhello world")
       // This interpreter is the first in the module that *could* run the
@@ -202,7 +202,7 @@ class SpanContentSpec extends CatsEffectSuite {
     val counts = new FooCallCounts
 
     resultAndSpansFrom { implicit tracer =>
-      underlyingFoo(counts).weave.mapK(TracerWeaveCapturingInputsAndOutputs[IO]).ping()
+      underlyingFoo(counts).traceWithInputsAndOutputs.ping()
     }.map { case (pong, spans) =>
       assertEquals(pong, ())
       assertEquals(counts.ping, 1)

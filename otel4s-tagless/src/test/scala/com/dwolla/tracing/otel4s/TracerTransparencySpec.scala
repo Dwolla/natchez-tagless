@@ -2,7 +2,7 @@ package com.dwolla.tracing.otel4s
 
 import cats.Id
 import cats.tagless.aop.Aspect
-import cats.tagless.syntax.all._
+import com.dwolla.tracing.otel4s.syntax._
 import munit.FunSuite
 import org.typelevel.otel4s.trace.Tracer
 
@@ -45,43 +45,31 @@ class TracerTransparencySpec extends FunSuite {
   private def underlyingFoo(counts: FooCallCounts): Foo[Id] =
     Foo.counting[Id](counts)(f => f())
 
+  // No count assertions anywhere in this suite, deliberately: under Id the
+  // underlying call has already run by the time the Weave exists, so
+  // re-reading `fa.codomain.target` re-runs nothing and even a double-invoking
+  // interpreter would leave the counts at 1. Every "ran exactly once"
+  // assertion in this module lives in SpanContentSpec, over IO. See
+  // FooCallCounts.
   test("an instrumented call returns exactly what the underlying call returns") {
-    val counts = new FooCallCounts
-    val underlying = underlyingFoo(counts)
-    val instrumented: Foo[Id] = underlying.instrument.mapK(TracerInstrumentation[Id])
+    val underlying = underlyingFoo(new FooCallCounts)
+    val instrumented: Foo[Id] = underlying.instrumentAndTrace
 
-    // The counts are read before `underlying` is called directly for the
-    // expected values, because those direct calls bump the same counters.
-    val greeting = instrumented.greet("world", 2)
-    val pong = instrumented.ping()
-    assertEquals((counts.greet, counts.ping), (1, 1))
-
-    assertEquals(greeting, underlying.greet("world", 2))
-    assertEquals(pong, underlying.ping())
+    assertEquals(instrumented.greet("world", 2), underlying.greet("world", 2))
+    assertEquals(instrumented.ping(), underlying.ping())
   }
 
   test("TracerWeaveCapturingInputs returns exactly what the underlying call returns") {
-    val counts = new FooCallCounts
-    val underlying = underlyingFoo(counts)
-    val traced: Foo[Id] = underlying.weave.mapK(TracerWeaveCapturingInputs[Id, ToAnyValue])
+    val underlying = underlyingFoo(new FooCallCounts)
+    val traced: Foo[Id] = underlying.traceWithInputs[ToAnyValue]
 
-    val greeting = traced.greet("world", 2)
-    val pong = traced.ping()
-    assertEquals((counts.greet, counts.ping), (1, 1))
-
-    assertEquals(greeting, underlying.greet("world", 2))
-    assertEquals(pong, underlying.ping())
+    assertEquals(traced.greet("world", 2), underlying.greet("world", 2))
+    assertEquals(traced.ping(), underlying.ping())
   }
 
-  // No count assertion here, deliberately: under Id the underlying call has
-  // already run by the time the Weave exists, so re-reading
-  // `fa.codomain.target` re-runs nothing and a double-invoking interpreter
-  // would still leave the counts at 1. The "ran exactly once" assertion for
-  // this interpreter lives in SpanContentSpec, over IO. See FooCallCounts.
   test("TracerWeaveCapturingInputsAndOutputs returns exactly what the underlying call returns") {
-    val counts = new FooCallCounts
-    val underlying = underlyingFoo(counts)
-    val traced: Foo[Id] = underlying.weave.mapK(TracerWeaveCapturingInputsAndOutputs[Id])
+    val underlying = underlyingFoo(new FooCallCounts)
+    val traced: Foo[Id] = underlying.traceWithInputsAndOutputs
 
     assertEquals(traced.greet("world", 2), underlying.greet("world", 2))
     assertEquals(traced.ping(), underlying.ping())

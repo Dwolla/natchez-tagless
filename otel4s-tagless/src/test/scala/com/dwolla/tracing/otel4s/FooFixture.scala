@@ -20,10 +20,12 @@ trait Foo[F[_]] {
   *
   * Value equality cannot see an interpreter that runs the underlying call
   * twice: both runs produce the same answer, so `assertEquals` is satisfied
-  * either way. An interpreter that needs `FlatMap` — which every interpreter
-  * after `TracerInstrumentation` does — can very easily use
+  * either way. An interpreter that needs `FlatMap` can very easily use
   * `fa.codomain.target` more than once, so the count is the only assertion
-  * that catches it.
+  * that catches it. `TracerWeaveCapturingInputsAndOutputs` is the module's
+  * only such interpreter — `TracerInstrumentation` and
+  * `TracerWeaveCapturingInputs` ask for nothing but `Tracer[F]`, so neither
+  * can double-invoke at all.
   *
   * '''It cannot catch one under `Id`''', though, so the "ran exactly once"
   * assertions belong in `SpanContentSpec` (over `IO`) and never in
