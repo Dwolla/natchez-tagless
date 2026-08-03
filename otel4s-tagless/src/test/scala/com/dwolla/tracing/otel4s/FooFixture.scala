@@ -1,5 +1,7 @@
 package com.dwolla.tracing.otel4s
 
+import cats.Functor
+import cats.syntax.all._
 import cats.tagless.aop.Aspect
 import cats.~>
 
@@ -14,7 +16,49 @@ trait Foo[F[_]] {
   def ping(): F[Unit]
 }
 
+/** How many times each method of a `Foo.counting` algebra has run.
+  *
+  * Value equality cannot see an interpreter that runs the underlying call
+  * twice: both runs produce the same answer, so `assertEquals` is satisfied
+  * either way. An interpreter that needs `Monad` — which every interpreter
+  * after `TracerInstrumentation` does — can very easily use
+  * `fa.codomain.target` more than once, so the count is the only assertion
+  * that catches it.
+  */
+final class FooCallCounts {
+  private var greetRuns = 0
+  private var pingRuns = 0
+
+  def greet: Int = greetRuns
+  def ping: Int = pingRuns
+
+  private[otel4s] def recordGreet(): Unit = greetRuns += 1
+  private[otel4s] def recordPing(): Unit = pingRuns += 1
+}
+
 object Foo {
+  /** A `Foo[F]` that counts each of its own runs into `counts`.
+    *
+    * `suspend` says how the counting side effect is deferred into `F`: pass
+    * `f => IO(f())` for an effectful `F`, or `f => f()` for `Id`, which has
+    * nothing to defer into. Taking it as a parameter is what lets one fixture
+    * serve both suites without a `Sync[F]` that `Id` cannot satisfy.
+    *
+    * Deferring matters: with an eager `IO.pure(…)` body the count would record
+    * how many times the effect was ''built'', which is once no matter how many
+    * times an interpreter then runs it — exactly the bug the count exists to
+    * catch.
+    */
+  def counting[F[_]: Functor](counts: FooCallCounts)(suspend: (() => Unit) => F[Unit]): Foo[F] =
+    new Foo[F] {
+      override def greet(name: String, times: Int): F[String] =
+        suspend(() => counts.recordGreet()).as(s"hello $name" * times)
+
+      override def ping(): F[Unit] =
+        suspend(() => counts.recordPing())
+    }
+
+
   // Hand-written rather than derived, so this fixture needs no
   // cats-tagless-macros dependency on Scala 2 and is identical on both axes.
   //
