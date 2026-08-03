@@ -13,12 +13,15 @@ AnyValue }` supplies the `Dom`/`Cod` that `natchez.TraceableValue` supplies on
 the natchez side — otel4s ships nothing of the right kind. A traced call records
 **at most two attributes**: `<Alg>.<method>.parameters`, whose value is a
 structured `AnyValue.map` from parameter name to encoded value, and
-`<Alg>.<method>.returnValue`. The interpreters use otel4s's **sealed,
-macro-free** span path (`spanBuilder → modifyState → build → surround`/`use`,
-plus `span.backend.addAttributes`) throughout, including in scaladoc, because
-this repo compiles doctests on both Scala axes. Input attributes attach to the
-*builder*, so `TracerWeaveCapturingInputs` needs no `Apply[F]` and the
-attributes exist before the sampler runs.
+`<Alg>.<method>.returnValue` — **each omitted entirely, not recorded empty,
+when it would carry nothing** (corrected 2026-08-02: a zero-parameter method
+has no `parameters` attribute; a `Unit`-returning method has no `returnValue`
+attribute; `ToAnyValue` itself stays total and unchanged). The interpreters use
+otel4s's **sealed, macro-free** span path (`spanBuilder → modifyState → build →
+surround`/`use`, plus `span.backend.addAttributes`) throughout, including in
+scaladoc, because this repo compiles doctests on both Scala axes. Input
+attributes attach to the *builder*, so `TracerWeaveCapturingInputs` needs no
+`Apply[F]` and the attributes exist before the sampler runs.
 
 **Tech Stack:** Scala **2.13.18 and 3.3.8** (not 2.12), JVM and Scala.js;
 otel4s 1.0.1 (`otel4s-core-trace`), cats, cats-tagless, MUnit; sbt 1.12.13 with
@@ -1056,8 +1059,11 @@ class WeaveAttributesOpsSpec extends FunSuite {
     assertEquals(weave.asAttributes.size, 1)
   }
 
-  // D3: absence is an EmptyValue entry, not a missing one.
-  test("a parameter that encodes to nothing is an EmptyValue entry") {
+  // D3: within a non-empty map, absence is a kept EmptyValue entry, not a
+  // missing one. This map has two entries (both empty-valued), so it is not
+  // itself empty, and the whole attribute is still recorded — contrast with
+  // the next test, where the map has *zero* entries.
+  test("a parameter that encodes to nothing is a kept EmptyValue entry") {
     val weave = weaveOf(List(List(
       Aspect.Advice.byValue[ToAnyValue, Option[String]]("note", None),
       Aspect.Advice.byValue[ToAnyValue, Unit]("nothing", ()),
@@ -1066,10 +1072,13 @@ class WeaveAttributesOpsSpec extends FunSuite {
     assertEquals(weave.asAttributes, expected("note" -> AnyValue.empty, "nothing" -> AnyValue.empty))
   }
 
-  // D3: no special case for the empty domain either.
-  test("a method with no parameters still records an empty parameters map") {
-    assertEquals(weaveOf(List(List.empty)).asAttributes, expected())
-    assertEquals(weaveOf(List.empty).asAttributes, expected())
+  // D3, corrected 2026-08-02: a map with *zero* entries is not recorded at
+  // all — the whole `parameters` attribute is omitted, not emitted holding
+  // `MapValue({})`. ToAnyValue itself is unchanged; this is the interpreter
+  // choosing not to spend an attribute slot saying nothing.
+  test("a method with no parameters records no `parameters` attribute at all") {
+    assertEquals(weaveOf(List(List.empty)).asAttributes, Attributes.empty)
+    assertEquals(weaveOf(List.empty).asAttributes, Attributes.empty)
   }
 
   test("a by-name parameter is forced exactly once, when asAttributes is called") {
@@ -1090,6 +1099,16 @@ Extend `SpanContentSpec` with the inputs assertion — one call to
 span named `Foo.greet` carrying exactly one attribute, `Foo.greet.parameters`,
 whose decoded value is the map `{name -> "world", times -> 2}` with `times` a
 **long**, not a string. Read the tree, not the text.
+
+Add the mirroring `ping()` case, because it is where the corrected emission
+rule (D3, 2026-08-02) is actually exercised end to end: `ping()` has no
+parameters, so the encoded map has zero entries, and the whole
+`parameters` attribute is omitted rather than recorded as `MapValue({})`. One
+call to `underlying.weave.mapK(TracerWeaveCapturingInputs[IO, ToAnyValue])`
+invoking `ping()` produces a span with **zero** attributes — the same shape
+`TracerInstrumentation` already produces for every call, asserted in Task 2.
+Assert `spans.head.getAttributes.size == 0`; keep the `greet` assertion above
+as the contrasting non-empty case.
 
 Extend `TracerTransparencySpec` with two cases for this interpreter:
 
@@ -1146,7 +1165,14 @@ trait ToWeaveAttributesOps {
 class WeaveAttributesOps[F[_], Cod[_], A](val fa: Weave[F, ToAnyValue, Cod, A]) extends AnyVal {
   /** All of the call's parameters, from every parameter list, as exactly one
     * attribute named `algebraName.methodName.parameters` whose value is an
-    * `AnyValue` map keyed by parameter name.
+    * `AnyValue` map keyed by parameter name — '''or no attribute at all''' if
+    * the method takes no parameters (corrected 2026-08-02). `ToAnyValue`
+    * itself stays a total `A => AnyValue`: a parameter that encodes to nothing
+    * is still a kept `name -> AnyValue.empty` entry, never a missing one, so a
+    * map with at least one parameter is always recorded, empty-valued entries
+    * and all. Only a map with '''zero''' entries — a method with no parameters
+    * at all — is omitted, because the interpreter can see, locally, that there
+    * is nothing worth an attribute slot.
     *
     * One attribute rather than one per parameter is deliberate: a structured
     * map counts once against `SpanLimits.maxNumberOfAttributes` (default 128),
@@ -1163,23 +1189,30 @@ class WeaveAttributesOps[F[_], Cod[_], A](val fa: Weave[F, ToAnyValue, Cod, A]) 
     * invariant, so `Attribute(name, AnyValue.map(...))` does not compile.
     */
   def asAttributes: Attributes = {
-    val parameters: AnyValue =
-      AnyValue.map(
-        fa.domain.flatten.map { advice =>
-          // Verbose keys, but the OpenTelemetry attribute-naming spec says to
-          // namespace everything:
-          // https://opentelemetry.io/docs/specs/semconv/general/attribute-naming/
-          advice.name -> advice.instance.toAnyValue(advice.target.value)
-        }.toMap
-      )
+    val entries: Map[String, AnyValue] =
+      fa.domain.flatten.map { advice =>
+        // Verbose keys, but the OpenTelemetry attribute-naming spec says to
+        // namespace everything:
+        // https://opentelemetry.io/docs/specs/semconv/general/attribute-naming/
+        advice.name -> advice.instance.toAnyValue(advice.target.value)
+      }.toMap
 
-    Attributes(Attribute(s"${fa.algebraName}.${fa.codomain.name}.parameters", parameters))
+    if (entries.isEmpty) Attributes.empty
+    else {
+      val parameters: AnyValue = AnyValue.map(entries)
+      Attributes(Attribute(s"${fa.algebraName}.${fa.codomain.name}.parameters", parameters))
+    }
   }
 }
 ```
 
-Note `advice.target.value` forces the `Eval` — same as natchez, and the reason
-`TracerWeaveCapturingInputs` must not call `asAttributes` before it means to.
+Note `advice.target.value` forces the `Eval` while building `entries` — same as
+natchez, and the reason `TracerWeaveCapturingInputs` must not call
+`asAttributes` before it means to. The `entries.isEmpty` check happens after
+the forcing, not instead of it: an empty domain has nothing to force in the
+first place, so this changes nothing about *when* a by-name parameter is
+evaluated, only whether the resulting (possibly empty) map becomes an
+attribute.
 
 - [ ] **Step 4: Write `TracerWeaveCapturingInputs.scala`**
 
@@ -1209,7 +1242,7 @@ class TracerWeaveCapturingInputs[F[_]: Tracer, Cod[_]] extends (Weave[F, ToAnyVa
 }
 ```
 
-Three things the scaladoc must say, because each is a difference a reader will
+Four things the scaladoc must say, because each is a difference a reader will
 otherwise assume away:
 
 1. **No `Apply[F]`.** The natchez version needs it to sequence
@@ -1221,6 +1254,11 @@ otherwise assume away:
    implementation-defined sampling effects (`Span.scala:91`).
 3. **One structured attribute, not one per parameter**, with the
    `maxNumberOfAttributes` and `maxAttributeValueLength` reasoning above.
+4. **No attribute at all when there are no parameters.** Corrected
+   2026-08-02: an earlier draft of this design always recorded `parameters` as
+   an empty map for a zero-parameter method; `asAttributes` now omits the
+   attribute entirely instead, since the check costs nothing and is local to
+   `asAttributes` itself.
 
 Carry over the redaction guidance from `TraceWeaveCapturingInputs`'s scaladoc,
 retyped for `ToAnyValue`: a sensitive parameter gets a newtype and a
@@ -1247,6 +1285,11 @@ parameters, whose value is an AnyValue map keyed by parameter name. One
 structured attribute costs one slot against maxNumberOfAttributes where twenty
 flat ones would cost twenty, and maxAttributeValueLength still recurses into the
 tree, so nothing escapes truncation by being nested.
+
+A method with no parameters records no parameters attribute at all, rather than
+one holding an empty map: ToAnyValue stays a total encoder, but asAttributes
+omits the whole attribute when the built map has zero entries, since that check
+is local and free.
 
 Unlike the natchez interpreter this needs no Apply[F]: the attributes attach to
 the SpanBuilder rather than being put inside the span, which also means they
@@ -1290,11 +1333,18 @@ against the natchez module keeps working after a migration. Assert on the
 decoded tree.
 
 Then add the `ping()` case, because it is the divergence most likely to be
-"fixed" by a later reader who has not read the milestone document: a
-`Unit`-returning, zero-parameter method still records **both** attributes, with
-`Foo.ping.parameters` an empty map and `Foo.ping.returnValue` an empty value
-(D3). Empty is recorded, never omitted, and there are no conditionals in the
-interpreter to make it otherwise.
+"fixed" by a later reader who has not read the milestone document — in the
+**opposite** direction from an earlier draft of this plan. `ping()` is
+zero-parameter and `Unit`-returning, so both candidate attribute values would
+be empty, and the corrected D3 (2026-08-02) **omits** an empty top-level
+attribute rather than recording it: a call to `ping()` produces a span with
+**zero** attributes — neither `Foo.ping.parameters` nor `Foo.ping.returnValue`
+— the same shape `TracerInstrumentation` already produces for every call
+(Task 2). Assert `spans.head.getAttributes.size == 0` for the `ping()` span,
+and keep the `greet` assertion above as the contrasting non-empty case. Note
+what did **not** change: `ToAnyValue[Unit]` still encodes `()` to
+`AnyValue.empty` exactly as D3 always said; only whether the interpreter turns
+an empty encoded value into a recorded attribute is different.
 
 In `TracerTransparencySpec`, assert the result is unchanged:
 
@@ -1346,11 +1396,21 @@ class TracerWeaveCapturingInputsAndOutputs[F[_]: FlatMap: Tracer]
           // what makes `Attribute(name, returnValue)` resolve KeySelect.
           val returnValue: AnyValue = fa.codomain.instance.toAnyValue(out)
 
+          // Corrected 2026-08-02: an empty return value (Unit, or any type
+          // that happens to encode to AnyValue.empty) omits the attribute
+          // entirely rather than recording EmptyValue. ToAnyValue is
+          // unchanged — this check is local to the interpreter.
+          val attributes: Attributes =
+            if (returnValue == AnyValue.empty) Attributes.empty
+            else Attributes(Attribute(s"$name.returnValue", returnValue))
+
           // `.backend` deliberately: Span#addAttributes is a macro on Scala 2
           // and inline on Scala 3, and Span.Backend#addAttributes is the sealed
           // method underneath it. Attributes is already an
-          // immutable.Iterable[Attribute[_]], so it passes straight through.
-          span.backend.addAttributes(Attributes(Attribute(s"$name.returnValue", returnValue)))
+          // immutable.Iterable[Attribute[_]], so it passes straight through,
+          // and Attributes.empty is a no-op iterable when there is nothing to
+          // add.
+          span.backend.addAttributes(attributes)
         }
       }
   }
@@ -1362,11 +1422,15 @@ needs `pure`.
 
 Scaladoc: mirror `TraceWeaveCapturingInputsAndOutputs`, including the redaction
 example retyped for `ToAnyValue`, and add the automatic-error-recording note
-from Task 2's scaladoc. Say plainly that a call records at most two attributes
-and name both keys, because that is the contract a user writes queries against.
-Also note the asymmetry with Task 3: the return value **is** encoded even under
-a noop `Tracer`, because `SpanOps.use` does apply its function, where
-`SpanBuilder.modifyState` does not.
+from Task 2's scaladoc. Say plainly that a call records **at most** two
+attributes and name both keys, because that is the contract a user writes
+queries against — and say plainly that either one is omitted, not recorded
+empty, when its value would carry nothing (D3, corrected 2026-08-02): a
+`Unit`-returning method has no `returnValue` attribute, exactly as a
+zero-parameter method has no `parameters` attribute. Also note the asymmetry
+with Task 3: the return value **is** encoded (though not necessarily recorded)
+even under a noop `Tracer`, because `SpanOps.use` does apply its function,
+where `SpanBuilder.modifyState` does not.
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -1387,9 +1451,11 @@ algebraName.methodName.returnValue, the same key the natchez interpreter uses,
 via span.backend.addAttributes, the sealed method underneath the
 Span#addAttributes macro.
 
-A call records at most two attributes. A Unit return records returnValue as an
-empty value rather than omitting it: the encoder is a total A => AnyValue, and
-EmptyValue is OTLP's own encoding of absence."
+A call records at most two attributes, and a Unit return (or any value that
+happens to encode to AnyValue.empty) omits the returnValue attribute entirely
+rather than recording it as empty: ToAnyValue stays a total A => AnyValue, and
+the omission is a local, interpreter-level check, not a change to the
+encoder."
 ```
 
 ---
@@ -1655,6 +1721,16 @@ else does:
   span named `Foo.greet` with `Foo.greet.parameters =
   {"name": "world", "times": 2}` and `Foo.greet.returnValue = "..."`, and the
   `parameters` value is a real OTLP `kvlistValue`, not a JSON string.
+- **An attribute is omitted, not recorded empty, when it would carry
+  nothing** (corrected 2026-08-02). A zero-parameter method's span carries no
+  `parameters` attribute; a `Unit`-returning method's span carries no
+  `returnValue` attribute — contrast with `def ping(): F[Unit]`, which carries
+  neither. `ToAnyValue` stays total throughout: `Unit` and `None` still encode
+  to `AnyValue.empty`, and that value is still recorded as a map *entry* when
+  the map has other, non-empty entries alongside it. Only a top-level
+  attribute whose entire value would be empty is skipped, because the
+  interpreter can see that locally and the span's own name already says the
+  method ran.
 - **`opentelemetry-api` 1.59.0 is a hard floor** on the `otel4s-oteljava`
   backend — `AttributeType.VALUE` does not exist before it, and an application
   pinning an older SDK will fail to link `AttributeKey.valueKey`. otel4s 1.0.1
@@ -1769,7 +1845,9 @@ remaining blind to cats-mtl Raise errors."
 - [ ] A traced call records **at most two** attributes, asserted through the
       testkit on the decoded tree: `<Alg>.<method>.parameters`, an
       `AnyValue.map` keyed by parameter name with correctly typed leaves, and
-      `<Alg>.<method>.returnValue`. No test asserts on JSON text.
+      `<Alg>.<method>.returnValue` — each **omitted entirely**, not recorded
+      empty, when it would carry nothing (D3, corrected 2026-08-02). No test
+      asserts on JSON text.
 - [ ] `traceWithInputs` requires **no** `Apply[F]`, and
       `TracerInstrumentation` requires nothing but `Tracer[F]` — both proved by
       a method over an abstract `F` where no other instance exists.
@@ -1779,10 +1857,12 @@ remaining blind to cats-mtl Raise errors."
 - [ ] `grep -rn "AnyValue\.MapValue\|AnyValue\.SeqValue\|AnyValue\.StringValue\|AnyValue\.LongValue\|AnyValue\.DoubleValue\|AnyValue\.BooleanValue\|AnyValue\.EmptyValue" otel4s-tagless/src/main`
       is empty: no declared type is an `AnyValue` subtype.
 - [ ] The D3 divergences are each asserted by name: `Unit` and `None` encode to
-      `AnyValue.empty`; `Float` records the exact widened `Double`; a
-      zero-parameter method still records an empty `parameters` map; and a
-      `Unit`-returning method still records an empty `returnValue`, asserted
-      end to end through the testkit.
+      `AnyValue.empty` as kept map entries; `Float` records the exact widened
+      `Double`; a zero-parameter method records **no** `parameters` attribute
+      at all (not an attribute holding an empty map); and a `Unit`-returning
+      method records **no** `returnValue` attribute at all (not one holding
+      `EmptyValue`) — each asserted end to end through the testkit, contrasted
+      with the non-empty `greet` case.
 - [ ] `grep -rnE "\.span\(|\.addAttribute\(|\.recordException\(|\.setStatus\(|\.withFinalizationStrategy\(|\.withSpanKind\(|\.withStartTimestamp\(|\.withParent\(" otel4s-tagless/src`
       returns nothing but `.backend.addAttributes(` and `modifyState`'s
       `_.addAttributes(`.

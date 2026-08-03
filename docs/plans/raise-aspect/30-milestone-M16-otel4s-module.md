@@ -18,6 +18,16 @@ new shape. The spike is
 `.superpowers/sdd/spike-anyvalue-attributes.md` (git-ignored scratch); its
 findings are reproduced below so this document stands alone.
 
+**D3's emission rule was corrected on 2026-08-02.** The type class stands
+exactly as D1 left it — `ToAnyValue` is total, and `Unit`/`None` still encode
+to `AnyValue.empty`. What changed is a separate, interpreter-level decision: a
+top-level attribute (`parameters` or `returnValue`) is now **omitted entirely**
+when its value would be empty, rather than recorded as an empty map or an
+`EmptyValue`. When D3 was first written it was flagged as the design choice
+most likely to draw pushback, and it did. See D3 below for the corrected text.
+The point to hold onto: **totality lives in the type class; absence lives in
+the interpreter.**
+
 **Q3 (a circe fallback) is the one open question**, and the spike changed what
 it is asking. See *Open questions*.
 
@@ -239,6 +249,11 @@ the natchez module verbatim:
 `core/shared/src/main/scala/com/dwolla/tracing/TraceWeaveCapturingInputsAndOutputs.scala:139`
 records `s"${fa.algebraName}.${fa.codomain.name}.returnValue"`, and the otel4s
 module uses the same spelling so a migrating query keeps working.
+
+**"At most" is literal, not a figure of speech: either row is omitted
+entirely — not recorded with an empty value — when it would carry nothing.**
+A zero-parameter method has no `parameters` row at all, and a `Unit`-returning
+method has no `returnValue` row at all. See D3.
 
 Parameter names come from `Aspect.Advice#name`, exactly as `asTraceParams` gets
 them today. Two parameters cannot collide in the map: Scala rejects duplicate
@@ -644,10 +659,11 @@ must be reported per platform.
 **D1 — `ToAnyValue[-A]` with `toAnyValue(a: A): AnyValue` is the module's `Dom`
 and `Cod`.** All of a call's parameters become **one** attribute keyed
 `<Alg>.<method>.parameters`, whose value is an `AnyValue.map` from parameter
-name to encoded value; the return value becomes `<Alg>.<method>.returnValue`.
-The encoder's declared result type is `AnyValue`, never a subtype, because
-`KeySelect` is invariant. Rationale and spike evidence above. This is the
-decision everything else in the module is shaped by.
+name to encoded value; the return value becomes `<Alg>.<method>.returnValue` —
+in both cases, when there is one to record at all; see D3 for when the
+attribute is omitted instead. The encoder's declared result type is `AnyValue`,
+never a subtype, because `KeySelect` is invariant. Rationale and spike evidence
+above. This is the decision everything else in the module is shaped by.
 
 **D2 — no `NotGiven` guards; instance priority is by trait inheritance.**
 `ToTraceValue.scala:25-32` and `:40-47` carry six `NotGiven[A =:= …]` guards
@@ -660,26 +676,52 @@ ordinary implicit-priority-by-inheritance resolves it. Saves a dependency on
 `scalac-compat-features` and about twelve lines of noise. Proved by compiling,
 not argued — see *Evidence*.
 
-**D3 — absence is `AnyValue.empty`, never an omitted entry; `Float` widens to
-`Double`.** Two divergences from `ToTraceValue`'s semantics, both because
-otel4s's model can express something natchez's cannot:
+**D3 — the type class stays total; the interpreter omits an empty top-level
+attribute instead of recording it; `Float` widens to `Double`.** These are two
+decisions at two different layers, and keeping them apart is the point —
+corrected 2026-08-02; see *Status* above.
 
-- **`Unit` and `None` encode to `AnyValue.empty`.** natchez records the strings
-  `"()"` and `"None"`; a typed empty value is strictly better than a string that
-  looks like data. The alternative considered was *omitting* the map entry (and
-  the `returnValue` attribute) entirely, and it was rejected on two grounds.
-  First, the type class has no channel for it: `A => AnyValue` is total, and
-  adding one would mean `A => Option[AnyValue]`, which forces every instance and
-  every nesting site to answer a question it has no business answering — what
-  does `Seq` do with an absent element? Second, omission was only attractive
-  under the *old* design, where an absent value cost a whole top-level attribute
-  slot; as a map entry it costs almost nothing, and `EmptyValue` is precisely
-  OTLP's encoding of "no value" (it reaches the wire as `{}`), not a stand-in
-  for it. One rule, applied everywhere, no conditionals in the interpreters.
-- **A method with no parameters still records `<Alg>.<method>.parameters`, as an
-  empty map.** Same rule, no special case: `Attributes(AnyValue(Foo.ping.parameters)=MapValue({}))`.
-  The alternative is a second rule whose only benefit is cosmetic, and uniform
-  presence is easier for a span consumer to query than conditional presence.
+- **`Unit` and `None` encode to `AnyValue.empty`, and that entry is kept
+  even when it sits inside an otherwise non-empty `parameters` map.**
+  natchez records the strings `"()"` and `"None"`; a typed empty value is
+  strictly better than a string that looks like data. The alternative
+  considered was giving the type class a channel for absence —
+  `A => Option[AnyValue]` — and **that stays rejected, unconditionally**:
+  `A => AnyValue` is total, and `Option[AnyValue]` would force every instance,
+  and every nesting site, to answer a question it has no business answering.
+  The decisive case is `Seq`: `Seq(Some("a"), None)` must encode as
+  `SeqValue([StringValue(a), EmptyValue])`, because dropping the second
+  element would lose the *position* of the first — an `Option[AnyValue]`
+  return type shrinks the sequence and destroys exactly the information a
+  sequence exists to preserve. As a map entry, keeping `AnyValue.empty` costs
+  nothing — the whole map is one attribute — and `EmptyValue` is precisely
+  OTLP's own encoding of "no value" (it reaches the wire as `{}`), not a
+  stand-in for one.
+- **A top-level attribute is omitted entirely when its value would be
+  empty.** A method with no parameters records **no**
+  `<Alg>.<method>.parameters` attribute at all (not an attribute holding an
+  empty map), and a `Unit`-returning method records **no**
+  `<Alg>.<method>.returnValue` attribute at all (not one holding
+  `EmptyValue`). **This is an interpreter-level decision, not a type-class
+  one, and that is what makes it free:** totality lives in `ToAnyValue`;
+  absence lives in the interpreter, which is free to inspect the
+  fully-built map or the fully-encoded return value and decide not to emit
+  it — roughly `if (map.isEmpty) Attributes.empty else
+  Attributes(Attribute(key, value))`. The "no channel for nothing" objection
+  to `Option[AnyValue]` does not apply here, because no type-class instance
+  has to answer anything; the check is local to the two interpreters that
+  build attributes. This also restores the original D3 intent from the
+  `Attributes`-based design this document replaced: a `Unit`-returning
+  method "records no `returnValue` attribute at all — the span's existence
+  already says the method ran," an absent value becoming an absent
+  attribute, mirroring upstream's own `AttributeKey.maybe`. That intent was
+  ratified; only the mechanism changed when `AnyValue` replaced flat
+  attributes, and this correction restores it rather than introducing
+  something new. It also costs something real to skip: `def close(): F[Unit]`
+  and `def ping(): F[Unit]` are common shapes in a tagless algebra, and always
+  emitting both attributes as empty values would spend two of
+  `SpanLimits.maxNumberOfAttributes`'s 128 slots per span to restate what the
+  span's own name already says.
 - **`Float` → `Double` via `.toDouble`.** otel4s has no `Float` leaf
   (`AnyValue.scala:56-87`) and no `Attribute.From` for one
   (`Attribute.scala:89-101`); `Long` and `Double` are the only numeric leaves.
@@ -764,6 +806,18 @@ axes.
   Attributes(AnyValue(Foo.greet.parameters)=MapValue({name -> StringValue(world), times -> LongValue(2), note -> EmptyValue}))
   Attributes(AnyValue(Foo.ping.parameters)=MapValue({}))
   ```
+
+  **The `Foo.ping.parameters` line above predates the 2026-08-02 emission
+  correction and no longer describes the shipped behaviour.** It was a real,
+  compiled observation of the design as it stood when this evidence was
+  gathered — `ping()` has no parameters, and at the time every top-level
+  attribute was always recorded, empty or not. Under the corrected D3, a
+  zero-parameter method's `asAttributes` returns `Attributes.empty` instead,
+  and this line is kept, uncorrected, only as a record of what the prototype
+  actually produced before the rule changed. The `Foo.greet.parameters` line is
+  unaffected: `greet` has non-empty parameters (`note` is a kept `EmptyValue`
+  entry inside a non-empty map, not an empty map), so its attribute is still
+  recorded exactly as shown.
 
   This settles D2 (the priority ladder resolves `String`, `Int`, `Boolean`,
   `Option[String]`, `List[String]` and a `Show`-only type with no `NotGiven`
@@ -906,8 +960,9 @@ the question) plus one dependency line, and it does not disturb D1.
 - [ ] A traced call records **at most two** attributes:
       `<Alg>.<method>.parameters`, an `AnyValue.map` keyed by parameter name,
       and (for `TracerWeaveCapturingInputsAndOutputs`)
-      `<Alg>.<method>.returnValue`. Asserted end to end through the testkit on
-      the decoded tree, never on JSON text.
+      `<Alg>.<method>.returnValue` — each **omitted entirely**, not recorded
+      empty, when it would carry nothing (D3, corrected 2026-08-02). Asserted
+      end to end through the testkit on the decoded tree, never on JSON text.
 - [ ] `grep -rn "AnyValue\.MapValue\|AnyValue\.SeqValue\|AnyValue\.StringValue" otel4s-tagless/src/main`
       returns nothing: no declared type in the module is an `AnyValue` subtype.
 - [ ] `grep -rnE "\.span\(|\.addAttribute\(|\.recordException\(|\.setStatus\(|\.withFinalizationStrategy\(|\.withSpanKind\(|\.withStartTimestamp\(|\.withParent\(" otel4s-tagless/src`
