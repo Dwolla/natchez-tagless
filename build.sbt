@@ -65,7 +65,7 @@ lazy val doctestSettings: Seq[Def.Setting[?]] = Seq(
 // taking on natchez, circe and log4cats to get it. `core` still depends on this
 // module, so `com.dwolla.tagless.WeaveKnot` keeps its fully-qualified name and
 // stays reachable from `natchez-tagless`. That edge is a design choice, not a
-// compatibility rescue: WeaveKnot was added after v0.2.6, appears in none of the
+// compatibility rescue: WeaveKnot was added after v0.2.7, appears in none of the
 // published artifacts, and has no caller in this repository — so nothing in the
 // test suite would notice if the edge were dropped. M16's otel4s module will be
 // its first real user. See
@@ -81,22 +81,7 @@ lazy val taglessCore = crossProject(JVMPlatform, JSPlatform)
       "org.scalameta" %%% "munit" % munitVersion % Test,
       "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
     ),
-    // A brand-new artifact has no previous versions to be compatible with —
-    // but unlike the other five `Set.empty` modules below, this one is a
-    // regression, not a fresh gap: WeaveKnot lived in `core`, which has MiMa
-    // live, so it was on track to gain coverage automatically once `core`'s
-    // next release shipped it. Moving it here under `Set.empty` took that
-    // protection away rather than never granting it.
-    //
-    // `Set.empty` is a live hazard, not a permanent no-op: nothing suppresses
-    // publishing, so this module WILL be published with a real API at the
-    // next release, and MiMa will not catch a breaking change after that. The
-    // fix is `tlVersionIntroduced := Map(...)` in place of `Set.empty`, which
-    // keeps MiMa live from the module's first release onward — one decision
-    // covering all six `Set.empty` modules, needed before the next publish,
-    // not made here. See "Anything a later milestone needs" in
-    // docs/plans/raise-aspect/28-milestone-M15-tagless-core-module.md.
-    mimaPreviousArtifacts := Set.empty,
+    tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
 
 lazy val core = crossProject(JVMPlatform, JSPlatform)
@@ -156,15 +141,7 @@ lazy val raiseAspectCore = crossProject(JVMPlatform, JSPlatform)
       "org.scalameta" %%% "munit" % munitVersion % Test,
       "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
     ),
-    // `Set.empty` is a live hazard, not a permanent no-op: nothing suppresses
-    // publishing, so this module WILL be published with a real API at the
-    // next release, and MiMa will not catch a breaking change after that. The
-    // fix is `tlVersionIntroduced := Map(...)` in place of `Set.empty`, which
-    // keeps MiMa live from the module's first release onward — one decision
-    // covering all six `Set.empty` modules, needed before the next publish,
-    // not made here. See "Anything a later milestone needs" in
-    // docs/plans/raise-aspect/28-milestone-M15-tagless-core-module.md.
-    mimaPreviousArtifacts := Set.empty,
+    tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
   // Test-only, additive split so a `Platform.isJvm` compile-time constant
   // (see OnRaiseSpec/WeaveArrowsOnRaiseSpec) can differ between the JVM and
@@ -195,15 +172,7 @@ lazy val raiseAspectLaws = crossProject(JVMPlatform, JSPlatform)
         Seq("org.typelevel" %%% "cats-tagless-macros" % catsTaglessVersion % Test)
       else Seq.empty
     },
-    // `Set.empty` is a live hazard, not a permanent no-op: nothing suppresses
-    // publishing, so this module WILL be published with a real API at the
-    // next release, and MiMa will not catch a breaking change after that. The
-    // fix is `tlVersionIntroduced := Map(...)` in place of `Set.empty`, which
-    // keeps MiMa live from the module's first release onward — one decision
-    // covering all six `Set.empty` modules, needed before the next publish,
-    // not made here. See "Anything a later milestone needs" in
-    // docs/plans/raise-aspect/28-milestone-M15-tagless-core-module.md.
-    mimaPreviousArtifacts := Set.empty,
+    tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
   .dependsOn(raiseAspectCore % "compile->compile;test->test")
 
@@ -223,15 +192,7 @@ lazy val raiseAspectMacros = crossProject(JVMPlatform, JSPlatform)
     scalacOptions ~= {
       _.filterNot(o => o.startsWith("-Wunused") || o.startsWith("-Ywarn-unused"))
     },
-    // `Set.empty` is a live hazard, not a permanent no-op: nothing suppresses
-    // publishing, so this module WILL be published with a real API at the
-    // next release, and MiMa will not catch a breaking change after that. The
-    // fix is `tlVersionIntroduced := Map(...)` in place of `Set.empty`, which
-    // keeps MiMa live from the module's first release onward — one decision
-    // covering all six `Set.empty` modules, needed before the next publish,
-    // not made here. See "Anything a later milestone needs" in
-    // docs/plans/raise-aspect/28-milestone-M15-tagless-core-module.md.
-    mimaPreviousArtifacts := Set.empty,
+    tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
   .dependsOn(raiseAspectCore % "compile->compile;test->test", raiseAspectLaws % "test->test")
 
@@ -244,15 +205,7 @@ lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform)
       "org.scalameta" %%% "munit" % munitVersion % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
     ),
-    // `Set.empty` is a live hazard, not a permanent no-op: nothing suppresses
-    // publishing, so this module WILL be published with a real API at the
-    // next release, and MiMa will not catch a breaking change after that. The
-    // fix is `tlVersionIntroduced := Map(...)` in place of `Set.empty`, which
-    // keeps MiMa live from the module's first release onward — one decision
-    // covering all six `Set.empty` modules, needed before the next publish,
-    // not made here. See "Anything a later milestone needs" in
-    // docs/plans/raise-aspect/28-milestone-M15-tagless-core-module.md.
-    mimaPreviousArtifacts := Set.empty,
+    tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
   .settings(doctestSettings *)
   // test->test reuses core's InMemorySuite harness (Kleisli/IOLocal Trace wiring)
@@ -316,15 +269,7 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
       if (isOtel4sScalaVersion.value) (Test / unmanagedSourceDirectories).value else Seq.empty
     },
     publish / skip := !isOtel4sScalaVersion.value,
-    // `Set.empty` is a live hazard, not a permanent no-op: nothing suppresses
-    // publishing, so this module WILL be published with a real API at the
-    // next release, and MiMa will not catch a breaking change after that. The
-    // fix is `tlVersionIntroduced := Map(...)` in place of `Set.empty`, which
-    // keeps MiMa live from the module's first release onward — one decision
-    // covering all six `Set.empty` modules, needed before the next publish,
-    // not made here. See "Anything a later milestone needs" in
-    // docs/plans/raise-aspect/28-milestone-M15-tagless-core-module.md.
-    mimaPreviousArtifacts := Set.empty,
+    tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
   // Span *content* can only be asserted with a testkit: every otel4s span type
   // is sealed and its Unsealed variant is private[otel4s], so a recording
@@ -398,15 +343,7 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
       if (isOtel4sScalaVersion.value) (Test / unmanagedSourceDirectories).value else Seq.empty
     },
     publish / skip := !isOtel4sScalaVersion.value,
-    // `Set.empty` is a live hazard, not a permanent no-op: nothing suppresses
-    // publishing, so this module WILL be published with a real API at the
-    // next release, and MiMa will not catch a breaking change after that. The
-    // fix is `tlVersionIntroduced := Map(...)` in place of `Set.empty`, which
-    // keeps MiMa live from the module's first release onward — one decision
-    // covering all seven `Set.empty` modules, needed before the next publish,
-    // not made here. See "Anything a later milestone needs" in
-    // docs/plans/raise-aspect/28-milestone-M15-tagless-core-module.md.
-    mimaPreviousArtifacts := Set.empty,
+    tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
   .jvmSettings(
     libraryDependencies ++= {
