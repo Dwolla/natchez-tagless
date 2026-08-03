@@ -291,21 +291,50 @@ annotation belongs on the **companion object**, not the algebra trait.
 Annotating the trait makes the algebra *type* experimental, which forces
 `@experimental` onto every reference to it, including untraced call sites.
 
-### D9 — `traceWithInputs` gains an `Apply[F]` the non-mtl otel4s version lacks
+### D9 — RETRACTED: `traceWithInputs` does *not* need an `Apply[F]` the non-mtl otel4s version lacks
 
-`WeaveInterpreter.fromRaiseAspect` requires `Apply[F]` to sequence the hook, and
-the syntax method cannot know which interpreter will resolve, so it must demand
-it up front. `com.dwolla.tracing.otel4s.syntax.traceWithInputs` requires no
-`Apply[F]` — M16 dropped it deliberately, since parameters go onto the
-`SpanBuilder` before the span exists and there is nothing to sequence.
+**Originally believed:** `WeaveInterpreter.fromRaiseAspect` requires `Apply[F]`
+to sequence the hook, and the mtl `traceWithInputs` cannot know in advance
+which `WeaveInterpreter` instance will resolve, so it must demand `Apply[F]`
+up front regardless — an `Apply[F]` that `com.dwolla.tracing.otel4s.syntax
+.traceWithInputs` does not need, since M16 dropped it deliberately (parameters
+go onto the `SpanBuilder` before the span exists, so there is nothing to
+sequence). The stated conclusion was that moving a call site from
+`otel4s.syntax` to `otel4s.mtl.syntax` adds this one constraint, documented
+rather than designed around because every realistic `F` has `Apply` anyway.
 
-So moving a call site from `otel4s.syntax` to `otel4s.mtl.syntax` adds a
-constraint. Natchez has no equivalent problem, because its non-mtl
-`traceWithInputs` needs `Apply[F]` anyway.
+**This is wrong.** The reasoning rested on a misconception about Scala
+implicit resolution: that an earlier implicit parameter in a method's own
+parameter list is available as a candidate when the compiler resolves a later
+parameter in that *same* list — i.e., that `traceWithInputs`'s own `F:
+Apply[F]` parameter could be what lets its own `ev: WeaveInterpreter[...]`
+parameter resolve down the `fromRaiseAspect` path. It is not. A method's
+implicit parameter list resolves as a whole from the *caller's* scope; the
+method's own parameters are not implicit candidates for resolving each other.
+`WeaveInterpreter#apply` itself declares no effect constraint at all. Whatever
+satisfies `Apply[F]` at a call site was already there, in that caller's scope,
+and equally available to `RaiseAspect#intercept` (via `fromRaiseAspect`)
+directly — `traceWithInputs`'s own `F: Apply[F]` parameter contributed nothing
+to that resolution.
 
-Documented rather than designed around: every realistic `F` has `Apply`, and the
-alternatives — two overloads, or weakening `WeaveInterpreter` — cost more than
-the wart.
+Task 4's implementer had added the parameter per this decision, hit a
+`-Wunused:params` warning on it (a true positive, not a false one — the
+compiler was right that the parameter had no use), and suppressed the warning
+with `@nowarn` instead of questioning the decision that produced it. Task 4's
+code review caught the error and settled it empirically: with a compile probe
+on both 2.13.18 and 3.3.8, dropping the parameter from `traceWithInputs`
+leaves the `RaiseAspect` path resolving exactly as before.
+
+**Consequence:** `traceWithInputs`'s signature needs no `Apply[F]`, and is
+therefore identical to the non-mtl otel4s `traceWithInputs` after all —
+restoring the property this design doc wanted throughout, that switching a
+call site between the two syntax packages changes nothing about what the
+caller must provide. There is no divergence to document, and the `@nowarn`
+that had suppressed the correct warning was removed along with the parameter.
+
+Left in place, retracted rather than deleted, so the next person who wonders
+about `Apply[F]` on this method finds the wrong reasoning, why it was wrong,
+and how it was settled — instead of silently finding nothing.
 
 ## Non-goals
 

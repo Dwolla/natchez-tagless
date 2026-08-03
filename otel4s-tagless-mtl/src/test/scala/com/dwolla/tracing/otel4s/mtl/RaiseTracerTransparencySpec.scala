@@ -38,11 +38,23 @@ class RaiseTracerTransparencySpec extends CatsEffectSuite {
   private def viaHandle(alg: Foo[IO], i: Int)(recover: FooError => IO[String]): IO[String] =
     Handle.allowF[IO, FooError] { implicit h => alg.foo(i) }.rescue(recover)
 
-  private def assertTransparent(traced: Foo[IO], i: Int)(recover: FooError => IO[String]): IO[Unit] =
+  /** Asserts both that the traced algebra agrees with the untraced one, *and*
+    * that both equal `expected`. The second check is load-bearing: comparing
+    * traced against untraced alone would pass vacuously on the raise-path
+    * tests if `Foo`'s fixture implementation ever stopped raising for a
+    * negative input — both sides would just take the success branch and
+    * agree with each other while proving nothing about the raise path.
+    * Pinning `expected` makes a regression in the fixture itself, not only in
+    * the tracing machinery, fail this test.
+    */
+  private def assertTransparent(traced: Foo[IO], i: Int, expected: String)(recover: FooError => IO[String]): IO[Unit] =
     for {
       tracedResult <- viaHandle(traced, i)(recover)
       untracedResult <- viaHandle(untraced, i)(recover)
-    } yield assertEquals(tracedResult, untracedResult)
+    } yield {
+      assertEquals(tracedResult, expected)
+      assertEquals(untracedResult, expected)
+    }
 
   private val failIfRaised: FooError => IO[String] =
     e => IO.raiseError(new AssertionError(s"unexpected raise: $e"))
@@ -50,18 +62,18 @@ class RaiseTracerTransparencySpec extends CatsEffectSuite {
   private val rescueNegative: FooError => IO[String] = { case Negative(i) => IO.pure(s"rescued:$i") }
 
   test("traceWithInputsAndOutputs is transparent on the success path") {
-    assertTransparent(tracedInputsAndOutputs, 5)(failIfRaised)
+    assertTransparent(tracedInputsAndOutputs, 5, "foo:5")(failIfRaised)
   }
 
   test("traceWithInputsAndOutputs is transparent on the raise path") {
-    assertTransparent(tracedInputsAndOutputs, -1)(rescueNegative)
+    assertTransparent(tracedInputsAndOutputs, -1, "rescued:-1")(rescueNegative)
   }
 
   test("traceWithInputs[ToAnyValue] is transparent on the success path") {
-    assertTransparent(tracedInputs, 5)(failIfRaised)
+    assertTransparent(tracedInputs, 5, "foo:5")(failIfRaised)
   }
 
   test("traceWithInputs[ToAnyValue] is transparent on the raise path") {
-    assertTransparent(tracedInputs, -1)(rescueNegative)
+    assertTransparent(tracedInputs, -1, "rescued:-1")(rescueNegative)
   }
 }
