@@ -20,9 +20,11 @@ This module depends on `otel4s-core-trace`, cats, cats-tagless and
 
 ## What is not here, deliberately
 
-- **No `Raise`/cats-mtl support.** There is no otel4s counterpart to
-  `natchez-tagless-mtl`: no `OnRaise`, no `RaiseAspect`, no
-  `RaiseTraceWeaveOps`.
+- **No `Raise`/cats-mtl support *in this module*.** `OnRaise`, `RaiseAspect`
+  and the `Raise`-aware syntax live one module over, in `otel4s-tagless-mtl`
+  (added in **M17**) — see the section at the end of this file. This module
+  stays plain-`Aspect` only, so a user who does not take `Raise` parameters
+  pays for neither cats-mtl nor `raise-aspect-core`.
 - **Nothing `Resource`-shaped.** No `TraceResourceAcquisition`, no
   `ResourceInitializationSpanOps`, no `TraceResourceLifecycleOps`. Those are
   built on `natchez.Trace#spanR: Resource[F, F ~> F]`; otel4s's
@@ -236,15 +238,27 @@ a cancelation sets `Error` with `"canceled"`. Migrating from natchez, you will
 see error-marked spans you did not see before: none of the three natchez
 interpreters this module mirrors calls `Trace[F].attachError`.
 
-**A cats-mtl `Raise` error is invisible to all of that.** `reportAbnormal` is
-driven by `Resource.ExitCase`, and `ExitCase` only knows about `MonadCancel`
-outcomes — succeeded, errored, canceled. An error carried in a `Handle`/`Raise`
-channel is not a `MonadCancel` failure; the effect *succeeds*, carrying a value
-that happens to describe a failure, and the span is finalized as OK. Nothing in
-otel4s can see into the error channel of a type it knows nothing about. Closing
-that gap needs an interpreter that inspects the `Raise` channel explicitly,
-which is what `natchez-tagless-mtl` does on the natchez side and which has no
-otel4s counterpart today.
+**Whether a cats-mtl `Raise` error reaches any of that depends on where the
+`Raise` instance puts the error, and neither answer is the one you want.**
+`reportAbnormal` is driven by `Resource.ExitCase`, which only knows about
+`MonadCancel` outcomes — succeeded, errored, canceled.
+
+- When `Raise` lives in the effect's **success** channel — `EitherT`, say — the
+  effect *succeeds* carrying a value that happens to describe a failure, and
+  the span is finalized as OK. otel4s cannot see into the error channel of a
+  type it knows nothing about.
+- When you get your `Raise` from **`Handle.allowF` over a `MonadThrow` `F`**,
+  which is the shape `otel4s-tagless-mtl`'s own examples use, cats-mtl uses its
+  submarine encoding: `R.raise(e)` really *is* `F.raiseError(Submarine(e))`. So
+  the resource exits `Errored`, and `reportAbnormal` marks the span `ERROR` and
+  attaches an `exception` event whose `exception.type` is
+  `cats.mtl.Handle.Submarine` — an opaque wrapper that names neither your error
+  type nor its value. Measured against the oteljava testkit in
+  `otel4s-tagless-mtl`'s `RaiseSpanContentSpec`.
+
+Either way, the *domain* error is not in the trace. Putting it there needs an
+interpreter that inspects the `Raise` channel explicitly, which is what
+`otel4s-tagless-mtl` does — see below.
 
 If you want to change or suppress the automatic behaviour, the sealed escape
 hatch is `SpanBuilder.State.withFinalizationStrategy` reached through
@@ -286,3 +300,77 @@ from `crossScalaVersions` does not remove it from sbt's root aggregate, which
 then fails resolving `tagless-core_2.13`). Instead, on 2.12 the otel4s
 coordinate is not declared, both source directories are emptied, and
 `publish / skip` is true. Nothing observable claims 2.12 support.
+
+## `otel4s-tagless-mtl`, the sibling module
+
+Added in milestone **M17**. Artifact `otel4s-tagless-mtl`, package
+`com.dwolla.tracing.otel4s.mtl`, syntax in
+`com.dwolla.tracing.otel4s.mtl.syntax`. It depends on this module,
+`raise-aspect-core` and `raise-aspect-macros`, and carries the identical 2.12
+containment for the identical reason.
+
+**What it is for.** An algebra whose methods take a `cats.mtl.Raise[F, E]`
+capability parameter cannot be woven by plain `Aspect`, which requires `F` to
+appear only as each method's top-level return type. `RaiseAspect`
+(`raise-aspect-core`) lifts that restriction for `Raise` parameters
+specifically; this module wires it into otel4s tracing. It is the otel4s
+counterpart of `natchez-tagless-mtl`, file for file.
+
+| this module's syntax | the mtl module's syntax |
+| --- | --- |
+| `com.dwolla.tracing.otel4s.syntax._` | `com.dwolla.tracing.otel4s.mtl.syntax._` |
+| `traceWithInputsAndOutputs` | same name, same signature |
+| `traceWithInputs` | same name; the default recorder adds a `FlatMap[F]` |
+| `instrumentAndTrace` | — (`Instrument` is a plain-`Aspect` notion) |
+
+Switching a call site is one import line for `traceWithInputsAndOutputs`, whose
+signature matches exactly — both versions declare `FlatMap[F]`. It is not quite
+free for `traceWithInputs`: this module's declares no effect constraint at all,
+while the mtl one resolves a `RaiseRecorder[F, ToAnyValue]`, and with no
+user-supplied `OnRaise[F, ToAnyValue]` in scope that resolves through
+`Otel4sDefaultOnRaise`, declared `[F[_] : FlatMap : Tracer]`. So a caller on the
+default recorder must supply a `FlatMap[F]` it did not need here; a caller
+supplying its own `OnRaise` needs only what that hook needs. (`natchez-tagless`
+and `natchez-tagless-mtl` *are* an exact match on both methods — their default
+recorder needs only `Trace[F]`.)
+
+The two syntax packages cannot be wildcard-imported into the same scope — that
+reintroduces the ambiguity the split exists to avoid. The mtl syntax resolves
+*either* a plain `Aspect` or a `RaiseAspect` for the algebra, via
+`WeaveInterpreter`, so it is a strict superset: an algebra with no `Raise`
+parameters still traces.
+
+**What a raise records.** Two attributes, on the **method's own span** — the
+same child span that carries `parameters` and `returnValue`, not the caller's:
+
+| key | value |
+| --- | --- |
+| `raise.error.type` | the error's runtime class name; always recorded |
+| `raise.error.value` | the error's `ToAnyValue` rendering; **omitted** when it would encode to `AnyValue.empty` |
+
+The omission is the same omit-when-empty rule described above for parameters
+and return values, and it keeps `ToAnyValue` total. Both keys are constants on
+`com.dwolla.tagless.mtl.RaiseRecorder` in `raise-aspect-core`, so they are
+byte-identical to what `natchez-tagless-mtl` records: a query written against a
+natchez-instrumented service keeps working after a migration. They are
+deliberately not semconv's `error.type`, which describes how an operation
+*ended* — this hook fires at raise time, so an internally-rescued raise would
+otherwise leave a successful span claiming failure.
+
+Recording happens with no action from the caller: both syntax methods resolve a
+`RaiseRecorder[F, ToAnyValue]` and hand its hook to the interpreter. Supply your
+own `com.dwolla.tagless.mtl.OnRaise[F, ToAnyValue]` in *lexical* scope to
+override it — not in your error type's companion, which implicit search for that
+type never looks inside.
+
+One lossy case: a method that raises, rescues internally, and raises again fires
+the hook twice against one span, and the second write **overwrites** the first.
+
+**Rendering diverges from natchez for error values exactly as it does for
+parameters** — see "Semantic divergences" above. An error ADT with both a circe
+`Encoder` and a `Show` records its JSON under natchez and, after the import
+swap, compiles unchanged and records its `Show` rendering.
+
+**Scala 3 only:** `derives AnyValueRaiseAspect` is the short spelling for the
+companion-object `RaiseAspect` declaration. `@experimental` goes on the
+algebra's **companion object**, never on the trait.

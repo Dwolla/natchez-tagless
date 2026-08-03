@@ -6,9 +6,9 @@ import com.dwolla.tagless.mtl.OnRaise
 import natchez.TraceableValue
 
 /** Task 3's fixture: a poison `OnRaise[F, Err]` instance, deliberately divergent
-  * from [[RaiseRecorder.fromTrace]]'s default so that priority resolving to the
-  * wrong instance is immediately observable — it throws if it is ever invoked,
-  * rather than silently recording plausible-looking wrong span fields.
+  * from [[NatchezDefaultOnRaise.natchezDefaultOnRaise]]'s default so that priority
+  * resolving to the wrong instance is immediately observable — it throws if it is
+  * ever invoked, rather than silently recording plausible-looking wrong span fields.
   */
 object RaiseRecorderPriorityFixtures {
   implicit val poisonOnRaise: OnRaise[IO, TraceableValue] =

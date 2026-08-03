@@ -5,7 +5,7 @@ import cats.effect.{IO, IOLocal, MonadCancelThrow}
 import cats.mtl.{Handle, Local}
 import cats.syntax.all._
 import cats.tagless.Trivial
-import com.dwolla.tagless.mtl.RaiseAspect
+import com.dwolla.tagless.mtl.{RaiseAspect, RaiseRecorder}
 import com.dwolla.tracing.InMemorySuite
 import com.dwolla.tracing.mtl.syntax._
 import natchez.InMemory.Lineage.Root

@@ -125,9 +125,10 @@ package com.dwolla.tracing
   * default, every algebra traced via the `RaiseAspect` path records the typed
   * error as span fields at the moment of the raise — `raise.error.type` and
   * `raise.error.value`, named as `RaiseRecorder.ErrorTypeKey` and
-  * `RaiseRecorder.ErrorValueKey` on `RaiseRecorder`'s companion — giving the
-  * domain error's runtime class name and its `TraceableValue` rendering, even
-  * though the `Throwable` channel above still only shows `Submarine`. This
+  * `RaiseRecorder.ErrorValueKey` on `com.dwolla.tagless.mtl.RaiseRecorder`'s
+  * companion — giving the domain error's runtime class name and its
+  * `TraceableValue` rendering, even though the `Throwable` channel above
+  * still only shows `Submarine`. This
   * happens with no action required from the caller: both syntax methods
   * resolve a `RaiseRecorder[F, TraceableValue]` and hand its
   * `OnRaise[F, TraceableValue]` hook to `WeaveInterpreter`, which sequences it
@@ -147,20 +148,32 @@ package com.dwolla.tracing
   *
   * `RaiseRecorder` resolution is just implicit priority: a user-supplied
   * `OnRaise[F, TraceableValue]` (`com.dwolla.tagless.mtl.OnRaise`) outranks
-  * the `Trace`-based default ''if the compiler's implicit search actually
-  * finds it'' — and that depends on where it's declared. Implicit scope for
-  * `OnRaise[F, TraceableValue]` reaches the companions of `OnRaise`, `F`, and
-  * `TraceableValue`; a user's own error ADT appears in none of those, so
-  * ''declaring the hook in the error type's companion object does not work'' —
-  * unlike a `TraceableValue[MyError]` instance, which does belong there,
-  * because `TraceableValue[MyError]` mentions `MyError` and the hook's type
-  * doesn't. The hook must instead live somewhere ordinary lexical scoping
-  * reaches it: a local `implicit val`/`given` in scope at the call site, or an
-  * import. A hook the compiler doesn't find isn't an error — resolution
-  * quietly falls back to the `Trace`-based default above, which (per the
-  * previous section) still renders through `TraceableValue`, so a missed
-  * override degrades to a redaction-aware default rather than to raw
-  * `toString`.
+  * the `Trace`-based default (`com.dwolla.tracing.mtl.syntax.NatchezDefaultOnRaise`)
+  * ''if the compiler's implicit search actually finds it'' — and that depends
+  * on where it's declared. Implicit scope for `OnRaise[F, TraceableValue]`
+  * reaches the companions of `OnRaise`, `F`, and `TraceableValue`; a user's own
+  * error ADT appears in none of those, so ''declaring the hook in the error
+  * type's companion object does not work'' — unlike a `TraceableValue[MyError]`
+  * instance, which does belong there, because `TraceableValue[MyError]`
+  * mentions `MyError` and the hook's type doesn't. The hook must instead live
+  * somewhere ordinary lexical scoping reaches it: a local `implicit val`/`given`
+  * in scope at the call site, or an import. A hook the compiler doesn't find
+  * isn't an error — resolution quietly falls back to the `Trace`-based
+  * default above, which (per the previous section) still renders through
+  * `TraceableValue`, so a missed override degrades to a redaction-aware
+  * default rather than to raw `toString`.
+  *
+  * The `Trace`-based default itself is reached the same lexical way, not
+  * automatically: `RaiseRecorder`'s mechanism lives in `raise-aspect-core`,
+  * which cannot name natchez, so the natchez default is a `DefaultOnRaise`
+  * instance declared in `com.dwolla.tracing.mtl.syntax` and mixed into that
+  * package's package object. It arrives with
+  * `import com.dwolla.tracing.mtl.syntax._` rather than from implicit scope —
+  * the same import `traceWithInputs`/`traceWithInputsAndOutputs` already
+  * require, so the normal path is unaffected. What that costs is a bare
+  * `implicitly[RaiseRecorder[F, TraceableValue]]` with no syntax import in
+  * scope: unlike before this module's split, that summon no longer finds the
+  * default on its own.
   *
   * A hook is also free to match on the value it receives, to record
   * error-specific fields under error-specific keys. The example below doesn't,
@@ -171,11 +184,11 @@ package com.dwolla.tracing
   *
   * {{{
   *   import cats.Applicative
-  *   import com.dwolla.tagless.mtl.OnRaise
+  *   import com.dwolla.tagless.mtl.{OnRaise, RaiseRecorder}
   *   import natchez.{Trace, TraceableValue}
   *
   *   // Just having this implicit in lexical scope is the entire override:
-  *   // RaiseRecorder's fromOnRaise instance outranks fromTrace, the default
+  *   // RaiseRecorder's fromOnRaise instance outranks the Trace-based default
   *   // used above — but only because this is a local implicit val, not a
   *   // member of ValidationError's own companion object, which implicit
   *   // search for OnRaise[F, TraceableValue] would never look inside.

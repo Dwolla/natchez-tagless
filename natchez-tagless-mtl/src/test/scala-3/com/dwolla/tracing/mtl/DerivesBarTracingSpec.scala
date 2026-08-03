@@ -4,6 +4,7 @@ import cats.data.Kleisli
 import cats.effect.{IO, IOLocal, MonadCancelThrow}
 import cats.mtl.{Handle, Local}
 import cats.syntax.all.*
+import com.dwolla.tagless.mtl.RaiseRecorder
 import com.dwolla.tracing.InMemorySuite
 import com.dwolla.tracing.mtl.syntax.*
 import natchez.InMemory.Lineage.Root

@@ -75,11 +75,11 @@ jobs:
 
       - name: Make target directories
         if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
-        run: mkdir -p otel4s-tagless/.jvm/target scalacache/.jvm/target raise-aspect-core/.jvm/target raise-aspect-laws/.jvm/target tagless-core/.js/target core/js/target tagless-core/.jvm/target raise-aspect-macros/.jvm/target core/jvm/target otel4s-tagless/.js/target raise-aspect-core/.js/target raise-aspect-macros/.js/target natchez-tagless-mtl/.jvm/target raise-aspect-laws/.js/target natchez-tagless-mtl/.js/target project/target
+        run: mkdir -p otel4s-tagless/.jvm/target scalacache/.jvm/target raise-aspect-core/.jvm/target otel4s-tagless-mtl/.jvm/target raise-aspect-laws/.jvm/target tagless-core/.js/target core/js/target tagless-core/.jvm/target raise-aspect-macros/.jvm/target core/jvm/target otel4s-tagless/.js/target raise-aspect-core/.js/target raise-aspect-macros/.js/target natchez-tagless-mtl/.jvm/target raise-aspect-laws/.js/target otel4s-tagless-mtl/.js/target natchez-tagless-mtl/.js/target project/target
 
       - name: Compress target directories
         if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
-        run: tar cf targets.tar otel4s-tagless/.jvm/target scalacache/.jvm/target raise-aspect-core/.jvm/target raise-aspect-laws/.jvm/target tagless-core/.js/target core/js/target tagless-core/.jvm/target raise-aspect-macros/.jvm/target core/jvm/target otel4s-tagless/.js/target raise-aspect-core/.js/target raise-aspect-macros/.js/target natchez-tagless-mtl/.jvm/target raise-aspect-laws/.js/target natchez-tagless-mtl/.js/target project/target
+        run: tar cf targets.tar otel4s-tagless/.jvm/target scalacache/.jvm/target raise-aspect-core/.jvm/target otel4s-tagless-mtl/.jvm/target raise-aspect-laws/.jvm/target tagless-core/.js/target core/js/target tagless-core/.jvm/target raise-aspect-macros/.jvm/target core/jvm/target otel4s-tagless/.js/target raise-aspect-core/.js/target raise-aspect-macros/.js/target natchez-tagless-mtl/.jvm/target raise-aspect-laws/.js/target otel4s-tagless-mtl/.js/target natchez-tagless-mtl/.js/target project/target
 
       - name: Upload target directories
         if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
