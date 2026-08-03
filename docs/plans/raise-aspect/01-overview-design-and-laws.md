@@ -559,11 +559,15 @@ with no filter added**. Two separate pieces of evidence say so, and they cover
 different ground:
 
 - A **manual scan of 21 published jars** — 7 versions × the three classifiers
-  `_2.12`, `_2.13`, `_sjs1_2.13` — found zero `WeaveKnot` entries. That scan
-  **excludes Scala 3**; it is not the whole of what MiMa compares against.
+  `_2.12`, `_2.13`, `_sjs1_2.13` — found zero `WeaveKnot` entries. Those 21 are
+  **not** the whole of what MiMa compares `core` against: MiMa's actual
+  comparison set is **34** artifacts — 7 × `_2.12`, `_sjs1_2.12`, `_2.13`,
+  `_sjs1_2.13`, 3 × `_3`, `_sjs1_3`. The scan's **13** uncovered artifacts are
+  7 × `_sjs1_2.12` plus 6 × Scala 3, not just Scala 3.
 - **MiMa's own run**, which *does* cover Scala 3 (0.2.4–0.2.6, JVM and JS, per
   `ThisBuild / tlVersionIntroduced := Map("3" -> "0.2.4")`), came back clean on
-  `coreJVM`, `coreJS` and `scalacacheJVM` across all three Scala versions.
+  `coreJVM`, `coreJS` and `scalacacheJVM` across all three Scala versions — 51
+  comparisons total, every one `(List(), List())`.
 
 The reason is that `WeaveKnot` was introduced after `v0.2.6` and so was never
 published at all. The *general* rule is the opposite and is recorded in M15's

@@ -69,6 +69,14 @@ researched separately.** M16's design and plan are not in this round.
   (see the next section). The comment now says the edge is a design choice
   rather than a compatibility rescue. The edge itself stays — D1 is a real
   decision, and M16 already plans `.dependsOn(taglessCore)` of its own.
+- **Commit `c6e0a73`'s message still carries the corrected-away claim.** It
+  reads "so the class stays available at the same fully-qualified name to
+  everything that already had it" — the same claim the `build.sbt` comment
+  carried before Task 3 reworded it, above. Nothing had it. The branch has no
+  upstream, so the message is technically amendable, but it is not being
+  rewritten for this; this line is the correction, and it is the reason
+  `git log` should not be read as the last word on this point without also
+  reading this document.
 - **`-Xsource:3` needed no hand-added flag on the 2.12 axis.** The plan flagged
   this as the riskiest inference (`WeaveKnot.scala` uses `import cats.*`).
   `show taglessCoreJVM/scalacOptions` on 2.12.21 lists `-Xsource:3`:
@@ -96,10 +104,15 @@ Two consequences a later milestone should know:
    and `WeaveKnot` was never published. Nothing in the suite would notice. A
    permanent synthetic test was deliberately **not** added: it would bake an
    artificial call site into the tree to guard a guarantee nobody yet depends
-   on. **The gap closes for free in M16** — its otel4s module references
-   `WeaveKnot` for real (`30-milestone-M16-otel4s-module.md` §"The `WeaveKnot`
-   dependency"; its doctest exercises the knot), at which point that module's
-   own compilation is the test.
+   on. **M16 may close this gap, but not by construction, and not softly
+   guaranteed to.** `30-milestone-M16-otel4s-module.md` §"The `WeaveKnot`
+   dependency" is explicit that none of M16's three otel4s interpreters calls
+   `WeaveKnot` — the only thing that does is Task 6's doctest, and that same
+   document marks the doctest optional ("If Brian prefers strict minimality it
+   is one line to drop"). If that one line is ever dropped,
+   `core.dependsOn(taglessCore)` stays untested indefinitely, and whoever drops
+   it should know that is the tradeoff being made, rather than have it happen
+   silently.
 2. **The MiMa result proves less than it looks like it proves.** A clean MiMa
    run on `core` after this move is consistent both with "the move was safe" and
    with "MiMa was never going to see this class either way". It is the latter.
@@ -186,30 +199,47 @@ against `Set.empty` proves nothing, which is exactly what the `taglessCore` row
 is.
 
 Note the two evidence sources are **not** the same and should not be conflated:
-the hand scan covered 21 published jars across `_2.12`, `_2.13` and
-`_sjs1_2.13` and **excluded Scala 3**; MiMa's own run covers Scala 3 as well.
-Both came back with no `WeaveKnot`.
+the hand scan covered 21 of MiMa's 34-artifact comparison set for `core`
+(`_2.12`, `_2.13` and `_sjs1_2.13` across all seven versions) and **missed the
+other 13** — 7 × `_sjs1_2.12` plus 6 × Scala 3, not just Scala 3; MiMa's own
+run covers all 34. Both came back with no `WeaveKnot`.
 
 ### Anything a later milestone needs
 
-- **`tagless-core` ships with MiMa permanently disabled, and that is a live
-  hazard for the next release — not a "not yet published" marker.**
+- **`tagless-core` ships with MiMa permanently disabled, and for `WeaveKnot`
+  that is a regression M15 caused — not merely a "not yet published" marker
+  like the four other unpublished modules.** Pre-M15, `WeaveKnot` lived in
+  `core`, which has MiMa live against seven real published versions. The next
+  release (0.2.7) would have shipped `WeaveKnot` inside
+  `natchez-tagless_2.13-0.2.7.jar`, and at 0.2.8 `coreJVM`'s
+  `mimaPreviousArtifacts` would have included 0.2.7, so a changed
+  `WeaveKnot.instrument` signature would have been caught automatically from
+  0.2.8 onward. Post-M15, 0.2.7 ships the class in `tagless-core` instead: at
+  0.2.8, MiMa on `core` sees nothing (the class is no longer in `core`'s jar)
+  and MiMa on `tagless-core` sees nothing either, because `Set.empty` is a
+  hardcode, not a version gate. CI stays green, `natchez-tagless` still passes
+  MiMa, and any consumer that picked the class up transitively gets a
+  `NoSuchMethodError` at runtime.
+
   `mimaPreviousArtifacts := Set.empty` is a hardcode, and nothing suppresses
   publishing for the module (`publish / skip` is `false`; no `tlSkipPublish`),
   so `com.dwolla:tagless-core` **will** be published at the next
   release with a real public API (`WeaveKnot.instrument`, `WeaveKnot.weave`,
-  `WeaveKnot.apply`). At the release *after* that, changing one of those
-  signatures produces no MiMa finding, CI stays green, and a consumer gets a
-  `NoSuchMethodError` at runtime. The idiomatic fix is `tlVersionIntroduced :=
+  `WeaveKnot.apply`). The idiomatic fix is `tlVersionIntroduced :=
   Map(...)` on the project in place of the `Set.empty`, which keeps MiMa live
-  from the module's first release onward. **Four sibling modules already carry
-  the identical hazard** — `raiseAspectCore`, `raiseAspectLaws`,
-  `raiseAspectMacros` and `natchezTaglessMtl`, at `build.sbt:139,170,190,203`
-  (they were `108,139,159,172` before this milestone inserted `taglessCore`).
-  The M15 plan mandated `Set.empty` verbatim, so changing it was out of scope
-  here. **This belongs on a release checklist**, not in a task report: it is one
-  decision covering all five modules and it must be made before the next
-  publish.
+  from the module's first release onward. **Four sibling modules carry the
+  same mechanical `Set.empty`, but not the same history** — `raiseAspectCore`,
+  `raiseAspectLaws`, `raiseAspectMacros` and `natchezTaglessMtl`, at
+  `build.sbt:157,196,224,245` (they were `108,139,159,172` before this
+  milestone inserted `taglessCore`, `139,170,190,203` immediately after, and
+  moved again to their current lines when the same warning above was copied to
+  each bare site) — never had MiMa coverage coming, so nothing was taken from
+  them.
+  `WeaveKnot`'s is the one case, of the five, with a concrete class whose
+  protection was actively removed. The M15 plan mandated `Set.empty` verbatim,
+  so changing it was out of scope here. **This belongs on a release
+  checklist**, not in a task report: it is one decision covering all five
+  modules and it must be made before the next publish.
 - **The "not one line changed" claim is contingent on a rename-aware git
   invocation.** `git show --stat HEAD -- <new-path-only>` reports a **38-line
   add** for `WeaveKnot.scala`, because restricting the pathspec to only the new
@@ -287,14 +317,19 @@ from `core`'s jar even though it is on the classpath, requiring a
   capable of finding them.
 
   > **Clarified 2026-08-02, after the milestone ran.** Those three classifiers
-  > are **not** the whole of what MiMa compares `core` against — the manual scan
-  > excludes Scala 3 entirely, and MiMa additionally compares
-  > `natchez-tagless_3` and `natchez-tagless_sjs1_3` for 0.2.4–0.2.6 (see
-  > `ThisBuild / tlVersionIntroduced := Map("3" -> "0.2.4")`). The conclusion is
-  > unaffected — MiMa's own run *did* cover Scala 3 and came back clean — but
-  > the 21-jar scan and the MiMa run are two distinct pieces of evidence and
-  > should be cited as such. Where "21" appears below, read it as "21
-  > hand-scanned published jars", not "everything MiMa checks".
+  > are **not** the whole of what MiMa compares `core` against, and the gap is
+  > not just Scala 3. MiMa's actual comparison set for `core` is **34**
+  > artifacts — 7 × `_2.12`, `_sjs1_2.12`, `_2.13`, `_sjs1_2.13`, 3 × `_3`,
+  > `_sjs1_3` (the Scala 3 axis is 3 rather than 7 because `tlVersionIntroduced`
+  > narrows it to 0.2.4–0.2.6, per `ThisBuild / tlVersionIntroduced := Map("3"
+  > -> "0.2.4")`). The manual scan's three classifiers cover **21** of those 34;
+  > the **13** uncovered are 7 × `_sjs1_2.12` plus 6 × Scala 3 (`_3` and
+  > `_sjs1_3`) — `_sjs1_2.12` is missed too, not only Scala 3. The conclusion is
+  > unaffected: across `coreJVM`, `coreJS` and `scalacacheJVM` the full run is
+  > **51** comparisons, every one `(List(), List())` — but the 21-jar scan and
+  > the MiMa run are two distinct pieces of evidence and should be cited as
+  > such. Where "21" appears below, read it as "21 hand-scanned published
+  > jars", not "everything MiMa checks".
 
 MiMa reports `MissingClassProblem` only for classes present in the *old*
 artifact (`Analyzer.analyze` iterates `oldpkg.accessibleClasses`). A class that
@@ -473,8 +508,12 @@ provably empty.
   green and any post-move problem is attributable to the move.
 - `git merge-base --is-ancestor` against all seven release tags: the commit that
   introduced `WeaveKnot` is an ancestor of none of them.
-- All 21 previous artifacts fetched and scanned: zero `WeaveKnot` entries. A
-  post-0.2.6 snapshot jar does contain them, proving the scan works.
+- 21 of the 34 artifacts MiMa compares `core` against — the three classifiers
+  `_2.12`, `_2.13`, `_sjs1_2.13` across all seven versions — fetched and
+  hand-scanned directly: zero `WeaveKnot` entries. A post-0.2.6 snapshot jar
+  does contain them, proving the scan works. (See the "Clarified" note above,
+  under "The honest problem, and what the investigation found", for the other
+  13 and MiMa's own run, which covers all 34.)
 - mima-core 1.1.4's `MiMaLib.collectProblems` and `Analyzer.analyze` read in
   full; `mimaCurrentClassfiles` for `coreJVM` confirmed to be the project's own
   classes directory.

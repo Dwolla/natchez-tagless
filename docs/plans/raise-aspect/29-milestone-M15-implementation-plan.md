@@ -13,8 +13,18 @@ any existing consumer.
 existing package. `core` gains `.dependsOn(…)` on it, so every current consumer
 of `natchez-tagless` still receives the class transitively — source and runtime
 compatibility are preserved by construction. **MiMa needs no filter**: the class
-was added after `v0.2.6` and appears in none of the 21 previous artifacts MiMa
-compares `core` against. That is verified by this plan, not assumed.
+was added after `v0.2.6` and appears in none of the **34** artifacts MiMa
+compares `core` against (7 × `_2.12`, `_sjs1_2.12`, `_2.13`, `_sjs1_2.13`,
+3 × `_3`, `_sjs1_3`); **21** of those were also hand-scanned directly as
+corroborating evidence. That is verified by this plan, not assumed.
+
+> **Corrected 2026-08-02, final review.** This paragraph originally said "none
+> of the 21 previous artifacts MiMa compares `core` against" — conflating the
+> 21-jar manual scan with MiMa's actual, larger comparison set. It is this
+> plan's headline Architecture paragraph, so it is exactly the text a future
+> reader is most likely to trust; see the numbers above and the "Clarified"
+> note under "The honest problem, and what the investigation found" in
+> `28-milestone-M15-tagless-core-module.md` for the same correction.
 
 **Tech Stack:** sbt with sbt-typelevel 0.8.6 (`sbt-typelevel-ci-release`,
 `-settings`, `-mergify`), MiMa via `TypelevelMimaPlugin`, Scala 2.12.21 /
@@ -41,10 +51,11 @@ document this plan implements, it records the MiMa investigation, and its
   `mimaPreviousArtifacts := Set.empty` (`build.sbt:108,139,159,172`).
 - **Never add a `mimaBinaryIssueFilters` entry in this milestone.** The
   investigation in the milestone document establishes that none is needed —
-  `WeaveKnot` was introduced after `v0.2.6` and is absent from all 21 previous
-  artifacts. If MiMa reports a problem anyway, **stop and report it**: it means
-  something about the situation is not what the investigation found, and a
-  filter written for the expected problem would hide the real one.
+  `WeaveKnot` was introduced after `v0.2.6` and is absent from all 34 artifacts
+  MiMa compares `core` against, 21 of them also confirmed by direct hand scan.
+  If MiMa reports a problem anyway, **stop and report it**: it means something
+  about the situation is not what the investigation found, and a filter
+  written for the expected problem would hide the real one.
 - **The 2.12 axis is checked first, not last.** `WeaveKnot.scala` uses Scala 3
   wildcard-import syntax (`import cats.*`), which on the 2.x axes requires
   `-Xsource:3`. That comes from `TypelevelSettingsPlugin` and should apply to a
@@ -191,8 +202,15 @@ Expected: `0` for every jar, from output that provably postdates the move.
 
 - [ ] **Step 4: Add the module to `build.sbt`**
 
-Insert after the `core` definition and before `scalacache`, so the file reads in
-dependency order:
+Insert before the `core` definition, so the file reads in dependency order:
+
+> **Corrected 2026-08-02, after the milestone landed.** This step originally
+> said "insert after the `core` definition and before `scalacache`" — backwards
+> from what "dependency order" actually requires: `core` depends on
+> `taglessCore`, so the dependency belongs *before* its dependent, not after
+> it. `c6e0a73` landed `taglessCore` at `build.sbt:63`, before `core`'s own
+> definition, and that placement is the correct one; this sentence was stale,
+> not the code.
 
 > **Corrected 2026-08-02, during M15's Task 3.** The comment below, as
 > originally drafted here and as landed in `c6e0a73`, ended with "the class
