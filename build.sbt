@@ -27,6 +27,7 @@ val catsMtlVersion = "1.7.0"
 val catsTaglessVersion = "0.16.5"
 val disciplineMunitVersion = "2.0.0"
 val munitVersion = "1.2.0"
+val otel4sVersion = "1.0.1"
 
 lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
   taglessCore,
@@ -36,7 +37,15 @@ lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
   raiseAspectLaws,
   raiseAspectMacros,
   natchezTaglessMtl,
+  otel4sTagless,
 )
+
+// otel4s publishes no _2.12 artifacts, so `otel4sTagless` is empty on 2.12.
+// See the comment on that project for why the module is emptied rather than
+// dropped from `crossScalaVersions`.
+lazy val isOtel4sScalaVersion: Def.Initialize[Boolean] = Def.setting {
+  scalaBinaryVersion.value != "2.12"
+}
 
 lazy val doctestSettings: Seq[Def.Setting[?]] = Seq(
   libraryDependencies ++= Seq(
@@ -72,7 +81,7 @@ lazy val taglessCore = crossProject(JVMPlatform, JSPlatform)
       "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
     ),
     // A brand-new artifact has no previous versions to be compatible with —
-    // but unlike the other four `Set.empty` modules below, this one is a
+    // but unlike the other five `Set.empty` modules below, this one is a
     // regression, not a fresh gap: WeaveKnot lived in `core`, which has MiMa
     // live, so it was on track to gain coverage automatically once `core`'s
     // next release shipped it. Moving it here under `Set.empty` took that
@@ -83,7 +92,7 @@ lazy val taglessCore = crossProject(JVMPlatform, JSPlatform)
     // next release, and MiMa will not catch a breaking change after that. The
     // fix is `tlVersionIntroduced := Map(...)` in place of `Set.empty`, which
     // keeps MiMa live from the module's first release onward — one decision
-    // covering all five `Set.empty` modules, needed before the next publish,
+    // covering all six `Set.empty` modules, needed before the next publish,
     // not made here. See "Anything a later milestone needs" in
     // docs/plans/raise-aspect/28-milestone-M15-tagless-core-module.md.
     mimaPreviousArtifacts := Set.empty,
@@ -151,7 +160,7 @@ lazy val raiseAspectCore = crossProject(JVMPlatform, JSPlatform)
     // next release, and MiMa will not catch a breaking change after that. The
     // fix is `tlVersionIntroduced := Map(...)` in place of `Set.empty`, which
     // keeps MiMa live from the module's first release onward — one decision
-    // covering all five `Set.empty` modules, needed before the next publish,
+    // covering all six `Set.empty` modules, needed before the next publish,
     // not made here. See "Anything a later milestone needs" in
     // docs/plans/raise-aspect/28-milestone-M15-tagless-core-module.md.
     mimaPreviousArtifacts := Set.empty,
@@ -190,7 +199,7 @@ lazy val raiseAspectLaws = crossProject(JVMPlatform, JSPlatform)
     // next release, and MiMa will not catch a breaking change after that. The
     // fix is `tlVersionIntroduced := Map(...)` in place of `Set.empty`, which
     // keeps MiMa live from the module's first release onward — one decision
-    // covering all five `Set.empty` modules, needed before the next publish,
+    // covering all six `Set.empty` modules, needed before the next publish,
     // not made here. See "Anything a later milestone needs" in
     // docs/plans/raise-aspect/28-milestone-M15-tagless-core-module.md.
     mimaPreviousArtifacts := Set.empty,
@@ -218,7 +227,7 @@ lazy val raiseAspectMacros = crossProject(JVMPlatform, JSPlatform)
     // next release, and MiMa will not catch a breaking change after that. The
     // fix is `tlVersionIntroduced := Map(...)` in place of `Set.empty`, which
     // keeps MiMa live from the module's first release onward — one decision
-    // covering all five `Set.empty` modules, needed before the next publish,
+    // covering all six `Set.empty` modules, needed before the next publish,
     // not made here. See "Anything a later milestone needs" in
     // docs/plans/raise-aspect/28-milestone-M15-tagless-core-module.md.
     mimaPreviousArtifacts := Set.empty,
@@ -239,7 +248,7 @@ lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform)
     // next release, and MiMa will not catch a breaking change after that. The
     // fix is `tlVersionIntroduced := Map(...)` in place of `Set.empty`, which
     // keeps MiMa live from the module's first release onward — one decision
-    // covering all five `Set.empty` modules, needed before the next publish,
+    // covering all six `Set.empty` modules, needed before the next publish,
     // not made here. See "Anything a later milestone needs" in
     // docs/plans/raise-aspect/28-milestone-M15-tagless-core-module.md.
     mimaPreviousArtifacts := Set.empty,
@@ -248,6 +257,113 @@ lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform)
   // test->test reuses core's InMemorySuite harness (Kleisli/IOLocal Trace wiring)
   // for the integration test, rather than re-deriving it.
   .dependsOn(core % "compile->compile;test->test", raiseAspectCore, raiseAspectMacros)
+
+// otel4s versions of core's three tracing interpreters. Deliberately *not* a
+// natchez module: it depends on otel4s-core-trace and taglessCore and nothing
+// else of ours, so an application on otel4s never pulls natchez in to get it.
+//
+// The module has no content on 2.12, and that is arranged by emptying it
+// rather than by narrowing `crossScalaVersions`. otel4s has never published a
+// _2.12 artifact at any version (otel4s's own build.sbt sets
+// crossScalaVersions := Seq("2.13.18", "3.3.8"), and Maven Central 404s for
+// otel4s-core-trace_2.12), so on 2.12 the otel4s dependency is dropped, both
+// source directories are emptied, and publishing is skipped: the project
+// cross-builds along with everything else, but it compiles nothing, tests
+// nothing and ships nothing.
+//
+// `crossScalaVersions := Seq(Scala213, "3.3.8")` is the obvious alternative and
+// it does not work. sbt's `++` excludes such a project from the version switch
+// but does *not* drop it from the root aggregate — sbt.Cross.switchScalaVersion
+// only touches the included projects — so `natchez-tagless-rootJVM/test` under
+// `++ 2.12` still runs `otel4sTaglessJVM/update` while this project sits at
+// 2.13 and taglessCore has moved to 2.12, and it dies resolving
+// `tagless-core_2.13`. The one filter sbt does have, in
+// Cross.switchCommandImpl, is defeated because the root aggregate is itself
+// switched and re-aggregates everything under it. sbt-typelevel's
+// `tlSkipIrrelevantScalas` has been deprecated and inert since 0.5.0. Making
+// the narrow form work would mean giving rootJVM/rootJS
+// `crossScalaVersions := Nil` *and* rewriting every generated CI sbt step into
+// the attached `++ <version> <task>` form — a build-wide change fighting
+// sbt-typelevel's own CrossRootProject. This keeps the blast radius inside the
+// module.
+//
+// So `crossScalaVersions` still lists 2.12, but nothing observable claims 2.12
+// support: `publish / skip` means no `otel4s-tagless_2.12` artifact is ever
+// produced, and the published artifact list is the only thing users can see.
+lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("otel4s-tagless"))
+  .settings(
+    name := "otel4s-tagless",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %%% "cats-core" % catsVersion,
+      "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
+      "org.scalameta" %%% "munit" % munitVersion % Test,
+    ),
+    libraryDependencies ++= {
+      // core-trace dependsOn core-common, which carries AnyValue, Attribute,
+      // AttributeKey and Attributes, so this one coordinate brings both the
+      // tracing API and the attribute model. otel4s-core is an umbrella that
+      // would also drag in logs+metrics.
+      if (isOtel4sScalaVersion.value) Seq("org.typelevel" %%% "otel4s-core-trace" % otel4sVersion)
+      else Seq.empty
+    },
+    Compile / unmanagedSourceDirectories := {
+      if (isOtel4sScalaVersion.value) (Compile / unmanagedSourceDirectories).value else Seq.empty
+    },
+    Test / unmanagedSourceDirectories := {
+      if (isOtel4sScalaVersion.value) (Test / unmanagedSourceDirectories).value else Seq.empty
+    },
+    publish / skip := !isOtel4sScalaVersion.value,
+    // `Set.empty` is a live hazard, not a permanent no-op: nothing suppresses
+    // publishing, so this module WILL be published with a real API at the
+    // next release, and MiMa will not catch a breaking change after that. The
+    // fix is `tlVersionIntroduced := Map(...)` in place of `Set.empty`, which
+    // keeps MiMa live from the module's first release onward — one decision
+    // covering all six `Set.empty` modules, needed before the next publish,
+    // not made here. See "Anything a later milestone needs" in
+    // docs/plans/raise-aspect/28-milestone-M15-tagless-core-module.md.
+    mimaPreviousArtifacts := Set.empty,
+  )
+  // Span *content* can only be asserted with a testkit: every otel4s span type
+  // is sealed and its Unsealed variant is private[otel4s], so a recording
+  // Tracer cannot be hand-rolled. The cross-platform testkit
+  // (otel4s-sdk-trace-testkit) has not been released at 1.0.x — it stops at
+  // 0.19.0 — so at otel4s 1.0.1 the only option is the JVM one. Cross-platform
+  // coverage lives in TracerTransparencySpec, which needs no testkit.
+  //
+  // `%%` is correct here and only here: .jvmSettings has no JS artifact to
+  // resolve. Everything in the shared settings block above uses `%%%`.
+  //
+  // Both the dependencies and the source directory are gated on
+  // `isOtel4sScalaVersion` for the same reason the shared block is: otel4s
+  // publishes no _2.12 artifact, so an ungated coordinate here 404s at
+  // `update` under `++ 2.12` even though this module compiles nothing there.
+  // The source directory needs the gate independently — `.jvmSettings` are
+  // appended after the shared block, so an unconditional `+=` would put
+  // scala-jvm back onto the 2.12 source path that the shared `:=` just
+  // emptied.
+  .jvmSettings(
+    libraryDependencies ++= {
+      if (isOtel4sScalaVersion.value)
+        Seq(
+          "org.typelevel" %% "otel4s-oteljava-trace-testkit" % otel4sVersion % Test,
+          // AttributeConverters, for decoding a span's Java Attributes back
+          // into the otel4s model. The testkit pulls it in transitively and
+          // exposes its types in its own signatures, but SpanContentSpec names
+          // it directly, so it is declared directly.
+          "org.typelevel" %% "otel4s-oteljava-common" % otel4sVersion % Test,
+          "org.typelevel" %% "munit-cats-effect" % "2.2.0" % Test,
+        )
+      else Seq.empty
+    },
+    Test / unmanagedSourceDirectories ++= {
+      if (isOtel4sScalaVersion.value) Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm")
+      else Seq.empty
+    },
+  )
+  .settings(doctestSettings *)
+  .dependsOn(taglessCore)
 
 // sbt-buildinfo can't be enabled only for the test scope, so this is the workaround to use it only in tests
 lazy val buildInfoForTests = crossProject(JVMPlatform, JSPlatform)
