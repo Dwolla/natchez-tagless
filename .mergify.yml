@@ -44,6 +44,14 @@ pull_request_rules:
       add:
       - natchez-tagless-mtl
       remove: []
+- name: Label otel4s-tagless PRs
+  conditions:
+  - files~=^otel4s-tagless/
+  actions:
+    label:
+      add:
+      - otel4s-tagless
+      remove: []
 - name: Label raise-aspect-core PRs
   conditions:
   - files~=^raise-aspect-core/
