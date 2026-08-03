@@ -8,7 +8,7 @@ import com.dwolla.tracing.otel4s.mtl.syntax._
 import munit.CatsEffectSuite
 import org.typelevel.otel4s.trace.Tracer
 
-/** Task 4 — proves `RaiseTracerWeaveOps`'s two methods are reachable via
+/** Proves `RaiseTracerWeaveOps`'s two methods are reachable via
   * `com.dwolla.tracing.otel4s.mtl.syntax._`, and that weaving `Foo` with
   * either one is transparent under `Tracer.noop`: the traced algebra returns
   * exactly what the untraced algebra returns, both for a call that succeeds

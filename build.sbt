@@ -417,6 +417,20 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
       if (isOtel4sScalaVersion.value) Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm")
       else Seq.empty
     },
+    // Test sources that need *both* axes: `derives AnyValueRaiseAspect` is
+    // Scala 3 only, and asserting the span it produces needs the JVM-only
+    // oteljava testkit. Neither `src/test/scala-3` (also compiled for JS,
+    // which has no testkit) nor `src/test/scala-jvm` (also compiled on 2.13,
+    // where `derives` is a syntax error) can hold such a file alone. The `== "3"`
+    // test already excludes 2.12, so no separate `isOtel4sScalaVersion` gate is
+    // needed — but this is still a `.jvmSettings` source-directory addition and
+    // so carries the same appended-after-the-shared-`:=` hazard the comment
+    // above describes; that is why it is guarded rather than unconditional.
+    Test / unmanagedSourceDirectories ++= {
+      if (scalaBinaryVersion.value == "3")
+        Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-3-jvm")
+      else Seq.empty
+    },
   )
   .settings(doctestSettings *)
   .dependsOn(otel4sTagless, raiseAspectCore, raiseAspectMacros)

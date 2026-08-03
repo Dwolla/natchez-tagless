@@ -9,7 +9,7 @@ import com.dwolla.tagless.mtl.{OnRaise, RaiseArrow, RaiseAspect}
 import com.dwolla.tracing.otel4s.ToAnyValue
 import org.typelevel.otel4s.AnyValue
 
-/** Task 4's fixture algebra: a method-level `Raise` capability, the otel4s
+/** The module's shared fixture algebra: a method-level `Raise` capability, the otel4s
   * counterpart of `natchez-tagless-mtl`'s `BarFixture`, substituting
   * `ToAnyValue` for `TraceableValue`.
   */

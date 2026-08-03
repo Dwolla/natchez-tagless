@@ -2,13 +2,149 @@
 
 ## Status
 
-**Planned, not started (2026-08-03).** Requested by Brian: "add an
-`otel4s-tagless-mtl` module next, similar to `natchez-tagless-mtl`, but for
-otel4s code. We should extract any shared code from `natchez-tagless-mtl` into a
-common place."
+**Complete (2026-08-03).** Branch `milestone/m17-otel4s-tagless-mtl`, stacked on
+M16's `685dcce`. The implementation plan is
+`33-milestone-M17-implementation-plan.md`; each task's brief and report live
+under `.superpowers/sdd/33-milestone-M17-implementation-plan/`, and
+`progress.md` there is the authoritative per-task ledger. D1–D8 shipped as
+written. **D9 is retracted** — see below and the decision itself.
 
-Stacks on `milestone/m16-otel4s-module`. The implementation plan is
-`33-milestone-M17-implementation-plan.md`.
+Requested by Brian: "add an `otel4s-tagless-mtl` module next, similar to
+`natchez-tagless-mtl`, but for otel4s code. We should extract any shared code
+from `natchez-tagless-mtl` into a common place."
+
+### What landed, task by task
+
+- **Task 1** (`a34d4eb` "refactor: share the RaiseRecorder priority mechanism
+  via raise-aspect-core", `5850867`, `913757a`) moved `RaiseRecorder`,
+  `DefaultOnRaise` and the `raise.error.*` key constants into
+  `com.dwolla.tagless.mtl` in `raise-aspect-core`, deleted
+  `RaiseRecorder.IsTraceableValue`, and left `natchez-tagless-mtl` supplying
+  only a `NatchezDefaultOnRaise`.
+- **Task 2** (`856d257` "build: add the otel4s-tagless-mtl module") added the
+  `otel4sTaglessMtl` cross-project and proved the 2.12 containment against an
+  empty module, before any content existed.
+- **Task 3** (`4d8ef3c` "feat(m17): record typed raised errors as otel4s span
+  attributes") added `Otel4sDefaultOnRaise`, `syntax/package.scala` and
+  `RaiseRecorderPrioritySpec`.
+- **Task 4** (`cb027b9` "feat(m17): add RaiseAspect-aware otel4s tracing
+  syntax", `f240cdd`) added `RaiseTracerWeaveOps`, the `Foo` fixture and
+  `RaiseTracerTransparencySpec` — and retracted D9.
+- **Task 5** (`bef48d9` "feat(m17): add AnyValueRaiseAspect for Scala 3 derives
+  clauses", `8f2642d`) added `AnyValueRaiseAspect`, `Scala3UsageNote`, and the
+  module's first `src/test/scala-3` sources.
+- **Task 6** (this commit) added the JVM span-content proof, the module
+  scaladoc, the README section, and this reconciliation.
+
+### What diverged from the plan, and why
+
+- **D9 was factually wrong and is retracted in place** (Task 4). It claimed the
+  mtl `traceWithInputs` must demand an `Apply[F]` its non-mtl counterpart does
+  not, resting on a misconception about Scala implicit resolution. The
+  implementer added the parameter per the decision, hit a `-Wunused:params`
+  warning on it — a **true** positive — and suppressed it with `@nowarn` rather
+  than questioning the decision. The code review settled it with a compile
+  probe on 2.13.18 and 3.3.8: the parameter contributes nothing, and its
+  presence made the mtl signature strictly *stronger* than the non-mtl one.
+  Parameter and suppression both removed. This is the milestone's most
+  substantive lesson: a wrong claim about language semantics in a design
+  decision propagated into a signature, a suppression and scaladoc before
+  anything caught it.
+- **Six defects were found in the plan's own prose, five of them in
+  uncompiled code sketches.** A task-ordering error (Task 3's test importing a
+  package object Task 4 created); a doctest whose stated proof of D2 did not
+  actually exercise D2; `cats.effect.unsafe.implicits.global` colliding with
+  `CatsEffectSuite`'s own `IORuntime`; `.unsafeRunSync()`, which does not exist
+  on Scala.js's `IO`, in a cross-platform test; a `new TracerWeaveCapturingInputs`
+  sketch whose real constructor takes two type parameters; and D9. Plan text
+  written against uncompiled APIs kept producing this class of error.
+- **`build.sbt` changed more than planned, twice.** Task 3 moved
+  `munit-cats-effect` from `.jvmSettings` (`%%`) to the shared block (`%%%`)
+  because its test is cross-platform — which invalidated Task 2's containment
+  result, so the full containment check was re-run rather than assumed. Task 6
+  added a `src/test/scala-3-jvm` test source directory, gated on
+  `scalaBinaryVersion == "3"` inside `.jvmSettings`, because the
+  `derives`-clause span-content test needs the Scala 3 axis *and* the JVM-only
+  testkit and no existing directory is the intersection of the two.
+- **Task 5's Scala 3 coverage used a different oracle than planned.** The brief
+  said to mirror `DerivesBarTracingSpec`'s fixed span history; that depends on
+  natchez's cross-platform `InMemory`, and otel4s has no cross-platform
+  equivalent (span content is JVM-testkit-only, the asymmetry M16 ratified). It
+  mirrored `TraceableRaiseAspectSpec`'s differential-oracle pattern instead.
+  That left the derived instance untested through a real `Tracer`, which Task 5
+  flagged and Task 6 closed with `DerivesFooSpanContentSpec`.
+- **`@nowarn` filter strings are not portable** (Task 1). `@nowarn("cat=unused")`
+  is Scala 2 syntax; Scala 3 rejects the category and then *also* emits the
+  original warning, so the axis got worse. A bare `@nowarn` works on 2.12.21,
+  2.13.18 and 3.3.8.
+- **A false statement in `otel4s-tagless`'s README was found and corrected**
+  (Task 6). It said a cats-mtl `Raise` error is invisible to otel4s's
+  `reportAbnormal`. That holds only when `Raise` lives in the effect's
+  *success* channel; under `Handle.allowF` over a `MonadThrow` `F` — the shape
+  both mtl modules' own examples use — cats-mtl's submarine encoding makes the
+  raise a real `Throwable`, and the span is marked `ERROR`.
+
+### Verification
+
+Whole-branch, at Task 6, with `SBT_OPTS="-Xmx6G -XX:MaxMetaspaceSize=1G"`
+(`+test` OOMs at the default heap on `raiseAspectMacros`' Scala 3 test
+compile — environment, not code).
+
+`sbt +test` exit 0. `++2.12.21 natchez-tagless-rootJVM/test` and `rootJS/test`
+exit 0. `+otel4sTaglessMtlJVM/doc`, `+natchezTaglessMtlJVM/doc`,
+`+raiseAspectCoreJVM/doc` exit 0. `githubWorkflowCheck` clean with no
+regeneration needed. **No `[warn]` line anywhere in the sweep names either
+otel4s module**; the warnings that remain are pre-existing `core` unused
+imports, a `natchez-tagless-mtl` doctest outer-reference warning, and
+sbt's "multiple main classes" notice.
+
+Per-module, per-version, per-platform (JVM/JS):
+
+| module | 2.12.21 | 2.13.18 | 3.3.8 |
+|---|---|---|---|
+| `core` | 15/15 · 15/15 | 15/15 · 15/15 | 31/31 · 29/29 |
+| `natchezTaglessMtl` | 20/20 · 20/20 | 20/20 · 20/20 | 33/33 · 33/33 |
+| `raiseAspectCore` | 36/36 · 36/36 | 36/36 · 36/36 | 36/36 · 36/36 |
+| `otel4sTagless` | — | 29/29 · 21/21 | 29/29 · 21/21 |
+| `otel4sTaglessMtl` | — | 12/12 · 7/7 | 22/22 · 15/15 |
+
+Against the branch point, two modules moved and both were meant to:
+`raiseAspectCore` (Task 1's new `RaiseRecorderSpec`, 36 on every axis, no prior
+suite) and the new module. `natchezTaglessMtl` moved from its pre-M17 baseline
+of 18/18/31 to 20/20/33 — exactly the two `DefaultOnRaiseReachabilitySpec`
+tests Task 1's fix round added to give D2 an executable proof; nothing else in
+it changed. `core` and `otel4sTagless` are untouched in every compiled source
+(M17's only edit to `otel4s-tagless` is its README).
+
+The 2.12 dashes are the containment working: both otel4s modules compile
+nothing, run no test task, and resolve no otel4s coordinate on 2.12, while both
+2.12 root runs stay green.
+
+### Anything a later milestone needs
+
+- **`mimaPreviousArtifacts := Set.empty` is now on seven modules**, and M17 did
+  not address it. `tlVersionIntroduced := Map(...)` in place of `Set.empty` is
+  the fix, and it is one decision covering all seven — needed before the next
+  publish. The comments in `build.sbt` are internally inconsistent about the
+  count (the six older copies still say "six"), which the fix should tidy.
+- **D5's semconv gap is still open.** Nothing in this family sets OTel's
+  registered `error.type`, and doing it properly means setting it at span *end*
+  from how the span actually finished, which is a different insertion point
+  from this hook.
+- **Risk 4 (the circe divergence) is still unruled.** `ToTraceValue` ranks a
+  circe `Encoder` above `Show`; `ToAnyValue` has only `Show`. M16 documented it
+  for parameters and return values; M17 extended the documentation to error
+  values. Whether a structural `Json => AnyValue` fallback should ship is Q3 in
+  `30-milestone-M16-otel4s-module.md`.
+- **`raise.error.*` on a second raise within one method call overwrites** (D4).
+  Documented, not designed around. If it ever needs fixing, a span event is the
+  alternative that was considered and rejected.
+- **Span content stays JVM-only for otel4s.** Revisit when
+  `otel4s-sdk-trace-testkit` reaches 1.0.x; today it stops at 0.19.0 and
+  `otel4s-oteljava-trace-testkit` publishes no `_sjs1_` artifact.
+- **Source comments in `raise-aspect-core` still cite SDD task numbers** (one,
+  in `ObservingCapabilitySpec.scala`). M17 scrubbed the ones in
+  `otel4s-tagless-mtl`; that one was out of footprint.
 
 ## Context
 
@@ -235,7 +371,16 @@ child ids only line up if `use` establishes currency.
 
 **This claim is the single most likely thing in M17 to be wrong**, so it gets a
 dedicated JVM test asserting the `raise.error.*` attributes land on the method's
-own span and not on the parent (Task 6).
+own span and not on the parent.
+
+**Confirmed empirically in Task 6** (`RaiseSpanContentSpec`, against the
+oteljava testkit), and the test was proven discriminating rather than trusted
+green: two mutations of `TracerWeaveCapturingInputsAndOutputs` were run and
+reverted. Re-establishing the parent's context inside `use` made the hook's
+writes disappear (4 of 5 tests fail); removing the child span altogether put
+`raise.error.type` and `raise.error.value` literally on the caller's span (all
+5 fail). Prior to this the claim had been corroborated only by reading otel4s's
+sources.
 
 The instance requires `Tracer[F]` and `FlatMap[F]` — the natchez counterpart
 needs only `Trace[F]`. Under `Tracer.noop`, `currentSpanOrNoop` yields a noop

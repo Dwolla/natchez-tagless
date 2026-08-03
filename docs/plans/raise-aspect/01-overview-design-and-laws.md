@@ -178,14 +178,36 @@ modules/
 > its own `ToAnyValue[-A]` type class in the `Dom`/`Cod` positions because
 > otel4s ships nothing of that kind. It depends on `otel4s-core-trace`, cats,
 > cats-tagless-core and `tagless-core` — **never on natchez**, which is what
-> M15's extraction was for. Nothing `Raise`-shaped is in it: there is no otel4s
-> counterpart to `natchez-tagless-mtl`.
+> M15's extraction was for. Nothing `Raise`-shaped is in it; that arrived one
+> milestone later, in the separate `otel4s-tagless-mtl` module (M17, below).
 >
 > **It is the one module with no 2.12 artifact**, and that is availability, not
 > a drop: otel4s has never published a `_2.12` artifact at any version, so the
 > module compiles nothing and ships nothing on 2.12 while every other module in
 > the build keeps publishing `_2.12` unchanged. See
 > `30-milestone-M16-otel4s-module.md`.
+
+> **Amended 2026-08-03 by M17.** A seventh module: `otel4s-tagless-mtl/`,
+> artifact `otel4s-tagless-mtl`, package `com.dwolla.tracing.otel4s.mtl`,
+> depending on `otel4s-tagless`, `raise-aspect-core` and `raise-aspect-macros`.
+> It is the otel4s counterpart of `natchez-tagless-mtl`, file for file, and
+> carries M16's 2.12 containment verbatim — so **two** modules now have no 2.12
+> artifact, for the one availability reason above.
+>
+> The module boundary between it and `otel4s-tagless` is deliberate and matches
+> the natchez side: a user who takes no `Raise` parameters depends on neither
+> cats-mtl nor `raise-aspect-core`.
+>
+> M17 also moved `RaiseRecorder` and the `raise.error.type`/`raise.error.value`
+> key constants out of `natchez-tagless-mtl` into `raise-aspect-core`
+> (`com.dwolla.tagless.mtl`), so both backends resolve the default hook through
+> one mechanism and record under one set of names. Each backend now supplies
+> only a `DefaultOnRaise[F, Err]`. The cost, accepted knowingly: that default is
+> reached by *import* rather than from implicit scope, because
+> `raise-aspect-core` cannot name either backend's rendering type class — the
+> same syntax import the tracing methods already require carries it, so only a
+> bare `implicitly[RaiseRecorder[F, Err]]` is affected. See
+> `32-milestone-M17-otel4s-tagless-mtl.md`.
 
 ### 3.2 Core types
 
@@ -604,6 +626,56 @@ actually reference the class, and its own compilation closes the gap for free.
 **M16 (otel4s) is planned and is being researched separately.** M15 exists to
 prepare for it; M16's design and plan are not part of this round, and are not
 M13's, M14's or M15's work.
+
+Fifth round (2026-08-03) — the second tracing backend, in two stacked
+milestones:
+
+- M16 `otel4s-tagless` — otel4s counterparts of `natchez-tagless`'s three
+  plain-`Aspect` interpreters, with a project-owned `ToAnyValue[-A]` in the
+  `Dom`/`Cod` positions because otel4s ships nothing of that kind →
+  `30-milestone-M16-otel4s-module.md`
+- M17 `otel4s-tagless-mtl` — the `RaiseAspect` half of the same backend, plus
+  the extraction of `RaiseRecorder` out of `natchez-tagless-mtl` into
+  `raise-aspect-core` so both backends share one resolution mechanism →
+  `32-milestone-M17-otel4s-tagless-mtl.md`
+
+**What M17 settled that M11 had only asserted.** `WeaveInterpreter`'s scaladoc
+has claimed since M11 that nothing in it is specific to tracing or to any
+backend, and that a natchez module and an otel4s module — which share no
+rendering type class — can use the same instance resolution. M17 is the first
+time a second backend exercised that claim, and **it held with no change to
+`raise-aspect-core`'s mechanism**: `otel4s-tagless-mtl` supplies only a
+`DefaultOnRaise[F, ToAnyValue]` and its own `Weave ~> F` interpreters, and
+reuses `RaiseAspect`, `OnRaise`, `RaiseRecorder`, `WeaveInterpreter` and the
+arrows verbatim. What did move is the *default hook*: `RaiseRecorder` and the
+`raise.error.*` key constants left `com.dwolla.tracing.mtl.syntax` for
+`com.dwolla.tagless.mtl`, and the backend-specific default became a
+`DefaultOnRaise` instance each backend declares — which also deleted
+`RaiseRecorder.IsTraceableValue`, a 22-line workaround for a Scala 2.13
+implicit-ordering quirk that the new shape makes unnecessary.
+
+**One design decision was found to be factually wrong and is retracted in
+place.** M17's D9 claimed the mtl `traceWithInputs` must demand an `Apply[F]`
+its non-mtl counterpart does not, on the reasoning that a method's own earlier
+implicit parameter can serve as a candidate when resolving a later one in the
+same list. It cannot — an implicit parameter list is resolved as a whole from
+the caller's scope — and a compile probe on 2.13.18 and 3.3.8 settled it. The
+parameter and the `@nowarn` that had been added to silence the resulting (true
+positive) unused-parameter warning were both removed, restoring the property
+the design wanted throughout: the two syntax packages' signatures are
+identical, so switching an import changes nothing about what the caller must
+provide. The retraction is left in the M17 document rather than deleted.
+
+**The `Raise`-error/otel4s interaction, measured.** Under `Handle.allowF` over
+a `MonadThrow` `F`, cats-mtl's submarine encoding makes a raise a real
+`Throwable`, so otel4s's default `SpanFinalizer.Strategy.reportAbnormal` marks
+the method's span `ERROR` and attaches an `exception` event naming
+`cats.mtl.Handle.Submarine` — which identifies neither the error type nor its
+value. That is why the `raise.error.*` attributes exist, and it is different
+from the natchez path, which reports through `natchez.mtl.LocalTrace#span`'s
+`attachError`. A statement in `otel4s-tagless`'s README asserting the opposite
+(that a `Raise` error is invisible to `reportAbnormal`) was found false by the
+test that measured this and corrected in M17.
 
 ### Method-local `Dom`/`Cod`/`Err` instances (found in M4, resolved in M7)
 

@@ -6,13 +6,13 @@ import com.dwolla.tracing.otel4s.ToAnyValue
 import munit.CatsEffectSuite
 import org.typelevel.otel4s.trace.Tracer
 
-/** Task 3 — when a user-supplied `OnRaise[F, Err]` is in scope alongside an
+/** When a user-supplied `OnRaise[F, Err]` is in scope alongside an
   * ambient `Tracer[F]`, `RaiseRecorder[F, Err]` resolution must pick the
   * user's instance over the `Tracer`-derived default; when no `OnRaise[F,
   * Err]` is in scope, the `Tracer`-derived default must still be reachable.
   * Mirrors `natchez-tagless-mtl`'s `RaiseRecorderPrioritySpec`. Cross-platform
   * — no testkit involved, so this asserts resolution, not span content;
-  * `SpanContentSpec` (Task 6, JVM-only) covers content.
+  * `RaiseSpanContentSpec` (JVM-only) covers content.
   */
 class RaiseRecorderPrioritySpec extends CatsEffectSuite {
   private implicit val tracer: Tracer[IO] = Tracer.noop[IO]
@@ -40,8 +40,9 @@ class RaiseRecorderPrioritySpec extends CatsEffectSuite {
   }
 
   test("resolving with both a user OnRaise and a Tracer in scope reports no ambiguous implicit") {
-    // The 2.13 shape guard, at the otel4s Err. Task 1's core test covers the
-    // mechanism; this covers this module's actual instantiation of it.
+    // The 2.13 shape guard, at the otel4s Err. `raise-aspect-core`'s
+    // `RaiseRecorderSpec` covers the mechanism; this covers this module's
+    // actual instantiation of it.
     val errors: String = compileErrors(
       """import cats.effect.IO
 import com.dwolla.tagless.mtl.{OnRaise, RaiseRecorder}
