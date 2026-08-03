@@ -381,6 +381,7 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
     name := "otel4s-tagless-mtl",
     libraryDependencies ++= Seq(
       "org.scalameta" %%% "munit" % munitVersion % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
     ),
     libraryDependencies ++= {
       if (isOtel4sScalaVersion.value) Seq("org.typelevel" %%% "otel4s-core-trace" % otel4sVersion)
@@ -409,7 +410,6 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
         Seq(
           "org.typelevel" %% "otel4s-oteljava-trace-testkit" % otel4sVersion % Test,
           "org.typelevel" %% "otel4s-oteljava-common" % otel4sVersion % Test,
-          "org.typelevel" %% "munit-cats-effect" % "2.2.0" % Test,
         )
       else Seq.empty
     },
