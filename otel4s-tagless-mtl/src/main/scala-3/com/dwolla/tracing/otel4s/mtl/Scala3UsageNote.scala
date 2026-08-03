@@ -31,12 +31,12 @@ package com.dwolla.tracing.otel4s.mtl
   *     }
   *
   *     // The derivation below summons Err[E] (here ToAnyValue[ValidationError])
-  *     // per raise parameter at the derivation site first, per Task 6. If no instance
-  *     // is available there, resolution falls back to one of validate's own `using`
-  *     // parameters, provided its declared type is a subtype of the needed one — no
-  *     // derivation, no companion scope, no chaining. Only if neither resolves does
-  *     // the derivation fail, with a diagnostic naming the method and the missing
-  *     // error type.
+  *     // per raise parameter at the derivation site first (see DeriveRaise's own
+  *     // scaladoc). If no instance is available there, resolution falls back to
+  *     // one of validate's own `using` parameters, provided its declared type is
+  *     // a subtype of the needed one — no derivation, no companion scope, no
+  *     // chaining. Only if neither resolves does the derivation fail, with a
+  *     // diagnostic naming the method and the missing error type.
   *     implicit val toAnyValueValidationError: ToAnyValue[ValidationError] =
   *       ToAnyValue.instance {
   *         case TooSmall(i) => AnyValue.string("too small: " + i.toString)

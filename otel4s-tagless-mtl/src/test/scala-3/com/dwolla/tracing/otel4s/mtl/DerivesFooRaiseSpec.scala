@@ -146,4 +146,25 @@ class DerivesFooRaiseSpec extends FunSuite {
     val fixed: AnyValueRaiseAspect[Foo] = AnyValueRaiseAspect.fromRaiseAspect(Foo.fooRaiseAspect)
     assert(fixed ne null)
   }
+
+  /** The narrowing contract is the entire reason `AnyValueRaiseAspect` exists
+    * (see its own scaladoc): a wide `RaiseAspect[Alg, ToAnyValue, ToAnyValue,
+    * ToAnyValue]` must not satisfy a demand for the narrow
+    * `AnyValueRaiseAspect[Alg]` on its own — `fromRaiseAspect` is the only
+    * crossing. Mirrors `TraceableRaiseAspectSpec`'s equivalent test, but
+    * asserts only that ''some'' error was reported, not its exact text:
+    * diagnostic wording differs across compiler versions, and the property
+    * that matters is that the summon fails at all. If the wide instance did
+    * satisfy the narrow demand, `compileErrors` would return `""` and this
+    * assertion would fail — so the test is genuinely failable, not
+    * vacuously true.
+    */
+  test("a wide RaiseAspect does not satisfy a demand for the narrow type") {
+    // needs an explicit `String` annotation on Scala 3, or a cyclic-reference
+    // check fires and captures that error instead of the snippet's diagnostics
+    val errors: String = compileErrors(
+      "summon[AnyValueRaiseAspect[Foo]](using Foo.fooRaiseAspect)"
+    )
+    assert(errors.nonEmpty, "expected a compile error demanding AnyValueRaiseAspect[Foo], got none")
+  }
 }
