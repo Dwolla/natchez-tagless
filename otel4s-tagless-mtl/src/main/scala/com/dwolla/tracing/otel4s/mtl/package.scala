@@ -10,12 +10,11 @@ package com.dwolla.tracing.otel4s
   * instances.
   *
   * It is the otel4s counterpart of `com.dwolla.tracing.mtl`
-  * (`natchez-tagless-mtl`), and the two are deliberately interchangeable at a
-  * call site: the method names match, the recorded attribute keys match, and
-  * the resolution mechanism is literally the same code in `raise-aspect-core`.
-  * What differs is the rendering type class — `ToAnyValue` here,
-  * `natchez.TraceableValue` there — and one semantic divergence in what those
-  * two render, described under ''Migrating from natchez'' below.
+  * (`natchez-tagless-mtl`): the method names match, the recorded attribute
+  * keys match, and the resolution mechanism is literally the same code in
+  * `raise-aspect-core`. What differs is the rendering type class —
+  * `ToAnyValue` here, `natchez.TraceableValue` there — see ARCHAEOLOGY.md if
+  * you're moving an algebra between the two.
   *
   * ==Worked example==
   *
@@ -153,10 +152,7 @@ package com.dwolla.tracing.otel4s
   *     `Functor` is ever synthesized for it. Note this is a constraint of
   *     `RaiseAspect#intercept`, not of the syntax: neither syntax method
   *     declares an `Apply[F]`, because `WeaveInterpreter.fromRaiseAspect`
-  *     resolves that one in the caller's scope. (An earlier design decision
-  *     claimed `traceWithInputs` had to declare it; it is recorded,
-  *     retracted, in D9 of
-  *     `docs/plans/raise-aspect/32-milestone-M17-otel4s-tagless-mtl.md`.)
+  *     resolves that one in the caller's scope.
   *   - '''Switching an import is free for `traceWithInputsAndOutputs`, not
   *     for `traceWithInputs`.''' `traceWithInputsAndOutputs` demands exactly
   *     what its non-mtl counterpart in `com.dwolla.tracing.otel4s.syntax`
@@ -167,10 +163,7 @@ package com.dwolla.tracing.otel4s
   *     `[F[_] : FlatMap : Tracer]`. A caller taking the default recorder
   *     therefore has to supply `FlatMap[F]`; a caller supplying its own
   *     `OnRaise[F, ToAnyValue]` needs only what that hook needs.
-  *     `RaiseTracerConstraintSpec` pins both directions. (The natchez pair
-  *     really is identical here, because `NatchezDefaultOnRaise` needs only
-  *     `Trace[F]` — which is how this claim reached otel4s without its
-  *     premises.)
+  *     `RaiseTracerConstraintSpec` pins both directions.
   *   - `Handle[F, E]` parameters are rejected at derivation time, with a
   *     message pointing at this design: `Handle` ''consumes'' `F`
   *     (`handleWith` takes an `F[A]`), so — unlike `Raise`, which only ever
@@ -217,11 +210,10 @@ package com.dwolla.tracing.otel4s
   * [[https://github.com/typelevel/cats-mtl/issues/648 cats-mtl#648]]), not as
   * the domain error. That is upstream and is not fixable from this side.
   *
-  * '''What otel4s then does with it is not what natchez does''', and was
-  * measured rather than assumed (`RaiseSpanContentSpec`, against the oteljava
-  * testkit, with `Handle.allowF[IO, E]`). otel4s's default finalization
-  * strategy, `SpanFinalizer.Strategy.reportAbnormal`, sees the traced effect
-  * exit with `Resource.ExitCase.Errored` and:
+  * otel4s's default finalization strategy,
+  * `SpanFinalizer.Strategy.reportAbnormal`, sees the traced effect exit with
+  * `Resource.ExitCase.Errored` (measured against the oteljava testkit in
+  * `RaiseSpanContentSpec`, with `Handle.allowF[IO, E]`) and:
   *
   *   - sets the method span's '''status to `ERROR`''' (with no description),
   *     and
@@ -232,16 +224,11 @@ package com.dwolla.tracing.otel4s
   *
   * The domain error's own name appears nowhere in that report — only in
   * `raise.error.type`. An enclosing span is unaffected as long as the rescue
-  * happens inside it: it finishes with status `UNSET` and no events. natchez
-  * records neither the status nor the event, so a migrating user should expect
-  * error-marked spans on every raise that is not rescued inside the method,
-  * even where the raise is an ordinary, expected domain outcome.
-  *
-  * (`otel4s-tagless`'s README says a `Raise` error is invisible to
-  * `reportAbnormal`. That holds when `Raise` lives in the effect's ''success''
-  * channel — `EitherT`, say — and not for the `Handle.allowF`-over-`IO` shape
-  * this module's examples use, where the raise really is an
-  * `IO.raiseError`.)
+  * happens inside it: it finishes with status `UNSET` and no events. This
+  * means every raise that is not rescued inside the method marks its span
+  * `ERROR`, even where the raise is an ordinary, expected domain outcome — see
+  * `otel4s-tagless`'s README for when otel4s can and can't see into a `Raise`
+  * channel at all.
   *
   * What is ''not'' true is that the domain error is invisible to the trace. By
   * default, every algebra traced via the `RaiseAspect` path records
@@ -258,27 +245,6 @@ package com.dwolla.tracing.otel4s
   * declare a `ToAnyValue` that omits or masks it, exactly as a sensitive
   * parameter type would. Note that `raise.error.type` still records the error's
   * runtime class name unconditionally.
-  *
-  * ==Migrating from natchez==
-  *
-  * The keys and the method names match, so a file moves by changing
-  * `import com.dwolla.tracing.mtl.syntax._` to
-  * `import com.dwolla.tracing.otel4s.mtl.syntax._` (the two cannot be imported
-  * into the same scope — that reintroduces exactly the ambiguity these modules
-  * exist to avoid). What changes without telling you is the ''rendering'', and
-  * it applies to error values exactly as `otel4s-tagless`'s README describes it
-  * for parameters and return values:
-  *
-  * `com.dwolla.tracing.ToTraceValue` ranks a circe `Encoder` fallback above its
-  * `Show` fallback, so an error ADT with both traces structurally under
-  * natchez — `raise.error.value` holding its JSON. `ToAnyValue` has no circe
-  * fallback at all, only a `Show` one, and that one is in `ToAnyValue`'s own
-  * companion, so it applies with no import. The same error ADT therefore
-  * compiles unchanged after the import swap and records its `Show` rendering
-  * instead: different attribute value, no warning, no compile error. Write the
-  * `ToAnyValue[MyError]` you want — it lives in your own type's companion and
-  * outranks the `Show` fallback. (An error type with an `Encoder` and no `Show`
-  * fails to compile here, which is the loud, easy case.)
   *
   * ==Overriding the default recording==
   *

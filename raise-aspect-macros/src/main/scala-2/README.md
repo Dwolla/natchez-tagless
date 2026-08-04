@@ -1,7 +1,7 @@
 # raise-aspect-macros — Scala 2 sources (2.12 and 2.13)
 
-The Scala 2 `DeriveRaise` derivation lands here in milestone **M3**, adapted
-from `reference/upstream/macros/src/main/scala-2/cats/tagless/DeriveMacros.scala`
+The Scala 2 `DeriveRaise` derivation, adapted from
+`reference/upstream/macros/src/main/scala-2/cats/tagless/DeriveMacros.scala`
 (the `aspect` derivation). Both Scala 2 axes share this tree; version-guard
 only where the reflect APIs force it.
 

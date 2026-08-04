@@ -13,11 +13,9 @@ trait RaiseAspectLaws[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorKLa
 
   /** L3′ — `intercept(af)(codomainTarget, OnRaise.noop) <-> af`.
     *
-    * The analogue of upstream's Aspect-consistency law, and the successor to
-    * M2's L3 (`mapK(weave(af))(eraseWeave) <-> af`). There is no longer a
-    * second operation for the first to be inverse to, but the content L3
-    * carried is exactly this: at `A = Either[TestError, *]` a raise must come
-    * back as the identical `Left` through the instrumented path.
+    * The analogue of upstream's Aspect-consistency law: at `A =
+    * Either[TestError, *]`, a raise must come back as the identical `Left`
+    * through the instrumented path.
     *
     * `Applicative[A]` rather than `Functor[A]`: `intercept` needs `Apply` to
     * sequence the hook and `OnRaise.noop` needs `Applicative` to produce one.

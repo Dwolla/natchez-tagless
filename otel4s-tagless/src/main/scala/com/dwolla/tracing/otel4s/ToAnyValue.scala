@@ -60,8 +60,7 @@ import org.typelevel.otel4s.AnyValue
   *   import org.typelevel.otel4s.AnyValue
   *
   *   // BigDecimal and BigInt ship no instance of their own, so they reach the
-  *   // Show fallback and record as strings — where natchez's TraceableValue
-  *   // accepted them as numbers. This is the silent case above.
+  *   // Show fallback and record as strings. This is the silent case above.
   *   val viaShow: AnyValue = ToAnyValue[BigDecimal].toAnyValue(BigDecimal("1.50"))
   *
   *   // A hand-written instance is how a sensitive or badly-Shown type is kept
@@ -117,7 +116,6 @@ object ToAnyValue extends LowPriorityToAnyValueInstances {
 
   /** A `Unit` return value records as an empty value, which is OTLP's own
     * encoding of "no value" and reaches the wire as `{}`.
-    * (`natchez.TraceableValue` records the string `"()"`.)
     */
   implicit val unitToAnyValue: ToAnyValue[Unit] = instance[Unit](_ => AnyValue.empty)
 
@@ -126,7 +124,6 @@ object ToAnyValue extends LowPriorityToAnyValueInstances {
     * giving it one would force every instance — and every nesting site — to
     * answer what a sequence does with an absent element. As a map entry the
     * cost is a null-valued key, not a whole attribute slot.
-    * (`natchez.TraceableValue` records the string `"None"`.)
     */
   implicit def optionToAnyValue[A](implicit ev: ToAnyValue[A]): ToAnyValue[Option[A]] =
     instance[Option[A]] {

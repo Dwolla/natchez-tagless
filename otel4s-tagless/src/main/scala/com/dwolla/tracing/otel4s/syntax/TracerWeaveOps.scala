@@ -15,12 +15,6 @@ class TracerWeaveOps[Alg[_[_]], F[_]](val alg: Alg[F]) extends AnyVal {
   /** Wraps every method of the algebra in a child span carrying the call's
     * parameters, using the ambient `Tracer[F]`. See
     * `TracerWeaveCapturingInputs` for what is recorded and what is not.
-    *
-    * `Tracer[F]` is the only capability required — no `Apply[F]`, which
-    * `com.dwolla.tracing.syntax`'s `traceWithInputs` does need. The natchez
-    * version has to sequence `Trace[F].put(…) *> target`; here the attributes
-    * go onto the `SpanBuilder` before the span exists, so there is nothing to
-    * sequence.
     */
   def traceWithInputs[Cod[_]](implicit
                               T: Tracer[F],

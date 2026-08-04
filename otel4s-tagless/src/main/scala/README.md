@@ -2,38 +2,31 @@
 
 otel4s versions of `natchez-tagless`'s three tracing interpreters, in package
 `com.dwolla.tracing.otel4s`, with syntax in `com.dwolla.tracing.otel4s.syntax`.
-Added in milestone **M16**; see `docs/plans/raise-aspect/`.
 
 This module depends on `otel4s-core-trace`, cats, cats-tagless and
 `tagless-core` — it must never depend on natchez.
 
 ## What is here
 
-| natchez, in `natchez-tagless` | here |
-| --- | --- |
-| `TraceInstrumentation` | `TracerInstrumentation` |
-| `TraceWeaveCapturingInputs` | `TracerWeaveCapturingInputs` |
-| `TraceWeaveCapturingInputsAndOutputs` | `TracerWeaveCapturingInputsAndOutputs` |
-| `natchez.TraceableValue` | `ToAnyValue` (project-owned) |
-| `syntax.traceWithInputs` / `traceWithInputsAndOutputs` / `instrumentAndTrace` | same names |
-| `syntax.asTraceParams` | `syntax.asAttributes` |
+`TracerInstrumentation`, `TracerWeaveCapturingInputs`,
+`TracerWeaveCapturingInputsAndOutputs`, and the `ToAnyValue` type class. See
+ARCHAEOLOGY.md for how these map onto `natchez-tagless`'s interpreters if
+you're coming from there.
 
 ## What is not here, deliberately
 
 - **No `Raise`/cats-mtl support *in this module*.** `OnRaise`, `RaiseAspect`
   and the `Raise`-aware syntax live one module over, in `otel4s-tagless-mtl`
-  (added in **M17**) — see the section at the end of this file. This module
-  stays plain-`Aspect` only, so a user who does not take `Raise` parameters
-  pays for neither cats-mtl nor `raise-aspect-core`.
+  — see the section at the end of this file. This module stays plain-`Aspect`
+  only, so a user who does not take `Raise` parameters pays for neither
+  cats-mtl nor `raise-aspect-core`.
 - **Nothing `Resource`-shaped.** No `TraceResourceAcquisition`, no
-  `ResourceInitializationSpanOps`, no `TraceResourceLifecycleOps`. Those are
-  built on `natchez.Trace#spanR: Resource[F, F ~> F]`; otel4s's
+  `ResourceInitializationSpanOps`, no `TraceResourceLifecycleOps`. otel4s's
   `SpanOps.resource` deliberately does not propagate span context into the
-  resource's `use` block (you have to route through `res.trace: F ~> F`), which
-  is a different ergonomic problem.
-- **No `EntryPoint` analogue.** No `EntryPointRootScope`, no
-  `RootSpanProvidingFunctionK`, no `InstrumentableAndTraceableInKleisliOps`.
-  otel4s has no `EntryPoint` and no `natchez.Span`-in-`Kleisli` idiom.
+  resource's `use` block (you have to route through `res.trace: F ~> F`), a
+  different ergonomic problem than `natchez.Trace#spanR` solves.
+- **No `EntryPoint` analogue.** otel4s has no `EntryPoint` and no
+  `natchez.Span`-in-`Kleisli` idiom.
 
 ## Where a `Tracer[F]` comes from
 
@@ -166,67 +159,34 @@ If you need flat attributes today, you are one instance away: write a
 
 ## `ToAnyValue` is not `TraceableValue`
 
-If you use both `natchez-tagless` and `otel4s-tagless`, you write **two
-instances per domain type** — a `natchez.TraceableValue[Money]` and a
-`ToAnyValue[Money]`. There is deliberately no bridge. A
-`TraceableValue[A] => ToAnyValue[A]` conversion would have to map
-`TraceValue.NumberValue(java.lang.Number)` onto `Long` or `Double`, which is
-lossy for `BigDecimal` and `BigInt`, and it would give this module a natchez
-dependency — precisely what the module exists to avoid. If it is ever wanted it
-belongs in a third, interop module.
+If you use both `natchez-tagless` and `otel4s-tagless`, you write two
+instances per domain type — there is no bridge between `TraceableValue` and
+`ToAnyValue`. A conversion between them would be lossy for `BigDecimal` and
+`BigInt`, and it would give this module a natchez dependency, which the
+module exists to avoid. See ARCHAEOLOGY.md if you're moving a type's
+instances from one to the other.
 
-The method names on the syntax packages *do* match, so migrating a file is one
-import line and no call-site changes. The cost is that a single file cannot
-wildcard-import both `com.dwolla.tracing.syntax._` and
+The method names on the syntax packages match, so switching a file between
+backends is one import line and no call-site changes — but a single file
+cannot wildcard-import both `com.dwolla.tracing.syntax._` and
 `com.dwolla.tracing.otel4s.syntax._`; import one selectively if you need both
-backends in one file. On Scala 2 the compiler names both conversions and the
-problem is obvious. **On Scala 3 it does not**: the same source reports
-`value traceWithInputs is not a member of …, but could be made available as an
-extension method`, followed by import suggestions unrelated to either syntax
-package, and never mentions the ambiguity at all. If a method that plainly
-exists reports as missing on Scala 3, check the imports first.
+backends in one file. On Scala 2 the compiler names both conversions in the
+ambiguity error. **On Scala 3 it does not**: the same source instead reports
+`value traceWithInputs is not a member of …`, with import suggestions
+unrelated to either package and no mention of the ambiguity at all. If a
+method that plainly exists reports as missing on Scala 3, check for a stray
+import of the other backend's syntax first.
 
-## Semantic divergences from natchez's `ToTraceValue`
+There is no circe-based fallback in `ToAnyValue` — only the `Show` one. If you
+want a structured attribute for a type that has a circe `Encoder`, write the
+`ToAnyValue` instance yourself; it lives in your type's companion and
+outranks the `Show` fallback.
 
-| value | `natchez-tagless` records | here |
-| --- | --- | --- |
-| a type with both a circe `Encoder` and a `Show` | its JSON, via `nonPrimitiveTraceValueViaJson` | its `Show` rendering — there is no circe fallback here |
-| `()` | the string `"()"` | `AnyValue.empty` (and the attribute is omitted if it is the whole value) |
-| `None` | the string `"None"` | `AnyValue.empty` |
-| `Float` | a `Float` | widened to the exact `Double` — `0.1f` records as `0.10000000149011612` |
-| `BigDecimal`, `BigInt` | numbers | strings, via the `Show` fallback — no instance ships |
-
-**The first row is the one that changes your data without telling you.** In
-`com.dwolla.tracing.ToTraceValue`, `nonPrimitiveTraceValueViaJson` is declared in
-`LowPriorityTraceableValueInstances`, which *extends* the trait holding the
-`Show` fallback, so for a type that has both an `Encoder` and a `Show` the JSON
-encoding wins — `ImplicitPrioritizationSpec` pins exactly that. `ToAnyValue` has
-no circe fallback at all, only the `Show` one. So a `Money` that traces today as
-`{"cents":150}` compiles unchanged after the import moves to
-`com.dwolla.tracing.otel4s.syntax._` and records its `Show` rendering instead:
-different attribute value, no warning, no compile error. (A type with an
-`Encoder` and no `Show` fails to compile here, which is the loud, easy case.)
-
-The two fallbacks also differ in *how they arrive*, which compounds it.
-`natchez.TraceableValue`'s own companion carries only six primitive instances;
-both of this repo's fallbacks are members of traits, reachable only through
-`import com.dwolla.tracing.LowPriorityTraceableValueInstances._`, so a file that
-omits that import gets neither. `ToAnyValue`'s `Show` fallback is a member of
-`LowPriorityToAnyValueInstances`, which `object ToAnyValue` extends — it is in
-the companion's implicit scope and applies with no import at all. One edit
-therefore drops an opt-in JSON encoding and picks up an unconditional `Show`
-one.
-
-Whether a structural `Json => AnyValue` fallback should ship here is still open
-(Q3 in `docs/plans/raise-aspect/30-milestone-M16-otel4s-module.md`). Even if the
-answer stays "no", a migrating user has to be told the fallback is gone. Until
-then, write the `ToAnyValue` instance you want: it lives in the companion of
-your own type and outranks the `Show` fallback.
-
-The `Float` widening is exact in the IEEE-754 sense and inexact-looking in
-print. The alternative, `_.toString.toDouble`, prints prettily by silently
-changing the value, which is worse in a library. Shadow the instance if you want
-the shorter rendering.
+The `Float` widening (`ToAnyValue[Float]`) is exact in the IEEE-754 sense and
+inexact-looking in print — `0.1f` records as `0.10000000149011612`. The
+alternative, `_.toString.toDouble`, prints prettily by silently changing the
+value, which is worse in a library. Shadow the instance if you want the
+shorter rendering.
 
 ## Error recording
 
@@ -234,9 +194,7 @@ otel4s does this for you and this module neither adds to it nor takes it away.
 `SpanBuilder`'s default finalization strategy is
 `SpanFinalizer.Strategy.reportAbnormal`, so a `Throwable` that escapes a traced
 method is recorded as an exception event and the span status is set to `Error`;
-a cancelation sets `Error` with `"canceled"`. Migrating from natchez, you will
-see error-marked spans you did not see before: none of the three natchez
-interpreters this module mirrors calls `Trace[F].attachError`.
+a cancelation sets `Error` with `"canceled"`.
 
 **Whether a cats-mtl `Raise` error reaches any of that depends on where the
 `Raise` instance puts the error, and neither answer is the one you want.**
@@ -303,9 +261,8 @@ coordinate is not declared, both source directories are emptied, and
 
 ## `otel4s-tagless-mtl`, the sibling module
 
-Added in milestone **M17**. Artifact `otel4s-tagless-mtl`, package
-`com.dwolla.tracing.otel4s.mtl`, syntax in
-`com.dwolla.tracing.otel4s.mtl.syntax`. It depends on this module,
+Artifact `otel4s-tagless-mtl`, package `com.dwolla.tracing.otel4s.mtl`, syntax
+in `com.dwolla.tracing.otel4s.mtl.syntax`. It depends on this module,
 `raise-aspect-core` and `raise-aspect-macros`, and carries the identical 2.12
 containment for the identical reason.
 
@@ -365,11 +322,6 @@ type never looks inside.
 
 One lossy case: a method that raises, rescues internally, and raises again fires
 the hook twice against one span, and the second write **overwrites** the first.
-
-**Rendering diverges from natchez for error values exactly as it does for
-parameters** — see "Semantic divergences" above. An error ADT with both a circe
-`Encoder` and a `Show` records its JSON under natchez and, after the import
-swap, compiles unchanged and records its `Show` rendering.
 
 **Scala 3 only:** `derives AnyValueRaiseAspect` is the short spelling for the
 companion-object `RaiseAspect` declaration. `@experimental` goes on the

@@ -1,7 +1,7 @@
 # raise-aspect-macros — Scala 3 sources
 
-The Scala 3 `DeriveRaise` derivation lands here in milestone **M4**, adapted
-from `reference/upstream/core/src/main/scala-3/cats/tagless/macros/MacroAspect.scala`
+The Scala 3 `DeriveRaise` derivation, adapted from
+`reference/upstream/core/src/main/scala-3/cats/tagless/macros/MacroAspect.scala`
 and its helpers (`MacroFunctorK`, `DeriveMacros`).
 
 Entry points will be `@experimental`: `Symbol.newClass` is experimental on the

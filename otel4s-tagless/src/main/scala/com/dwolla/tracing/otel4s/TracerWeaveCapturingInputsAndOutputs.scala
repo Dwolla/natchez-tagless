@@ -19,62 +19,11 @@ object TracerWeaveCapturingInputsAndOutputs {
  * algebra to introduce a new child span, using the ambient `Tracer[F]`. Each
  * child span is named using the algebra name and method name captured in the
  * `Weave`, and both the parameters given to the method call and its return
- * value are attached to the span.
- *
- * '''A call records at most two attributes''', and these are their names:
- *
- *  - `<algebraName>.<methodName>.parameters` — an `AnyValue` map keyed by
- *    parameter name, holding every parameter of every parameter list.
- *  - `<algebraName>.<methodName>.returnValue` — the encoded return value.
- *
- * `returnValue` is spelled exactly as `com.dwolla.tracing`'s natchez
- * interpreter spells it, so a query written against a natchez-instrumented
- * service keeps working after a migration to otel4s. One structured
- * `parameters` attribute instead of one attribute per parameter is deliberate:
- * it costs one slot against `SpanLimits.maxNumberOfAttributes` (default 128)
- * where twenty flat attributes would cost twenty, and
- * `maxAttributeValueLength` still recurses into the tree, so nothing escapes
- * truncation by being nested.
- *
- * '''Either attribute is omitted outright when its value would carry
- * nothing''', rather than being recorded empty. A method with no parameters
- * gets no `parameters` attribute, and a `Unit`-returning method — or one whose
- * return type happens to encode to `AnyValue.empty` — gets no `returnValue`
- * attribute; a zero-parameter, `Unit`-returning method therefore produces a
- * span with no attributes at all. `ToAnyValue` is unaffected by this: it stays
- * a total `A => AnyValue`, `ToAnyValue[Unit]` still encodes `()` to
- * `AnyValue.empty`, and a parameter that encodes to nothing is still a kept
- * `name -> AnyValue.empty` ''entry'' inside the map. Only a whole top-level
- * attribute is worth suppressing, because only a whole attribute costs a slot.
- *
- * '''Both attributes are handed to otel4s as `AnyValue`, and on the
- * `otel4s-oteljava` backend the Java SDK narrows most of them back down before
- * they are stored.''' `ArrayBackedAttributesBuilder#put` sees an
- * `AttributeType.VALUE` key holding a `Value` and delegates to a private
- * `putValue` whose own comment reads "Convert VALUE type to narrower type when
- * possible". What arrives, observed against the real SDK rather than inferred:
- *
- *  - a `StringValue`, `LongValue`, `DoubleValue` or `BooleanValue` arrives as
- *    `STRING`, `LONG`, `DOUBLE` or `BOOLEAN`;
- *  - a '''non-empty, homogeneous''' `SeqValue` of one of those four scalars
- *    arrives as the matching `*_ARRAY` — so arrays narrow too, and "only
- *    structured values stay `VALUE`" is wrong;
- *  - an '''empty''' `SeqValue`, a heterogeneous one, or one of nested
- *    sequences, maps, byte arrays or empty values stays `VALUE`;
- *  - a `MapValue` stays `VALUE` '''always''', empty or not — which includes
- *    every `parameters` attribute this interpreter writes;
- *  - a `ByteArrayValue` stays `VALUE`.
- *
- * Two consequences are worth planning for. First, `parameters` is the only
- * attribute here that is reliably structured; `returnValue` usually is not, and
- * that is the better outcome, because backends index simple attributes.
- * Second, '''the same attribute key can change type between two calls of the
- * same method.''' A `Seq[String]` return value arrives as `VALUE` when the
- * sequence is empty and as `STRING_ARRAY` when it is not; an `Option[String]`
- * return value produces no attribute at all for `None` and a `STRING` for
- * `Some`. A backend that infers a schema from the first sample it sees will
- * see that. This is Java-SDK behaviour, byte-identical in `opentelemetry-api`
- * 1.63.0 and 1.64.0; the pure-Scala `otel4s-sdk` backend has not been checked.
+ * value are attached to the span, as `<algebraName>.<methodName>.parameters`
+ * and `.returnValue`. Either attribute is omitted outright when its value
+ * would carry nothing, rather than recorded empty. See this module's README
+ * for the full attribute layout, the omission rule, and how the
+ * `otel4s-oteljava` backend narrows these values on the way out.
  *
  * There is an asymmetry with `TracerWeaveCapturingInputs` worth knowing about.
  * That interpreter encodes nothing under a noop `Tracer`, because
@@ -86,13 +35,9 @@ object TracerWeaveCapturingInputsAndOutputs {
  * disabling tracing does not make it free the way it does for parameters.
  *
  * Also inherited from `TracerInstrumentation`: when a `Throwable` escapes the
- * traced effect, otel4s marks the span as errored on its own.
- * `SpanBuilder`'s default finalization strategy is
- * `SpanFinalizer.Strategy.reportAbnormal`, which records the exception and sets
- * the span status for an error or a cancelation. natchez does no such thing, so
- * a natchez span that fails looks the same as one that succeeded unless
- * something else records the failure. Note that a failed call records no
- * `returnValue` attribute, because there is no return value.
+ * traced effect, otel4s marks the span as errored on its own — see the
+ * README's "Error recording" section. A failed call records no `returnValue`
+ * attribute, because there is no return value.
  *
  * The format of the attribute values is controlled by the `ToAnyValue`
  * typeclass. If a parameter or return value is sensitive, one way to keep the
