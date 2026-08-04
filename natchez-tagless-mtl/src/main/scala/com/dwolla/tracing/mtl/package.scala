@@ -119,11 +119,11 @@ package com.dwolla.tracing
   * `ValidationError` directly — confirmed directly against natchez's own
   * `natchez.mtl.LocalTrace#span`, which calls `attachError` on any exception that
   * escapes a traced call, before `Handle.rescue` ever gets to catch it. That half
-  * of the caveat hasn't changed and isn't fixable from this side; it's upstream.
+  * of the caveat isn't fixable from this side; it's upstream.
   *
-  * What's no longer true: that the domain error is invisible to the trace. By
-  * default, every algebra traced via the `RaiseAspect` path records the typed
-  * error as span fields at the moment of the raise — `raise.error.type` and
+  * The domain error is not, however, invisible to the trace. By default, every
+  * algebra traced via the `RaiseAspect` path records the typed error as span
+  * fields at the moment of the raise — `raise.error.type` and
   * `raise.error.value`, named as `RaiseRecorder.ErrorTypeKey` and
   * `RaiseRecorder.ErrorValueKey` on `com.dwolla.tagless.mtl.RaiseRecorder`'s
   * companion — giving the domain error's runtime class name and its
@@ -170,10 +170,9 @@ package com.dwolla.tracing
   * package's package object. It arrives with
   * `import com.dwolla.tracing.mtl.syntax._` rather than from implicit scope —
   * the same import `traceWithInputs`/`traceWithInputsAndOutputs` already
-  * require, so the normal path is unaffected. What that costs is a bare
+  * require, so the normal path is unaffected. A bare
   * `implicitly[RaiseRecorder[F, TraceableValue]]` with no syntax import in
-  * scope: unlike before this module's split, that summon no longer finds the
-  * default on its own.
+  * scope will not find the default on its own.
   *
   * A hook is also free to match on the value it receives, to record
   * error-specific fields under error-specific keys. The example below doesn't,

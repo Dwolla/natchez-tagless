@@ -6,10 +6,8 @@ import cats.~>
 
 /** The forgetful arrow from a woven value back to the underlying effect.
   *
-  * Before M12 this object also held the pair of capability transports between
-  * `F` and the woven carrier. The fused `RaiseAspect#intercept` never puts a
-  * capability on the woven carrier, so there is nothing left to transport, and
-  * the `Synthetic[Cod]` those transports needed is gone with them.
+  * `RaiseAspect#intercept` never puts a capability on the woven carrier, so
+  * this is the only arrow needed: there is nothing else to transport.
   */
 object WeaveArrows {
 

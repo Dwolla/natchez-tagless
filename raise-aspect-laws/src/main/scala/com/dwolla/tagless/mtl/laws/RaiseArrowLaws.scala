@@ -6,15 +6,12 @@ import cats.mtl.Raise
 
 /** Value-level laws about arrows: L4.
   *
-  * L5, L6a–L6d and L7 lived here until M12. They were laws about
-  * `WeaveArrows.raiseLift`/`raisePull` and the synthesized
-  * `Functor[Aspect.Weave[F, Dom, Cod, *]]`, all of which the fused derivation
-  * deletes: no capability is ever placed on the woven carrier, so there is
-  * nothing to lift, pull, or synthesize a functor for. L7's content survives
-  * as a one-line `eq` assertion in `RaiseAspectSuite` — `RaiseAspect.observing`
-  * sets `functor = R.functor`, so it is true by construction rather than a
-  * property to check. See
-  * `docs/plans/raise-aspect/22-milestone-M12-fused-derivation.md`.
+  * L5–L7 have no value-level content here: the fused derivation never places
+  * a capability on the woven carrier, so there is nothing to lift, pull, or
+  * synthesize a `Functor` for. L7's content survives as a one-line `eq`
+  * assertion in `RaiseAspectSuite` — `RaiseAspect.observing` sets
+  * `functor = R.functor`, true by construction rather than a property to
+  * check. See ARCHAEOLOGY.md for how this module got here.
   */
 object RaiseArrowLaws {
 

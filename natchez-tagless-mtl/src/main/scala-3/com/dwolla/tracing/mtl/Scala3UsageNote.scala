@@ -30,7 +30,7 @@ package com.dwolla.tracing.mtl
   *     }
   *
   *     // The derivation below summons Err[E] (here TraceableValue[ValidationError])
-  *     // per raise parameter at the derivation site first, per Task 6. If no instance
+  *     // per raise parameter at the derivation site first. If no instance
   *     // is available there, resolution falls back to one of validate's own `using`
   *     // parameters, provided its declared type is a subtype of the needed one — no
   *     // derivation, no companion scope, no chaining. Only if neither resolves does

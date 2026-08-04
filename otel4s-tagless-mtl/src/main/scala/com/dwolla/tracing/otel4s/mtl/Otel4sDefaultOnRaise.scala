@@ -12,8 +12,8 @@ import org.typelevel.otel4s.trace.Tracer
   * attributes on the ''current'' span, the direct analogue of natchez's
   * `Trace[F].put`.
   *
-  * '''Why `Tracer[F].currentSpanOrNoop` rather than being handed the span
-  * (D6).''' `OnRaise` resolves independently of the interpreter and fires
+  * '''Why `Tracer[F].currentSpanOrNoop` rather than being handed the span.'''
+  * `OnRaise` resolves independently of the interpreter and fires
   * inside the method body — inside `fa.codomain.target`, which the
   * interpreter does not wrap — so the hook cannot be handed the `Span` the
   * interpreter is holding. `currentSpanOrNoop` is not a shortcut here; it is
@@ -30,11 +30,11 @@ import org.typelevel.otel4s.trace.Tracer
   * `Span#addAttributes` is a macro on Scala 2 and inline on Scala 3, and
   * `Span.Backend#addAttributes` is the sealed method underneath it.
   *
-  * '''Known limitation (D4).''' A method that raises, rescues internally via
+  * '''Known limitation.''' A method that raises, rescues internally via
   * `Handle.allow`, and raises again fires this hook twice against the same
   * span: there is no accumulation across two raises within one method call.
   * The second call always overwrites `raise.error.type`, but it overwrites
-  * `raise.error.value` only when the second error renders non-empty — the D7
+  * `raise.error.value` only when the second error renders non-empty — the
   * omit-when-empty rule below means a second error rendering to
   * `AnyValue.empty` writes no value key, leaving the ''first'' raise's value
   * standing beside the ''second'' raise's type.
@@ -50,7 +50,7 @@ trait Otel4sDefaultOnRaise {
         def apply[E](e: E)(implicit ev: ToAnyValue[E]): F[Unit] = {
           val value: AnyValue = ev.toAnyValue(e)
 
-          // D7: raise.error.value is omitted when it would encode to
+          // raise.error.value is omitted when it would encode to
           // AnyValue.empty, matching the omit-when-empty rule this module
           // already applies to parameters and return values.
           val attributes: Attributes =

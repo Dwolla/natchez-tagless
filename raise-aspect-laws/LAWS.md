@@ -24,17 +24,16 @@ believe a law is wrong, stop and raise it for a human decision.
 | L10 | laziness parity — weaving runs no effects | concrete tests, not a law trait | `RaiseAspectSuite`, two "L10 …" tests, over `EitherT[Eval, TestError, *]` |
 | — | `Serializable` for the typeclass instances | `cats.kernel.laws.discipline.SerializableTests` | `RaiseAspectSuite`, four checkAlls |
 
-**Why L4/L5/L6/L7 each carry an `Err = Trivial` copy.** M10 added an
-`implicit ev: Err[E]` parameter to these value-level laws, which narrows each
-from "for all `E`" to "for all `E` for which `Err[E]` exists" — a strictly
-weaker statement than what M1–M9 established, since `Render` doesn't cover
-every `E`. `cats.tagless.Trivial` has exactly one instance, universal in `E`,
-so instantiating each law again at `Err = Trivial` restores the original
-`∀E` quantifier. The human partner ruled that all seven value-level law
-properties (L4's three, L5's one, L6's two, L7's one) must carry that
-restoration, not just a representative subset — do not "consolidate" them
-away as redundant with the `Render` instantiations; they are the only thing
-proving the laws still hold at their pre-M10 strength.
+**Why L4/L5/L6/L7 each carry an `Err = Trivial` copy.** `Render`, the `Err`
+used elsewhere in this suite, doesn't cover every `E`, so a law parameterized
+by `implicit ev: Err[E]` only holds "for all `E` for which `Err[E]` exists" —
+weaker than the `∀E` these laws are meant to state. `cats.tagless.Trivial`
+has exactly one instance, universal in `E`, so instantiating each law again
+at `Err = Trivial` restores the `∀E` quantifier. All seven value-level law
+properties (L4's three, L5's one, L6's two, L7's one) carry that
+restoration; don't "consolidate" them away as redundant with the `Render`
+instantiations — they are the only thing proving the laws hold at full
+strength.
 
 ## Two things to know before extending this
 
@@ -78,8 +77,8 @@ L9's seam is the same shape, on `ConservativeExtensionSuite.upstream`.
 
 ## Non-vacuity
 
-The suite was checked against four deliberately broken instances during M2 to
-confirm it can fail. Each was caught:
+The suite was checked against four deliberately broken instances to confirm
+it can fail. Each was caught:
 
 | Injected defect | Caught by |
 |---|---|

@@ -20,11 +20,9 @@ trait RaiseFunctorK[Alg[_[_]], Err[_]] extends Serializable {
   * `Aspect.Weave` and `Aspect.Advice` are reused from cats-tagless verbatim so
   * that natchez-tagless's existing `Weave ~> F` interpreters keep working —
   * but a `Weave` here is ''data'' handed to `fk`, never an effect type. That
-  * is the whole point of the operation being fused: no method ever receives a
-  * `Raise[Aspect.Weave[F, Dom, Cod, *], E]`, so nothing ever has to synthesize
-  * a `Functor` for the woven carrier. See
-  * `docs/plans/raise-aspect/22-milestone-M12-fused-derivation.md` for the
-  * defect that design removed.
+  * is the whole point of `weave` and `mapK` being fused into `intercept`: no
+  * method ever receives a `Raise[Aspect.Weave[F, Dom, Cod, *], E]`, so nothing
+  * ever has to synthesize a `Functor` for the woven carrier.
   *
   * There is deliberately no `E` parameter: transport is uniform in the error
   * type, so each method is handled with whatever error types it declares,
