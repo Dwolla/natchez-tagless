@@ -12,7 +12,7 @@ import munit.FunSuite
 import scala.annotation.experimental
 import scala.collection.mutable.ListBuffer
 
-/** The M17 parallel of `natchez-tagless-mtl`'s `TraceableRaiseAspectSpec`: an
+/** The otel4s parallel of `natchez-tagless-mtl`'s `TraceableRaiseAspectSpec`: an
   * algebra that says `derives AnyValueRaiseAspect` and nothing else must
   * produce the same observable result — on both the success and the raise
   * path — as `Foo`'s hand-written `RaiseAspect[Foo, ToAnyValue, ToAnyValue,

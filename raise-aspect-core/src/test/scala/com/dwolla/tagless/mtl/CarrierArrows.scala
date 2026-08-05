@@ -8,12 +8,6 @@ import cats.{Eval, ~>}
 /** A genuine carrier change, for the tests and laws that need a `RaiseArrow`
   * which is not the identity.
   *
-  * Before M12 that role was played by `WeaveArrows.eraseWeave`, an arrow from
-  * the woven carrier back to `F`. Fusion deletes both the arrow and the
-  * carrier, and testing `mapK` only at `RaiseArrow.id` would be a real loss:
-  * L1 and L2 are about composition of arrows, and the identity arrow satisfies
-  * them for reasons that have nothing to do with the derivation.
-  *
   * `Eval` is total, so the pull can transport a `Raise[Lazily, E]` back to
   * `Raise[Result, E]` by running it — the canonical construction of a pull
   * from a `G ~> F`.

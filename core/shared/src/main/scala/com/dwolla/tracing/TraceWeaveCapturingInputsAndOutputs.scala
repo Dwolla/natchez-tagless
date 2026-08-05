@@ -64,8 +64,6 @@ object TraceWeaveCapturingInputsAndOutputs {
  *   object Foo {
  *     import LowPriorityTraceableValueInstances._
  *     implicit val fooTracingAspect: Aspect[Foo, TraceableValue, TraceableValue] = {
- *       // hand-written so this example compiles on 2.12 and 2.13 too; see the
- *       // note below for the Scala 3 one-liner
  *       new Aspect[Foo, TraceableValue, TraceableValue] {
  *         override def weave[F[_]](af: Foo[F]): Foo[Aspect.Weave[F, TraceableValue, TraceableValue, *]] =
  *           new Foo[Aspect.Weave[F, TraceableValue, TraceableValue, *]] {

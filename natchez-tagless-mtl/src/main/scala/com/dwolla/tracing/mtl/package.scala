@@ -26,7 +26,7 @@ package com.dwolla.tracing
   *   import natchez.{Trace, TraceableValue}
   *
   *   sealed trait ValidationError extends Product with Serializable
-  *   final case class TooSmall(i: Int) extends ValidationError
+  *   case class TooSmall(i: Int) extends ValidationError
   *
   *   trait Validator[F[_]] {
   *     // the capability parameter, `Raise[F, ValidationError]`, is the reason

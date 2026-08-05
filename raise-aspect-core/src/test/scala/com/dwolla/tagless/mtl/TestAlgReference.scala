@@ -10,26 +10,13 @@ import cats.~>
   * ==THIS IS A PERMANENT TEST FIXTURE. DO NOT DELETE OR REGENERATE IT.==
   *
   * This instance is the '''differential oracle''' for the derivation macros:
-  * it is written by mechanically following the expansion specification in
-  * `docs/plans/raise-aspect/01-overview-design-and-laws.md` §3.4, exactly as
-  * the M3 (Scala 2) and M4 (Scala 3) macros must generate it. The M2 laws
-  * validate this instance, and both macros must then agree with it
-  * output-for-output. Regenerating it from a macro would make that comparison
-  * circular and worthless.
+  * it is written by mechanically; regenerating it from a macro would make
+  * that comparison circular and worthless.
   *
   * The `Dom`/`Cod` instances are taken as implicit parameters rather than
   * summoned inside, mirroring what a macro expansion resolves at its call site.
   * The `Err` instances — one per error type appearing in a `Raise` parameter of
   * the algebra — arrive the same way, for the same reason.
-  *
-  * M12 fused `weave` and `mapK` into `intercept`, and the oracle's woven
-  * ''content'' did not drift when it did: the `Aspect.Weave`/`Aspect.Advice`
-  * construction, the algebra name, the domain clauses, the advice names and
-  * every `byValue`/`byName` choice below are character for character what the
-  * pre-fusion `weave` built. All that changed is the weave's destination — it
-  * is handed to `fk` instead of returned — and that the capability handed to
-  * the underlying method is now the caller's own `Raise[F, E]`, decorated by
-  * `RaiseAspect.observing`, rather than one pulled back across a carrier.
   */
 object TestAlgReference {
 

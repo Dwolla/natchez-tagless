@@ -7,15 +7,10 @@ import cats.~>
 import com.dwolla.tagless.mtl.{OnRaise, RaiseArrow, RaiseAspect}
 import natchez.TraceableValue
 
-/** The differential reference M13 checks `derives TraceableRaiseAspect`
+/** The differential reference to check `derives TraceableRaiseAspect`
   * against. Deliberately hand-written and macro-free: if this and the derived
   * instance disagree, the disagreement is about the derivation, not about two
   * copies of the same macro output.
-  *
-  * The body follows the fused expansion specification in
-  * `01-overview-design-and-laws.md` §3.4 — build an `Aspect.Weave` as data,
-  * hand it to `fk`, and pass the caller's own `Raise` through decorated with
-  * `RaiseAspect.observing`.
   */
 object HandWrittenBarRaiseAspect {
   val instance: RaiseAspect[Bar, TraceableValue, TraceableValue, TraceableValue] =

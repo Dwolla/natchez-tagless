@@ -28,13 +28,6 @@ object RootSpanProvidingFunctionK {
  *
  *   object Foo {
  *     implicit val fooInstrument: Instrument[Foo] = {
- *       // hand-written so this example compiles on 2.12 and 2.13 too, where
- *       // `derives` does not exist and `Derive` lives in cats-tagless-macros,
- *       // which `core` does not depend on. On Scala 3 the whole instance
- *       // collapses to `trait Foo[F[_]] derives Instrument` — that is
- *       // upstream's own derivation, supplied by
- *       // `object Instrument extends DerivedInstrument`, and needs nothing
- *       // from this library.
  *       new Instrument[Foo] {
  *         override def instrument[F[_]](af: Foo[F]): Foo[Instrumentation[F, *]] =
  *           new Foo[Instrumentation[F, *]] {

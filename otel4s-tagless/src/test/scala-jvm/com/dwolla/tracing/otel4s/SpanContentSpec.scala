@@ -154,11 +154,6 @@ class SpanContentSpec extends CatsEffectSuite {
     }
   }
 
-  // D3, corrected 2026-08-02: the parameters attribute is omitted outright when
-  // the encoded map would have zero entries, rather than recorded holding
-  // `MapValue({})`. ping() takes no parameters, so this is where that rule is
-  // exercised against a real SDK — the span carries the same zero attributes
-  // TracerInstrumentation produces above.
   test("TracerWeaveCapturingInputs records no parameters attribute for a method with no parameters") {
     val counts = new FooCallCounts
 
@@ -169,7 +164,7 @@ class SpanContentSpec extends CatsEffectSuite {
       assertEquals(counts.ping, 1)
       assertEquals(spans.map(_.getName), List("Foo.ping"))
       assertEquals(spans.map(attributesOf(_).size), List(0))
-      assertEquals(spans.map(attributesOf(_)), List(Attributes.empty))
+      assertEquals(spans.map(attributesOf), List(Attributes.empty))
     }
   }
 
@@ -233,20 +228,6 @@ class SpanContentSpec extends CatsEffectSuite {
     }
   }
 
-  // "Introduces a new child span" is the headline claim of all three
-  // interpreters, and the WeaveKnot doctest on
-  // TracerWeaveCapturingInputsAndOutputs promises three spans, the two inner
-  // ones nested inside the outer. Every other span-content case above makes
-  // exactly one span, so none of them observes a parent/child relationship at
-  // all: an interpreter that opened root spans, or a WeaveKnot wiring where
-  // `self.value` escaped the parent's context, would leave them green while
-  // every production trace came out flat. This is that test, and it is also
-  // the module's first executable use of M15's `dependsOn(taglessCore)` edge —
-  // WeaveKnot lives there.
-  //
-  // Asserted on span/parent/trace *ids*. `finishedSpans` reports spans in
-  // completion order, so the children arrive before the parent, and names
-  // alone cannot tell a child from a second root.
   test("WeaveKnot nests each inner call inside the outer call's span") {
     resultAndSpansFrom { implicit tracer =>
       tracedNested.outer("world")

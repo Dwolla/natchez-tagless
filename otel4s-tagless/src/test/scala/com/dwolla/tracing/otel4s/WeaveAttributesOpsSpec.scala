@@ -14,7 +14,7 @@ class WeaveAttributesOpsSpec extends FunSuite {
       Aspect.Advice[Id, ToAnyValue, String]("greet", "hi")
     )
 
-  // The explicit [AnyValue] is the D1 rule in test form: AnyValue.map(...) is
+  // The explicit [AnyValue] is the test here: AnyValue.map(...) is
   // typed at AnyValue.MapValue and KeySelect is invariant, so without a
   // widening somewhere this line does not compile.
   private def expected(entries: (String, AnyValue)*): Attributes =
@@ -42,10 +42,6 @@ class WeaveAttributesOpsSpec extends FunSuite {
     assertEquals(weave.asAttributes.size, 1)
   }
 
-  // D3: within a non-empty map, absence is a kept EmptyValue entry, not a
-  // missing one. This map has two entries (both empty-valued), so it is not
-  // itself empty, and the whole attribute is still recorded — contrast with
-  // the next test, where the map has *zero* entries.
   test("a parameter that encodes to nothing is a kept EmptyValue entry") {
     val weave = weaveOf(List(List(
       Aspect.Advice.byValue[ToAnyValue, Option[String]]("note", None),
@@ -55,10 +51,6 @@ class WeaveAttributesOpsSpec extends FunSuite {
     assertEquals(weave.asAttributes, expected("note" -> AnyValue.empty, "nothing" -> AnyValue.empty))
   }
 
-  // D3, corrected 2026-08-02: a map with *zero* entries is not recorded at
-  // all — the whole `parameters` attribute is omitted, not emitted holding
-  // `MapValue({})`. ToAnyValue itself is unchanged; this is the interpreter
-  // choosing not to spend an attribute slot saying nothing.
   test("a method with no parameters records no `parameters` attribute at all") {
     assertEquals(weaveOf(List(List.empty)).asAttributes, Attributes.empty)
     assertEquals(weaveOf(List.empty).asAttributes, Attributes.empty)

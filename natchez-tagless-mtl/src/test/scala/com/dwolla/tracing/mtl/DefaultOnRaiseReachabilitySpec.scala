@@ -5,7 +5,7 @@ import com.dwolla.tagless.mtl.RaiseRecorder
 import munit.CatsEffectSuite
 import natchez.{Trace, TraceableValue}
 
-/** D2's executable proof: after `RaiseRecorder` moved to `raise-aspect-core`, the
+/** After `RaiseRecorder` moved to `raise-aspect-core`, the
   * natchez default (`NatchezDefaultOnRaise`) is reached lexically — by importing
   * `com.dwolla.tracing.mtl.syntax`, which carries it via the package object — not
   * automatically through implicit scope the way the old `fromTrace` was.
@@ -13,8 +13,7 @@ import natchez.{Trace, TraceableValue}
   * Declared in `com.dwolla.tracing.mtl`, one package up from `.syntax`, on purpose:
   * `RaiseRecorderPrioritySpec` lives *inside* `.syntax`, so it gets the default via
   * ordinary same-package visibility regardless of whether it imports the syntax
-  * package — it can't tell D2's claim apart from "the default is just always
-  * reachable here." This spec sits where a real caller of the library actually
+  * package. This spec sits where a real caller of the library actually
   * would, outside that package, so the import is doing real work rather than
   * being redundant with lexical scope that was already going to supply it.
   *

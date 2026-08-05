@@ -2,16 +2,15 @@ package com.dwolla.tagless.mtl
 package laws
 
 import cats.arrow.FunctionK
+import com.dwolla.tagless.mtl.laws.LawsInstances.*
 import munit.FunSuite
 
-import LawsInstances._
-
-/** Task 6 — the differential oracle.
+/** The differential oracle.
   *
-  * M1's hand-written reference instance is the specification for what the macro
-  * must emit. The M2 laws prove the derived instance is ''correct''; this proves
+  * The handwritten reference instance is the specification for what the macro
+  * must emit. The laws prove the derived instance is ''correct''; this proves
   * it is ''identical'', method by method and argument by argument, which is
-  * stricter: L1–L3 compare behaviour and are blind to metadata drift.
+  * stricter: L1–L3 compare behavior and are blind to metadata drift.
   */
 class DifferentialOracleSpec extends FunSuite {
 

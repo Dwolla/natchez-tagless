@@ -43,17 +43,6 @@ object BadAlgebras {
   trait AliasedCapabilityAlg[F[_]] {
     def m(i: Int)(implicit R: ErrARaise[F]): F[String]
   }
-
-  // An abstract `val` returning `F[A]` is deliberately absent.
-  //
-  // Both our derivation and upstream's skip accessors (`delegateMethods` filters
-  // `!member.asMethod.isAccessor`), so the generated anonymous class omits the
-  // member and compilation fails with the compiler's own
-  // "object creation impossible. Missing implementation for member ... val v".
-  // That is parity with upstream, per overview rule 6, but it cannot be asserted
-  // here: the error is reported by `c.typecheck` *inside* the macro rather than by
-  // the outer typecheck, so `compileErrors` does not observe it and returns "".
-  // Verified manually during M3; see the milestone's Status section.
 }
 
 class DerivationErrorSpec extends FunSuite {

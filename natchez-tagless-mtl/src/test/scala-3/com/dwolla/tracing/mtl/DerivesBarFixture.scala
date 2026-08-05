@@ -6,9 +6,7 @@ import cats.syntax.all.*
 
 import scala.annotation.experimental
 
-/** `Bar`'s twin, declared the way M13 exists to make possible.
-  *
-  * Structurally identical to `Bar` (`BarFixture.scala`) — same parameter, same
+/** Structurally identical to `Bar` (`BarFixture.scala`) — same parameter, same
   * error type, same implementation — so the two can be compared directly and so
   * the expected span history differs from the existing suites' only in the
   * algebra name. It cannot simply reuse `Bar`: `Bar` lives in

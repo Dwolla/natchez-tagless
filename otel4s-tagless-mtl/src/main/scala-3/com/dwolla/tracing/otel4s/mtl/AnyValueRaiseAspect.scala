@@ -111,7 +111,7 @@ object AnyValueRaiseAspect:
     *   import scala.annotation.experimental
     *
     *   sealed trait ValidationError extends Product with Serializable
-    *   final case class TooSmall(i: Int) extends ValidationError
+    *   case class TooSmall(i: Int) extends ValidationError
     *
     *   object ValidationError {
     *     implicit val toAnyValue: ToAnyValue[ValidationError] =

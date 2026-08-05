@@ -9,7 +9,7 @@ import natchez.{Trace, TraceableValue}
 
 import BarError._
 
-/** Task 4's raise/`Handle.allow`/`rescue` round trip, checked on the actual returned
+/** Raise/`Handle.allow`/`rescue` round trip, checked on the actual returned
   * *value* — [[RaiseTraceIntegrationSuite]] checks the span/attribute side of the
   * same scenario, which `InMemory`'s command history can't verify this half of.
   *

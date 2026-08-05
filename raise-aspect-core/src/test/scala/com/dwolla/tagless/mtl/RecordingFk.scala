@@ -28,13 +28,6 @@ object RecordedWeave {
 /** A `Weave ~> F` that records what it is handed and then behaves exactly like
   * `WeaveArrows.codomainTarget`.
   *
-  * After M12 there is no `Alg[Aspect.Weave[F, Dom, Cod, *]]` value for a test
-  * to reach into: `intercept` hands each weave to `fk` and returns `F[A]`.
-  * What the interpreter sees is therefore the entire observable surface of
-  * weaving, and this is how a test sees it. It is strictly ''more'' than the
-  * pre-M12 tests could see, because it pins the order in which weaves arrive;
-  * inspecting a returned value cannot.
-  *
   * `record` lets a test's `OnRaise` hook append to the same log, so one buffer
   * holds both kinds of event in the order they happened.
   */

@@ -8,7 +8,7 @@ import natchez.TraceableValue
 
 import scala.annotation.experimental
 
-/** M14's fixture algebra. Named `Lookup` rather than `Foo`/`Bar` because
+/** Named `Lookup` rather than `Foo`/`Bar` because
   * `ImplicitPrioritizationSpec` already declares top-level `Foo` and `Bar` in
   * this package.
   *
@@ -59,7 +59,7 @@ object HandWrittenLookupAspect:
         new Lookup[G]:
           def get(key: String): G[String] = fk(af.get(key))
 
-/** The point of M14, declared. Structurally identical to `Lookup`, so the two
+/** Structurally identical to `Lookup`, so the two
   * can be compared directly and the expected span history differs only in the
   * algebra name.
   *
