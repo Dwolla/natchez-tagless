@@ -252,7 +252,12 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % catsVersion,
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
+      "io.circe" %%% "circe-core" % "0.14.16",
       "org.scalameta" %%% "munit" % munitVersion % Test,
+      "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
+      "org.typelevel" %%% "cats-laws" % catsVersion % Test,
+      "org.typelevel" %%% "discipline-munit" % disciplineMunitVersion % Test,
+      "io.circe" %%% "circe-testing" % "0.14.16" % Test,
     ),
     libraryDependencies ++= {
       // core-trace dependsOn core-common, which carries AnyValue, Attribute,

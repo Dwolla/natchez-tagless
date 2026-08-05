@@ -79,20 +79,24 @@ of the other backend's syntax first.
 Swapping the import is usually a no-op, but two things record differently
 without a compile error:
 
-- **JSON encoding is not preserved.** `natchez-tagless`'s
-  `nonPrimitiveTraceValueViaJson` (declared in
+- **JSON outranks `Show` in both libraries, but the shape still differs.**
+  `natchez-tagless`'s `nonPrimitiveTraceValueViaJson` (declared in
   `LowPriorityTraceableValueInstances`, which *extends* the trait holding the
   `Show` fallback) prefers a circe `Encoder` over `Show` when both exist —
   `ImplicitPrioritizationSpec` pins exactly that — so a `Money` with both
-  instances traces as `{"cents":150}` under natchez. `ToAnyValue` has no circe
-  fallback at all — only `Show`, as a member of `LowPriorityToAnyValueInstances`
-  which `object ToAnyValue` extends directly, with no import required — so
-  after the import moves, the same call compiles unchanged and records
-  `Money`'s `Show` rendering instead. A type with an `Encoder` and no `Show`
-  fails to compile, which is the loud, easy case; the silent one is a type
-  that has both. Whether a structural `Json => AnyValue` fallback should ship
-  in `ToAnyValue` too is still open — see Q3 in
-  `docs/plans/raise-aspect/30-milestone-M16-otel4s-module.md`.
+  instances traces as the *string* `{"cents":150}` under natchez.
+  `ToAnyValue.encodableToAnyValue` ranks the same way — a type with both now
+  records its `Encoder` rendering here too — but it folds the `Json` into a
+  *structured* `AnyValue` tree rather than a string: the same `Money` traces
+  as `AnyValue.map(Map("cents" -> AnyValue.long(150)))`, not
+  `StringValue("{\"cents\":150}")`. The type that used to be the loud,
+  easy-to-notice case here — an `Encoder` with no `Show` — now compiles fine
+  under both libraries; a type with *neither* instance is the only remaining
+  compile error. What survives as the silent divergence is the shape, not
+  the priority: string under natchez, structured under otel4s, for exactly
+  the types that carry both instances. (This closes Q3 in
+  `docs/plans/raise-aspect/30-milestone-M16-otel4s-module.md`, which asked
+  whether `ToAnyValue` should gain a JSON fallback at all.)
 - **Spans get marked errored that weren't before.** otel4s's `SpanBuilder`
   finalizes with `SpanFinalizer.Strategy.reportAbnormal` by default, so any
   `Throwable` escaping a traced method is recorded as an exception event and
@@ -106,20 +110,20 @@ without a compile error:
   neither your error type nor its value. Either way the domain error itself
   isn't in the trace unless something inspects the `Raise` channel
   explicitly — which is what `otel4s-tagless-mtl`'s `RaiseAspect` support
-  does; see its README. The same JSON-vs-`Show` divergence described above
-  for parameters and return values applies to `raise.error.value` too:
-  `natchez-tagless-mtl` ranks a circe `Encoder` above `Show`, so an error ADT
-  with both traces structurally there; `ToAnyValue` has only the `Show`
-  fallback, so the same ADT compiles unchanged after the import swap and
-  records its `Show` rendering instead.
+  does; see its README. The same string-vs-structured divergence described
+  above for parameters and return values applies to `raise.error.value`
+  too: an error ADT with both an `Encoder` and a `Show` records JSON text
+  under `natchez-tagless-mtl` and a structured `AnyValue` tree here — both
+  now rank the `Encoder` above `Show`, just in different shapes.
 
 ### Other differences worth knowing if you've used natchez-tagless
 
 - `Float` widens to the exact `Double` bit pattern (`0.1f` records as
   `0.10000000149011612`) rather than `_.toString.toDouble`'s prettier but
   value-changing rendering.
-- `BigDecimal` and `BigInt` record as strings via the `Show` fallback; no
-  numeric instance ships.
+- `BigDecimal` and `BigInt` both have circe `Encoder` instances, so they now
+  fold to `AnyValue.long` or `AnyValue.double` (whichever the value's `Json`
+  folds to) via `encodableToAnyValue`, rather than to a string via `Show`.
 - `()` and `None` both encode to `AnyValue.empty` (natchez records the
   strings `"()"` and `"None"`), and a top-level attribute whose value would
   be entirely empty is omitted rather than recorded empty — see the
