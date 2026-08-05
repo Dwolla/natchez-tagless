@@ -3,11 +3,10 @@ package com.dwolla.tagless.mtl
 import cats.tagless.aop.Aspect
 import cats.mtl.Raise
 import cats.syntax.all._
-import munit.FunSuite
 
 import TestError._
 
-class WeaveArrowsSpec extends FunSuite {
+class WeaveArrowsSpec extends munit.CatsEffectSuite {
   private type F[A] = Either[TestError, A]
   private type W[A] = Aspect.Weave[F, Render, Render, A]
 
@@ -39,10 +38,12 @@ class WeaveArrowsSpec extends FunSuite {
     val arrow = CarrierArrows.resultToLazily[Render].andThen(RaiseArrow.id[CarrierArrows.Lazily, Render])
     val err = NegativeInput(-4)
 
-    assertEquals(arrow.fk(5.asRight[TestError]).value.value, 5.asRight[TestError])
-    assertEquals(
-      arrow.pull(Raise[CarrierArrows.Lazily, TestError]).raise[NegativeInput, Int](err),
-      err.asLeft[Int].leftWiden[TestError]
-    )
+    arrow.fk(5.asRight[TestError]).value.map { v =>
+      assertEquals(v, 5.asRight[TestError])
+      assertEquals(
+        arrow.pull(Raise[CarrierArrows.Lazily, TestError]).raise[NegativeInput, Int](err),
+        err.asLeft[Int].leftWiden[TestError]
+      )
+    }
   }
 }
