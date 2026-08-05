@@ -7,10 +7,6 @@ import scala.collection.mutable.ListBuffer
 
 import TestError._
 
-/** The point of M10: the `Err` evidence for the raised error type reaches the
-  * `OnRaise` hook, so a hook can render the error through a type class rather
-  * than falling back to `toString`.
-  */
 class EvidenceThreadingSpec extends FunSuite {
   private type F[A] = Either[TestError, A]
 

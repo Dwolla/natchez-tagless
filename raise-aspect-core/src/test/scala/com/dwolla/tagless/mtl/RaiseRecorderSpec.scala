@@ -42,11 +42,9 @@ class RaiseRecorderSpec extends FunSuite {
   }
 
   test("resolving with both in scope reports no ambiguous implicit") {
-    // The 2.13-only failure D1's spike reproduced — see
-    // docs/plans/raise-aspect/32-milestone-M17-otel4s-tagless-mtl.md, decision D1,
-    // for the four-case x three-version resolution matrix. Guards the shape: if
-    // someone later gives fromDefault a different type-parameter list from
-    // fromOnRaise, this fails on 2.13 and passes on 2.12 and 3.
+    // Guards the shape: if someone later gives fromDefault a different
+    // type-parameter list from fromOnRaise, this fails on 2.13 (and
+    // passes on 2.12 and 3).
     val errors: String = compileErrors(
       """import cats.Id
 implicit val default: DefaultOnRaise[Id, Rendered] = new DefaultOnRaise[Id, Rendered] {

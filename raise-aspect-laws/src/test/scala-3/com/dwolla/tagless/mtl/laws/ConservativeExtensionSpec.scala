@@ -11,8 +11,7 @@ import scala.annotation.experimental
   * `cats.tagless.Derive` is annotated `@experimental` on Scala 3 because its
   * derivation uses `Symbol.newClass`, so this call site must be `@experimental`
   * too. The repo stays on the 3.3.x LTS line, where the `-experimental`
-  * compiler flag does not exist, making the annotation the only option. Our own
-  * `DeriveRaise` will carry the same requirement in M4.
+  * compiler flag does not exist, making the annotation the only option.
   */
 @experimental
 class ConservativeExtensionSpec extends ConservativeExtensionSuite {

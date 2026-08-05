@@ -7,11 +7,8 @@ import munit.FunSuite
 import org.typelevel.otel4s.AnyValue
 import org.typelevel.otel4s.trace.Tracer
 
-/** D1 and D2, made falsifiable, plus the syntax's constraint sets.
-  *
-  * Each `implicitly` here is a compile-time assertion: if the priority ladder
-  * did not work, or if contravariance did not do what the milestone document
-  * claims, the module would not build and this file is where the error lands.
+/** Each `implicitly` here is a compile-time assertion: if the priority ladder
+  * did not work, the module would not build and this file is where the error lands.
   * The last test is the same kind of assertion aimed at the syntax package: the
   * bodies of its local methods are the claim, and the `assertEquals` calls only
   * exist so the methods are used.

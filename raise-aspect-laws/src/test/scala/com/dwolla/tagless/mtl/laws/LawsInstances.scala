@@ -47,13 +47,6 @@ object LawsInstances {
   val raiseResult: Raise[Result, TestError] = Raise[Result, TestError]
 
   /** The non-identity `RaiseArrow` L1/L2 are exercised over.
-    *
-    * Until M12 that role belonged to `WeaveArrows.eraseWeave`, whose source
-    * carrier was the woven one; fusion deletes both the arrow and the carrier.
-    * [[CarrierArrows.resultToLazily]] is a genuine change of effect —
-    * `Either[TestError, *]` to `EitherT[Eval, TestError, *]` — with a real
-    * capability transport in the opposite direction, so `mapK` stays tested at
-    * something other than the identity.
     */
   implicit val arbResultToLazily: Arbitrary[RaiseArrow[Result, Lazily, Render]] =
     Arbitrary(Gen.const(CarrierArrows.resultToLazily[Render]))

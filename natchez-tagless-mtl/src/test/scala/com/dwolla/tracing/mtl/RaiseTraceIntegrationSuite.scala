@@ -14,9 +14,9 @@ import natchez.InMemory.{Lineage, NatchezCommand}
 import natchez.TraceValue.{NumberValue, StringValue}
 import natchez._
 
-/** Task 4 — the end-to-end integration test.
+/** The end-to-end integration test
   *
-  * `Bar` has a method-level `Raise` capability, like the M1–M4 fixtures. This suite
+  * `Bar` has a method-level `Raise` capability. This suite
   * checks span naming, input/output attribute capture, and capability erasure
   * through the actual natchez `InMemory` backend; [[RaiseTraceValueSpec]] separately
   * checks the raise/`Handle.allow`/`rescue` round trip's actual *value*, which
@@ -27,11 +27,11 @@ import natchez._
   * at their own, version-appropriate call site (the Scala 3 one needs `@experimental`).
   *
   * `barRaiseAspectTrivialCod` supplies the same derivation at `Cod = Trivial`, so
-  * `traceWithInputs[Trivial]` (M11) has a `RaiseAspect[Bar, TraceableValue, Trivial,
-  * TraceableValue]` to resolve `WeaveInterpreter.fromRaiseAspect` against, exercising
+  * `traceWithInputs[Trivial]` has a `RaiseAspect[Bar, TraceableValue, Trivial, TraceableValue]`
+  * to resolve `WeaveInterpreter.fromRaiseAspect` against, exercising
   * that resolution at a `Cod` other than `Err`.
   *
-  * '''This suite has a twin.''' `DerivesBarTracingSpec` (Scala 3 only, M13) holds a
+  * '''This suite has a twin.''' `DerivesBarTracingSpec` (Scala 3 only) holds a
   * verbatim copy of [[raisingProgram]], [[raisingProgramHistory]] and
   * [[assertRaisingHistory]] with `DerivesBar` in place of `Bar`, because those
   * members are `private` here and this class is not abstracted over the algebra.
@@ -88,7 +88,7 @@ abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
   }
 
   /** Same raising program as [[raisingProgram]], but woven through
-    * `traceWithInputs[Trivial]` (M11) instead of `traceWithInputsAndOutputs` —
+    * `traceWithInputs[Trivial]` instead of `traceWithInputsAndOutputs` —
     * fixing `Cod` to `Trivial` opts the woven algebra out of return-value
     * rendering, per `RaiseTraceWeaveOps#traceWithInputs`'s scaladoc.
     */
@@ -110,20 +110,11 @@ abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
 
   /** The raise path's history minus its `AttachError` entry: the input `Put` runs
     * before the codomain target raises, so there is no `Put` for the return value —
-    * but M6's `RaiseRecorder` default now records the typed error itself as a second
+    * but the `RaiseRecorder` default now records the typed error itself as a second
     * `Put`, sequenced (per `RaiseAspect.observing`) before the raise actually
     * happens. Both variants below additionally record an `AttachError` for the
     * escaping `Submarine` exception, between that `Put` and `ReleaseSpan`;
     * [[assertRaisingHistory]] checks that entry structurally and this list around it.
-    *
-    * `natchez.mtl.LocalTrace#span` calls `s.attachError(err)` in an `.onError`
-    * handler whenever the traced body raises — confirmed by reading its source —
-    * so a `Handle.rescue`d raise is still attached to the span as an error before
-    * being caught, exactly as the milestone's Submarine caveat anticipates: the
-    * attached error is cats-mtl's opaque `Submarine` wrapper, not `BarError`
-    * directly, so span error annotations for a recovered domain error carry only
-    * that the raise happened, not what it was — the `RaiseRecorder`-derived `Put`
-    * is what carries the typed error, under its own `raise.*` key prefix.
     */
   private val raisingProgramHistory: List[(Lineage, NatchezCommand)] = List(
     Root -> CreateRootSpan("test", Kernel(Map.empty), Span.Options.Defaults),

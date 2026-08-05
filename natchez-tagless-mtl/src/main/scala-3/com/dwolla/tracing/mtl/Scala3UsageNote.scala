@@ -16,7 +16,7 @@ package com.dwolla.tracing.mtl
   *   import scala.annotation.experimental
   *
   *   sealed trait ValidationError extends Product with Serializable
-  *   final case class TooSmall(i: Int) extends ValidationError
+  *   case class TooSmall(i: Int) extends ValidationError
   *
   *   trait Validator[F[_]] {
   *     def validate(i: Int)(using R: Raise[F, ValidationError]): F[String]
@@ -36,7 +36,7 @@ package com.dwolla.tracing.mtl
   *     // derivation, no companion scope, no chaining. Only if neither resolves does
   *     // the derivation fail, with a diagnostic naming the method and the missing
   *     // error type.
-  *     implicit val traceableValueValidationError: TraceableValue[ValidationError] =
+  *     given TraceableValue[ValidationError] =
   *       new TraceableValue[ValidationError] {
   *         def toTraceValue(a: ValidationError): TraceValue = a match {
   *           case TooSmall(i) => TraceValue.StringValue("too small: " + i.toString)
@@ -45,7 +45,7 @@ package com.dwolla.tracing.mtl
   *
   *     // One instance serves every F: intercept/mapK are separately polymorphic per call.
   *     @experimental
-  *     implicit val raiseAspect: RaiseAspect[Validator, TraceableValue, TraceableValue, TraceableValue] =
+  *     given RaiseAspect[Validator, TraceableValue, TraceableValue, TraceableValue] =
   *       DeriveRaise.aspect[Validator, TraceableValue, TraceableValue, TraceableValue]
   *   }
   * }}}

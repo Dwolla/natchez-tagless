@@ -2,7 +2,7 @@ package com.dwolla.tagless.mtl
 
 import cats.mtl.Raise
 
-/** The error hierarchy for the M1/M2 fixtures.
+/** The error hierarchy for the test fixtures.
   *
   * `ErrA` and `ErrB` are distinct branches under a single `TestError`, so that
   * `Either[TestError, *]` can carry both. Because cats-mtl's `Raise[F, -E]` is
@@ -46,10 +46,9 @@ object Render {
   implicit val renderTestError: Render[TestError] = (a: TestError) => s"testError:$a"
 }
 
-/** The fixture algebra. Shapes are fixed by milestone M1 and M2 depends on them
-  * exactly: a capability with a strict parameter, a by-name parameter with a
-  * different error type, a capability-free method, multiple parameter lists,
-  * and two capabilities on one method.
+/** The fixture algebra. Shapes are fixed: a capability with a strict parameter,
+  * a by-name parameter with a different error type, a capability-free method,
+  * multiple parameter lists, and two capabilities on one method.
   */
 trait TestAlg[F[_]] {
   def a(i: Int)(implicit R: Raise[F, ErrA]): F[String]
@@ -59,7 +58,7 @@ trait TestAlg[F[_]] {
   def e(implicit R1: Raise[F, ErrA], R2: Raise[F, ErrB]): F[Unit]
 }
 
-/** Capability-free algebra, used by law L9 (conservative extension) in M2. */
+/** Capability-free algebra, used by law L9 (conservative extension). */
 trait PlainAlg[F[_]] {
   def p(i: Int): F[String]
 }

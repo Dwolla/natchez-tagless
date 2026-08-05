@@ -5,14 +5,13 @@ import cats.Apply
 import cats.tagless.aop.Aspect
 import cats.~>
 
-/** The hand-written `RaiseAspect[PlainAlg, Dom, Cod]`, written by following the
-  * same §3.4 expansion spec as M1's `TestAlgReference`.
+/** The hand-written `RaiseAspect[PlainAlg, Dom, Cod]`.
   *
   * `PlainAlg` has no capability parameters, so this is the instance law L9
   * compares against upstream `cats.tagless.Derive.aspect` to show our
   * derivation is a conservative extension of theirs.
   *
-  * Like the M1 reference instance, this is a permanent fixture — do not delete
+  * Like the other reference instances, this is a permanent fixture — do not delete
   * or regenerate it from a macro.
   */
 object PlainAlgReference {

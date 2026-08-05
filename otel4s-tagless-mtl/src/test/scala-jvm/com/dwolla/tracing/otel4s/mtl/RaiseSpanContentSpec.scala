@@ -82,11 +82,10 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
     }
   }
 
-  // D6's proof, and the single most likely thing in M17 to be wrong. The hook
-  // reaches its span through `Tracer[F].currentSpanOrNoop`, which is only the
-  // method's own span if `SpanOps#use` has made it current for the body. If it
-  // has not, `currentSpanOrNoop` returns whatever *was* current — here the
-  // outer span — and the attributes land one level up.
+  // The hook reaches its span through `Tracer[F].currentSpanOrNoop`, which is only
+  // the method's own span if `SpanOps#use` has made it current for the body. If it
+  // has not, `currentSpanOrNoop` returns whatever *was* current — here the outer
+  // span — and the attributes land one level up.
   //
   // Asserted in both directions on purpose: that the child carries them, and
   // that the parent carries none. Either half alone passes under the failure
@@ -124,9 +123,6 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
     }
   }
 
-  // D7: raise.error.value is omitted when the error renders to AnyValue.empty,
-  // matching the omit-when-empty rule the module already applies to parameters
-  // and return values. raise.error.type is recorded regardless.
   test("an error rendering to AnyValue.empty records the type and no value") {
     resultAndSpansFrom { implicit tracer =>
       Handle.allowF[IO, QuietError] { implicit h =>
@@ -211,7 +207,7 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
   }
 }
 
-/** An error whose `ToAnyValue` rendering is `AnyValue.empty`, so D7's omission
+/** An error whose `ToAnyValue` rendering is `AnyValue.empty`, so our omission
   * rule can be exercised through the full tracing path rather than against the
   * hook in isolation.
   *

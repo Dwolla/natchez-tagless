@@ -12,9 +12,8 @@ import natchez.*
 
 import scala.annotation.experimental
 
-/** The point of M14, stated as a test: an algebra that says
-  * `derives TraceableAspect` and nothing else traces exactly as one with a
-  * hand-declared `Aspect` does.
+/** An algebra that says `derives TraceableAspect` and nothing else traces
+  * exactly as one with a hand-declared `Aspect` does.
   *
   * The `DerivesLookup` half mentions no `Derive`, declares no instance and
   * names no `Aspect`; the `Lookup` half is the hand-written control, so it

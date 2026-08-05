@@ -17,7 +17,7 @@ package com.dwolla.tracing.otel4s.mtl
   *   import scala.annotation.experimental
   *
   *   sealed trait ValidationError extends Product with Serializable
-  *   final case class TooSmall(i: Int) extends ValidationError
+  *   case class TooSmall(i: Int) extends ValidationError
   *
   *   trait Validator[F[_]] {
   *     def validate(i: Int)(using R: Raise[F, ValidationError]): F[String]
@@ -37,14 +37,14 @@ package com.dwolla.tracing.otel4s.mtl
   *     // a subtype of the needed one — no derivation, no companion scope, no
   *     // chaining. Only if neither resolves does the derivation fail, with a
   *     // diagnostic naming the method and the missing error type.
-  *     implicit val toAnyValueValidationError: ToAnyValue[ValidationError] =
+  *     given ToAnyValue[ValidationError] =
   *       ToAnyValue.instance {
   *         case TooSmall(i) => AnyValue.string("too small: " + i.toString)
   *       }
   *
   *     // One instance serves every F: intercept/mapK are separately polymorphic per call.
   *     @experimental
-  *     implicit val raiseAspect: RaiseAspect[Validator, ToAnyValue, ToAnyValue, ToAnyValue] =
+  *     given RaiseAspect[Validator, ToAnyValue, ToAnyValue, ToAnyValue] =
   *       DeriveRaise.aspect[Validator, ToAnyValue, ToAnyValue, ToAnyValue]
   *   }
   * }}}

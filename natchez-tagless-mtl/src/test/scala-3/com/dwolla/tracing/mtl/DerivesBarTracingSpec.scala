@@ -15,9 +15,8 @@ import natchez.*
 
 import scala.annotation.experimental
 
-/** The point of M13, stated as a test: an algebra that says
-  * `derives TraceableRaiseAspect` and nothing else traces exactly as one with a
-  * hand-declared instance does.
+/** An algebra that says `derives TraceableRaiseAspect` and nothing else traces
+  * exactly as one with a hand-declared instance does.
   *
   * Nothing here imports `DeriveRaise`, declares an instance, or mentions
   * `RaiseAspect`. The only difference from `RaiseTraceIntegrationSuite` is how

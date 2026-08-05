@@ -5,24 +5,15 @@ import cats.Eval
 import cats.data.EitherT
 import cats.kernel.laws.discipline.SerializableTests
 import cats.mtl.Raise
-import cats.syntax.all._
+import cats.syntax.all.*
 import cats.tagless.Trivial
-import laws.discipline.RaiseAspectTests
+import com.dwolla.tagless.mtl.TestError.*
+import com.dwolla.tagless.mtl.laws.LawsInstances.*
+import com.dwolla.tagless.mtl.laws.discipline.RaiseAspectTests
 import munit.DisciplineSuite
 import org.scalacheck.{Arbitrary, Gen}
 
-import LawsInstances._
-import TestError._
-
-/** The complete law suite for a `RaiseAspect[TestAlg, Render, Render, Render]`.
-  *
-  * ==This is the substitution seam.==
-  *
-  * The instance under test is abstract. M2 runs it against M1's hand-written
-  * reference instance ([[ReferenceRaiseAspectSpec]]); M3 and M4 re-run this
-  * same suite wholesale by extending it and supplying a macro-derived instance
-  * instead. Nothing below may be weakened to make a derived instance pass — a
-  * failure here is a finding about the derivation, not about the laws.
+/** The complete law test suite for a `RaiseAspect[TestAlg, Render, Render, Render]`.
   */
 abstract class RaiseAspectSuite extends DisciplineSuite {
 
@@ -97,11 +88,6 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
     }
   }
 
-  // L7 used to be an extensional property about the functor `raisePull`
-  // synthesized for the woven carrier. The fused derivation never puts a
-  // capability on that carrier: `RaiseAspect.observing` decorates the caller's
-  // own `Raise[F, E]` and takes `functor` straight off it. What was a property
-  // to check is now an identity to assert.
   test("L7 the decorated capability reports the caller's own Functor instance") {
     val caller = raiseResult
     val decorated = RaiseAspect.observing[Result, TestError, Render](caller, OnRaise.noop[Result, Render])
@@ -113,16 +99,13 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
   // `arrowCoherence` takes `implicit ev: Err[E]`, which narrows it from "for
   // all E" to "for all E for which Err[E] exists". `Trivial`'s instance is
   // universal, so instantiating at `Err = Trivial` restores the original
-  // quantifier. The `Render` instantiations above cover the evidence-carrying
-  // path; this one covers the strength the law had before M10.
+  // quantifier. (The `Render` instantiations above cover the evidence-carrying
+  // path.)
   //
   // It must run over a ''non-identity'' arrow to say anything at all: at
   // `RaiseArrow.id` the law reduces to `FunctionK.id(rg.raise(e)) <-> rg.raise(e)`,
   // the same expression on both sides, which holds for every instance and would
-  // still hold if the derivation were `???`. Before M12 this slot ran over
-  // `eraseWeave`, which was parametric in `Err`; `CarrierArrows.resultToLazily`
-  // is parametric for the same reason — its pull never consults the evidence —
-  // so it fills the slot with the same strength.
+  // still hold if the derivation were `???`.
   property("L4 arrow coherence for the carrier-change arrow, at Err = Trivial") {
     forAllErrors { e =>
       val law = RaiseArrowLaws.arrowCoherence[Result, Lazily, Trivial, TestError, Int](
@@ -133,14 +116,6 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
       assertEquals(law.lhs.value.value, law.rhs.value.value)
     }
   }
-
-  // ------------------------------------------ L8 weave structure fidelity
-
-  // After M12 there is no `Alg[Weave[…]]` value to reach into: `intercept`
-  // hands each weave to `fk` and returns `F[A]`. What the interpreter receives
-  // is therefore the whole observable surface of weaving, and these tests read
-  // it off a recorder — which additionally pins arrival order, something
-  // inspecting a returned value could not do.
 
   test("L8 the interpreter receives one weave per call, naming the algebra and the method") {
     val (w, recorder) = LawsInstances.instrumented(instance, 0)

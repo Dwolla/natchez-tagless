@@ -5,9 +5,6 @@ import cats.mtl.Raise
 import cats.syntax.all._
 import natchez.{TraceValue, TraceableValue}
 
-/** Task 4's fixture algebra: a method-level `Raise` capability, in a shape the
-  * macro derives (M3/M4) and this milestone traces.
-  */
 sealed trait BarError extends Product with Serializable
 
 object BarError {
