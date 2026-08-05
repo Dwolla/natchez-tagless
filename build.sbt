@@ -23,6 +23,7 @@ ThisBuild / mergifyStewardConfig ~= { _.map {
 ThisBuild / resolvers += Resolver.sonatypeCentralSnapshots
 
 val catsVersion = "2.13.0"
+val catsEffectVersion = "3.7.0"
 val catsMtlVersion = "1.7.0"
 val catsTaglessVersion = "0.16.5"
 val disciplineMunitVersion = "2.0.0"
@@ -127,6 +128,8 @@ lazy val raiseAspectCore = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-core" % catsVersion,
       "org.typelevel" %%% "cats-mtl" % catsMtlVersion,
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
+      "org.typelevel" %%% "cats-effect" % catsEffectVersion % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
       "org.scalameta" %%% "munit" % munitVersion % Test,
       "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
     ),
@@ -152,6 +155,9 @@ lazy val raiseAspectLaws = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-laws" % catsVersion,
       "org.typelevel" %%% "discipline-munit" % disciplineMunitVersion,
+      "org.typelevel" %%% "cats-effect" % catsEffectVersion % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % catsEffectVersion % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
     ),
     // law L9 compares our derivation against upstream's on capability-free
     // algebras. On Scala 2 that lives in cats-tagless-macros; on Scala 3 it is
@@ -175,6 +181,10 @@ lazy val raiseAspectMacros = crossProject(JVMPlatform, JSPlatform)
         Seq("scala-compiler", "scala-reflect").map("org.scala-lang" % _ % scalaVersion.value % Provided)
       else Seq.empty
     },
+    libraryDependencies ++= Seq(
+      "org.typelevel" %%% "cats-effect" % catsEffectVersion % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+    ),
     // A macro bundle manipulates trees the compiler cannot see through, which
     // provokes spurious unused warnings. Upstream cats-tagless drops the same
     // options in its macros module.

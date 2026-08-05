@@ -1,9 +1,9 @@
 package com.dwolla.tagless.mtl
 
+import cats.*
+import cats.effect.*
+import cats.syntax.all.*
 import cats.tagless.aop.Aspect
-import cats.~>
-
-import scala.collection.mutable.ListBuffer
 
 /** One `Aspect.Weave` as the interpreter received it.
   *
@@ -25,15 +25,22 @@ object RecordedWeave {
     }
 }
 
+object RecordingFk {
+  def apply[F[_] : Sync, Dom[_], Cod[_]]: F[RecordingFk[F, Dom, Cod]] =
+    (
+      Ref.of[F, Vector[RecordedWeave[F, Dom, Cod]]](Vector.empty),
+      Ref.of[F, Vector[String]](Vector.empty)
+    ).mapN(new RecordingFk[F, Dom, Cod](_, _))
+}
+
 /** A `Weave ~> F` that records what it is handed and then behaves exactly like
   * `WeaveArrows.codomainTarget`.
   *
   * `record` lets a test's `OnRaise` hook append to the same log, so one buffer
   * holds both kinds of event in the order they happened.
   */
-final class RecordingFk[F[_], Dom[_], Cod[_]] {
-  private val recorded = ListBuffer.empty[RecordedWeave[F, Dom, Cod]]
-  private val log = ListBuffer.empty[String]
+final class RecordingFk[F[_] : Monad, Dom[_], Cod[_]](recorded: Ref[F, Vector[RecordedWeave[F, Dom, Cod]]],
+                                              log: Ref[F, Vector[String]]) {
 
   val fk: Aspect.Weave[F, Dom, Cod, *] ~> F =
     new (Aspect.Weave[F, Dom, Cod, *] ~> F) {
@@ -41,17 +48,17 @@ final class RecordingFk[F[_], Dom[_], Cod[_]] {
       // value name, so only one `val _` may appear per block. These are method
       // calls, not pure expressions, so they warn under neither axis.
       def apply[A](w: Aspect.Weave[F, Dom, Cod, A]): F[A] = {
-        recorded += RecordedWeave(w)
-        log += s"weave:${w.algebraName}.${w.codomain.name}"
-        w.codomain.target
+        for {
+          _ <- recorded.update(_ :+ RecordedWeave(w))
+          _ <- log.update(_ :+ s"weave:${w.algebraName}.${w.codomain.name}")
+          a <- w.codomain.target
+        } yield a
       }
     }
 
-  def record(event: String): Unit = {
-    val _ = log += event
-  }
+  def record(event: String): F[Unit] = log.update(_ :+ event)
 
-  def weaves: List[RecordedWeave[F, Dom, Cod]] = recorded.toList
+  def weaves: F[Vector[RecordedWeave[F, Dom, Cod]]] = recorded.get
 
-  def events: List[String] = log.toList
+  def events: F[Vector[String]] = log.get
 }
