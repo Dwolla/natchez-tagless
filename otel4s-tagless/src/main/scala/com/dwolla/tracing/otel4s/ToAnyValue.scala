@@ -1,8 +1,10 @@
 package com.dwolla.tracing.otel4s
 
-import cats.Show
-import cats.syntax.all._
+import cats.*
+import cats.syntax.all.*
+import io.circe.{Encoder, Json, JsonNumber, JsonObject}
 import org.typelevel.otel4s.AnyValue
+import org.typelevel.scalaccompat.annotation.nowarn213
 
 /** Converts a value of type `A` into an otel4s `AnyValue`, OpenTelemetry's
   * recursive "any" type: a primitive leaf, a sequence, or a key-value map.
@@ -50,18 +52,26 @@ import org.typelevel.otel4s.AnyValue
   * heterogeneous one stay structured.
   *
   * '''A type with no instance is a compile error''' at the point the `Aspect`
-  * is derived. In practice the `Show` fallback means nearly everything has one,
-  * so the likelier failure is silence: a domain type records its `Show`
-  * rendering when a structured value was wanted. Write the instance you want
-  * and it wins, because the companion's own instances outrank the fallback.
+  * is derived. In practice the `Encoder`-then-`Show` fallback chain means
+  * nearly everything has one, so the likelier failure is silence: a domain
+  * type records its JSON, or failing that its `Show` rendering, when a
+  * hand-written encoding was wanted. Write the instance you want and it wins,
+  * because the companion's own instances outrank both fallbacks.
   *
   * {{{
   *   import com.dwolla.tracing.otel4s.ToAnyValue
   *   import org.typelevel.otel4s.AnyValue
   *
-  *   // BigDecimal and BigInt ship no instance of their own, so they reach the
-  *   // Show fallback and record as strings. This is the silent case above.
-  *   val viaShow: AnyValue = ToAnyValue[BigDecimal].toAnyValue(BigDecimal("1.50"))
+  *   // BigDecimal and BigInt have a circe Encoder, so they resolve through
+  *   // encodableToAnyValue and record as numbers, not through the Show
+  *   // fallback below.
+  *   val viaEncoder: AnyValue = ToAnyValue[BigDecimal].toAnyValue(BigDecimal("1.50"))
+  *
+  *   // A type with only a Show instance still falls back to its rendering.
+  *   case class Distance(meters: Int)
+  *   implicit val distanceShow: cats.Show[Distance] = cats.Show.show(d => d.meters.toString + "m")
+  *
+  *   val viaShow: AnyValue = ToAnyValue[Distance].toAnyValue(Distance(5))
   *
   *   // A hand-written instance is how a sensitive or badly-Shown type is kept
   *   // out of the trace, and it outranks the fallback. `instance` exists so
@@ -140,15 +150,76 @@ object ToAnyValue extends LowPriorityToAnyValueInstances {
 
   implicit def mapToAnyValue[A](implicit ev: ToAnyValue[A]): ToAnyValue[Map[String, A]] =
     instance[Map[String, A]](m => AnyValue.map(m.map { case (k, v) => k -> ev.toAnyValue(v) }))
+
+  /** Concatenates rather than nests, which is what makes this lawful.
+   * `ContravariantSemigroupal`'s associativity law demands that
+   * `product(fa, product(fb, fc))` and `product(product(fa, fb), fc)`
+   * describe the same `(A, B, C)` once both sides are reassociated via
+   * `contramap`. Nesting each pair inside a fresh two-element `SeqValue`
+   * would put `fc`'s encoding at a different depth on each side — not
+   * equal. Flattening one level of `SeqValue` before re-wrapping makes
+   * the combination associative regardless of how the tupling nested,
+   * at a real cost: a component whose own `ToAnyValue` already produces
+   * a `SeqValue` (the generic `seqToAnyValue` instance, for example) is
+   * absorbed into the pair's sequence rather than appearing as a nested
+   * element one level down. `product` is therefore not safe to reach for
+   * across a component you need to keep intact as its own nested `Seq`.
+   */
+  @nowarn213("msg=Calls to parameterless method compose will be easy to mistake for calls to overloads which have a single implicit parameter list.")
+  implicit val toAnyValueContravariantSemigroupalK: ContravariantSemigroupal[ToAnyValue] & SemigroupK[ToAnyValue] = new ContravariantSemigroupal[ToAnyValue] with SemigroupK[ToAnyValue] {
+    private def flattened(v: AnyValue): Seq[AnyValue] = v match {
+      case s: AnyValue.SeqValue => s.value
+      case other => Seq(other)
+    }
+
+    override def combineK[A](x: ToAnyValue[A], y: ToAnyValue[A]): ToAnyValue[A] =
+      instance[A] { a =>
+        AnyValue.seq(flattened(x.toAnyValue(a)) ++ flattened(y.toAnyValue(a)))
+      }
+
+    override def contramap[A, B](fa: ToAnyValue[A])(f: B => A): ToAnyValue[B] = b => fa.toAnyValue(f(b))
+
+    override def product[A, B](fa: ToAnyValue[A], fb: ToAnyValue[B]): ToAnyValue[(A, B)] =
+      instance[(A, B)] { case (a, b) =>
+
+        AnyValue.seq(flattened(fa.toAnyValue(a)) ++ flattened(fb.toAnyValue(b)))
+      }
+  }
+
+  private[otel4s] val jsonToAnyValue: Json.Folder[AnyValue] = new Json.Folder[AnyValue] {
+    override def onNull: AnyValue = AnyValue.empty
+    override def onBoolean(value: Boolean): AnyValue = AnyValue.boolean(value)
+    override def onNumber(value: JsonNumber): AnyValue = value.toLong match {
+      case Some(l) => AnyValue.long(l)
+      case None => AnyValue.double(value.toDouble)
+    }
+    override def onString(value: String): AnyValue = AnyValue.string(value)
+    override def onArray(value: Vector[Json]): AnyValue = AnyValue.seq(value.map(_.foldWith(this)))
+    override def onObject(value: JsonObject): AnyValue =
+      AnyValue.map(value.toIterable.map { case (k, v) => k -> v.foldWith(this) }.toMap)
+  }
 }
 
-/** The fallback, at lower implicit priority than everything in the companion's
-  * own body — which is why this type class needs none of the `NotGiven`
-  * ambiguity guards `com.dwolla.tracing.ToTraceValue` carries. Those exist
-  * because natchez's primitive instances live in an upstream companion at the
-  * same priority as the fallback; ours live one rung up, in a companion we own.
+/** Neither fallback below needs the `NotGiven` ambiguity guards
+  * `com.dwolla.tracing.ToTraceValue` carries: those exist because natchez's
+  * primitive instances live in an upstream companion at the same priority as
+  * its fallbacks, while every instance here — primitives, `Contravariant`,
+  * and both fallbacks — lives in a companion this module owns, ranked
+  * unambiguously by how many `extends` hops separate it from `object
+  * ToAnyValue`.
   */
-trait LowPriorityToAnyValueInstances {
+trait LowPriorityToAnyValueInstances extends LowestPriorityToAnyValueInstances {
+
+  /** Derives a `ToAnyValue[A]` from a circe `Encoder[A]`, ranked above the
+    * `Show` fallback in `LowestPriorityToAnyValueInstances`: a type with
+    * both records its JSON, matching `natchez.TraceableValue`'s own priority
+    * between the two fallbacks (see ARCHAEOLOGY.md).
+    */
+  implicit def encodableToAnyValue[A: Encoder]: ToAnyValue[A] =
+    ToAnyValue.instance[A](a => Encoder[A].apply(a).foldWith(ToAnyValue.jsonToAnyValue))
+}
+
+trait LowestPriorityToAnyValueInstances {
   implicit def showToAnyValue[A: Show]: ToAnyValue[A] =
     ToAnyValue.instance[A](a => AnyValue.string(a.show))
 }

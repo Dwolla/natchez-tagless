@@ -3,15 +3,13 @@
 otel4s versions of `natchez-tagless`'s three tracing interpreters, in package
 `com.dwolla.tracing.otel4s`, with syntax in `com.dwolla.tracing.otel4s.syntax`.
 
-This module depends on `otel4s-core-trace`, cats, cats-tagless and
+This module depends on `otel4s-core-trace`, cats, cats-tagless, circe-core and
 `tagless-core` — it must never depend on natchez.
 
 ## What is here
 
 `TracerInstrumentation`, `TracerWeaveCapturingInputs`,
-`TracerWeaveCapturingInputsAndOutputs`, and the `ToAnyValue` type class. See
-ARCHAEOLOGY.md for how these map onto `natchez-tagless`'s interpreters if
-you're coming from there.
+`TracerWeaveCapturingInputsAndOutputs`, and the `ToAnyValue` type class.
 
 ## What is not here, deliberately
 
@@ -20,13 +18,6 @@ you're coming from there.
   — see the section at the end of this file. This module stays plain-`Aspect`
   only, so a user who does not take `Raise` parameters pays for neither
   cats-mtl nor `raise-aspect-core`.
-- **Nothing `Resource`-shaped.** No `TraceResourceAcquisition`, no
-  `ResourceInitializationSpanOps`, no `TraceResourceLifecycleOps`. otel4s's
-  `SpanOps.resource` deliberately does not propagate span context into the
-  resource's `use` block (you have to route through `res.trace: F ~> F`), a
-  different ergonomic problem than `natchez.Trace#spanR` solves.
-- **No `EntryPoint` analogue.** otel4s has no `EntryPoint` and no
-  `natchez.Span`-in-`Kleisli` idiom.
 
 ## Where a `Tracer[F]` comes from
 
@@ -59,7 +50,7 @@ rejects duplicate parameter names within a signature, including across
 parameter lists.
 
 **`parameters` is a real OTLP `kvlistValue`, not a JSON string.** It reaches the
-wire as nested `kvlistValue`/`arrayValue`/`intValue`/… , and on the
+wire as nested `kvlistValue`/`arrayValue`/`intValue`/…, and on the
 `otel4s-oteljava` backend it is an `io.opentelemetry.api.common.KeyValueList`
 whose entries are typed `Value`s. The JSON-looking text you may see in a log is
 `Value.asString`, never the storage.
@@ -177,10 +168,12 @@ unrelated to either package and no mention of the ambiguity at all. If a
 method that plainly exists reports as missing on Scala 3, check for a stray
 import of the other backend's syntax first.
 
-There is no circe-based fallback in `ToAnyValue` — only the `Show` one. If you
-want a structured attribute for a type that has a circe `Encoder`, write the
-`ToAnyValue` instance yourself; it lives in your type's companion and
-outranks the `Show` fallback.
+A type with a circe `Encoder` resolves through `encodableToAnyValue`, ranked
+above the `Show` fallback: its `Json` is folded into a structured `AnyValue`
+tree — a `JsonObject` becomes an `AnyValue.map`, a JSON array an
+`AnyValue.seq`, and so on — not a JSON string. Only a type with neither an
+`Encoder` nor a `Show` fails to resolve. Write your own instance to override
+either fallback; it lives in your type's companion and outranks both.
 
 The `Float` widening (`ToAnyValue[Float]`) is exact in the IEEE-754 sense and
 inexact-looking in print — `0.1f` records as `0.10000000149011612`. The
