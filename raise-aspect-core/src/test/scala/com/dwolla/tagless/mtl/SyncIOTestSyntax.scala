@@ -2,7 +2,6 @@ package com.dwolla.tagless.mtl
 
 import cats.data.EitherT
 import cats.effect.SyncIO
-import cats.syntax.all._
 
 /** Every migrated test body ends up with a `Lazily[Unit]` (or
   * `EitherT[SyncIO, WidgetError, Unit]`) describing the whole test —
