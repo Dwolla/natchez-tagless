@@ -137,6 +137,12 @@ class EdgeCaseDerivationSpec extends CatsEffectSuite:
       _ = assertEquals(out2, "constant")
       // reading the val again replays the same weave rather than building a new one
       _ = assert(w1.last.weave.asInstanceOf[AnyRef] eq w2.last.weave.asInstanceOf[AnyRef])
+      // contrast: a def (`nullary`) derives a fresh `Weave` on every call, unlike the `val`
+      _ <- instrumented.nullary
+      w3 <- recorder.weaves
+      _ <- instrumented.nullary
+      w4 <- recorder.weaves
+      _ = assert(!(w3.last.weave.asInstanceOf[AnyRef] eq w4.last.weave.asInstanceOf[AnyRef]))
     } yield ()).runOrFail
   }
 
