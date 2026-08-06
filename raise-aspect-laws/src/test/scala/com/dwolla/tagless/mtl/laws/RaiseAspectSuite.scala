@@ -13,6 +13,7 @@ import com.dwolla.tagless.mtl.laws.LawsInstances.*
 import com.dwolla.tagless.mtl.laws.discipline.RaiseAspectTests
 import munit.{CatsEffectSuite, DisciplineSuite}
 import org.scalacheck.{Arbitrary, Gen}
+
 import SyncIOTestSyntax.*
 
 /** The complete law test suite for a `RaiseAspect[TestAlg, Render, Render, Render]`.
@@ -64,7 +65,7 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
         raiseLazily,
         e
       )
-      (law.lhs.value, law.rhs.value).mapN(_ == _)
+      (law.lhs.value, law.rhs.value).mapN { (l, r) => assertEquals(l, r); true }
     }
   }
 
@@ -76,6 +77,7 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
         e
       )
       assertEquals(law.lhs, law.rhs)
+      // assertEquals already threw if unequal; forAllErrors just needs a SyncIO[Boolean] to satisfy the shared signature.
       true.pure[SyncIO]
     }
   }
@@ -87,7 +89,7 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
         raiseLazily,
         e
       )
-      (law.lhs.value, law.rhs.value).mapN(_ == _)
+      (law.lhs.value, law.rhs.value).mapN { (l, r) => assertEquals(l, r); true }
     }
   }
 
@@ -116,7 +118,7 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
         raiseLazily,
         e
       )
-      (law.lhs.value, law.rhs.value).mapN(_ == _)
+      (law.lhs.value, law.rhs.value).mapN { (l, r) => assertEquals(l, r); true }
     }
   }
 
