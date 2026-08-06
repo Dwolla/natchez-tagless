@@ -1,17 +1,17 @@
 package com.dwolla.tagless.mtl
 
+import cats.data.EitherT
+import cats.effect.{Ref, SyncIO}
 import cats.mtl.Raise
 import cats.syntax.all._
-import munit.FunSuite
+import munit.CatsEffectSuite
 
-import scala.collection.mutable.ListBuffer
-
+import CarrierArrows.Lazily
+import SyncIOTestSyntax._
 import TestError._
 
-class TestAlgReferenceSpec extends FunSuite {
-  private type F[A] = Either[TestError, A]
-
-  private val raiseF: Raise[F, TestError] = Raise[F, TestError]
+class TestAlgReferenceSpec extends CatsEffectSuite {
+  private val raiseF: Raise[Lazily, TestError] = Raise[Lazily, TestError]
 
   private val ref: RaiseAspect[TestAlg, Render, Render, Render] =
     TestAlgReference.referenceRaiseAspect[Render, Render, Render]
@@ -26,24 +26,26 @@ class TestAlgReferenceSpec extends FunSuite {
     * decoration and `errB:` only from `R2`'s.
     */
   test("intercept decorates both of e's capabilities, each with its own Err evidence") {
-    val rendered = ListBuffer.empty[String]
-
-    val hook: OnRaise[F, Render] = new OnRaise[F, Render] {
-      def apply[E](e: E)(implicit ev: Render[E]): F[Unit] = {
-        rendered += ev.render(e)
-        Right(())
+    def raisedThrough(eOutcome: Int, rendered: Ref[Lazily, Vector[String]]): Lazily[Unit] = {
+      val hook: OnRaise[Lazily, Render] = new OnRaise[Lazily, Render] {
+        def apply[E](e: E)(implicit ev: Render[E]): Lazily[Unit] = rendered.update(_ :+ ev.render(e))
       }
+
+      for {
+        recorder <- RecordingFk[Lazily, Render, Render]
+        out <- ref.intercept(new GenericTestAlg[Lazily](eOutcome))(recorder.fk, hook).e(raiseF, raiseF)
+      } yield out
     }
 
-    def raisedThrough(eOutcome: Int): F[Unit] = {
-      val recorder = new RecordingFk[F, Render, Render]
-      ref.intercept(new EitherTestAlg(eOutcome))(recorder.fk, hook).e(raiseF, raiseF)
-    }
-
-    assertEquals(raisedThrough(-1), NegativeInput(-1).asLeft[Unit].leftWiden[TestError])
-    assertEquals(raisedThrough(1), EmptyInput("e").asLeft[Unit].leftWiden[TestError])
-    assertEquals(raisedThrough(0), ().asRight[TestError])
-
-    assertEquals(rendered.toList, List("errA:NegativeInput(-1)", "errB:EmptyInput(e)"))
+    (for {
+      rendered <- Ref.of[Lazily, Vector[String]](Vector.empty)
+      r1 <- EitherT.liftF[SyncIO, TestError, Either[TestError, Unit]](raisedThrough(-1, rendered).value)
+      r2 <- EitherT.liftF[SyncIO, TestError, Either[TestError, Unit]](raisedThrough(1, rendered).value)
+      r3 <- EitherT.liftF[SyncIO, TestError, Either[TestError, Unit]](raisedThrough(0, rendered).value)
+      _ = assertEquals(r1, NegativeInput(-1).asLeft[Unit].leftWiden[TestError])
+      _ = assertEquals(r2, EmptyInput("e").asLeft[Unit].leftWiden[TestError])
+      _ = assertEquals(r3, ().asRight[TestError])
+      seen <- rendered.get
+    } yield assertEquals(seen.toList, List("errA:NegativeInput(-1)", "errB:EmptyInput(e)"))).runOrFail
   }
 }
