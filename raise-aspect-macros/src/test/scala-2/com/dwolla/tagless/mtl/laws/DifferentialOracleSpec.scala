@@ -2,8 +2,14 @@ package com.dwolla.tagless.mtl
 package laws
 
 import cats.arrow.FunctionK
-import com.dwolla.tagless.mtl.laws.LawsInstances.*
-import munit.FunSuite
+import cats.data.EitherT
+import cats.effect.SyncIO
+import cats.mtl.Raise
+import cats.syntax.all._
+import munit.CatsEffectSuite
+
+import LawsInstances._
+import SyncIOTestSyntax._
 
 /** The differential oracle.
   *
@@ -12,7 +18,7 @@ import munit.FunSuite
   * it is ''identical'', method by method and argument by argument, which is
   * stricter: L1–L3 compare behavior and are blind to metadata drift.
   */
-class DifferentialOracleSpec extends FunSuite {
+class DifferentialOracleSpec extends CatsEffectSuite {
 
   private val derived: RaiseAspect[TestAlg, Render, Render, Render] =
     DeriveRaise.aspect[TestAlg, Render, Render, Render]
@@ -21,6 +27,8 @@ class DifferentialOracleSpec extends FunSuite {
     TestAlgReference.referenceRaiseAspect[Render, Render, Render]
 
   private val outcomes = List(-1, 0, 1)
+
+  private val raiseLazily: Raise[Lazily, TestError] = Raise[Lazily, TestError]
 
   /** `observed`, not `instrumented`: the recorder's hook fires into the same
     * log as the weave arrivals, so the comparison below covers whether each
@@ -31,41 +39,66 @@ class DifferentialOracleSpec extends FunSuite {
   private def observed(
       instance: RaiseAspect[TestAlg, Render, Render, Render],
       outcome: Int
-  ): (TestAlg[Result], RecordingFk[Result, Render, Render]) =
+  ): Lazily[(TestAlg[Lazily], RecordingFk[Lazily, Render, Render])] =
     LawsInstances.observed(instance, outcome)
 
   test("the derived instance is structurally identical to the reference, for every method and sample") {
-    outcomes.foreach { outcome =>
-      val (d, dRec) = observed(derived, outcome)
-      val (r, rRec) = observed(reference, outcome)
-
-      exhaustiveInt.allValues.foreach { i =>
-        assertEquals(d.a(i)(raiseResult), r.a(i)(raiseResult))
-        assertEquals(d.c(i), r.c(i))
-        assertEquals(d.e(raiseResult, raiseResult), r.e(raiseResult, raiseResult))
-
-        exhaustiveInt.allValues.foreach(j => assertEquals(d.d(i)(j)(raiseResult), r.d(i)(j)(raiseResult)))
-        exhaustiveString.allValues.foreach(s => assertEquals(d.b(s, i)(raiseResult), r.b(s, i)(raiseResult)))
-      }
-
-      assertEquals(LawsInstances.renderedWeaves(dRec), LawsInstances.renderedWeaves(rRec))
-      // Weave arrivals and hook firings in one log: the derived instance and
-      // the reference must agree on *when* things happen, not only on what
-      // they produce. `Result` is eager and `Aspect.Advice`'s target is a
-      // strict parameter, so a raise is logged before the weave it belongs to
-      // reaches `fk` — a fact no value-level comparison can see.
-      assertEquals(dRec.events, rRec.events)
-      // The latch on the comparison above, not a test of the hook. With a hook
-      // that writes nothing — `OnRaise.noop`, or a `record` call reduced to a
-      // constant — the two logs still match and the oracle silently returns to
-      // its pre-M12 blindness to a dropped `RaiseAspect.observing`. `a(-2)`,
-      // `a(-1)` and several `d` samples raise for every `eOutcome`, so a log
-      // with no `raise:` line means the fixture stopped observing raises.
-      assert(
-        rRec.events.exists(_.startsWith("raise:")),
-        s"no raise reached the hook for eOutcome $outcome — the events comparison above is vacuous"
-      )
-    }
+    outcomes.toList.traverse_ { outcome =>
+      for {
+        dPair <- observed(derived, outcome)
+        (d, dRec) = dPair
+        rPair <- observed(reference, outcome)
+        (r, rRec) = rPair
+        _ <- EitherT.liftF[SyncIO, TestError, Unit](
+          exhaustiveInt.allValues.traverse_ { i =>
+            for {
+              da <- d.a(i)(raiseLazily).value
+              ra <- r.a(i)(raiseLazily).value
+              _ = assertEquals(da, ra)
+              dc <- d.c(i).value
+              rc <- r.c(i).value
+              _ = assertEquals(dc, rc)
+              de <- d.e(raiseLazily, raiseLazily).value
+              re <- r.e(raiseLazily, raiseLazily).value
+              _ = assertEquals(de, re)
+              _ <- exhaustiveInt.allValues.traverse_ { j =>
+                for {
+                  dd <- d.d(i)(j)(raiseLazily).value
+                  rd <- r.d(i)(j)(raiseLazily).value
+                } yield assertEquals(dd, rd)
+              }
+              _ <- exhaustiveString.allValues.traverse_ { s =>
+                for {
+                  db <- d.b(s, i)(raiseLazily).value
+                  rb <- r.b(s, i)(raiseLazily).value
+                } yield assertEquals(db, rb)
+              }
+            } yield ()
+          }
+        )
+        dRendered <- LawsInstances.renderedWeaves(dRec)
+        rRendered <- LawsInstances.renderedWeaves(rRec)
+        // Weave arrivals and hook firings in one log: the derived instance and
+        // the reference must agree on *when* things happen, not only on what
+        // they produce. `Aspect.Advice`'s target is a strict parameter, so a
+        // raise is logged before the weave it belongs to reaches `fk` — a fact
+        // no value-level comparison can see.
+        _ = assertEquals(dRendered, rRendered)
+        dEvents <- dRec.events
+        rEvents <- rRec.events
+        _ = assertEquals(dEvents.toList, rEvents.toList)
+        // The latch on the comparison above, not a test of the hook. With a hook
+        // that writes nothing — `OnRaise.noop`, or a `record` call reduced to a
+        // constant — the two logs still match and the oracle silently returns to
+        // its pre-M12 blindness to a dropped `RaiseAspect.observing`. `a(-2)`,
+        // `a(-1)` and several `d` samples raise for every `eOutcome`, so a log
+        // with no `raise:` line means the fixture stopped observing raises.
+        _ = assert(
+          rEvents.exists(_.startsWith("raise:")),
+          s"no raise reached the hook for eOutcome $outcome — the events comparison above is vacuous"
+        )
+      } yield ()
+    }.runOrFail
   }
 
   test("the derived mapK agrees with the reference under the identity arrow") {
