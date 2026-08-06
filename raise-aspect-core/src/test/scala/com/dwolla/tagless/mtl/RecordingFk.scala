@@ -40,7 +40,7 @@ object RecordingFk {
   * holds both kinds of event in the order they happened.
   */
 final class RecordingFk[F[_] : Monad, Dom[_], Cod[_]](recorded: Ref[F, Vector[RecordedWeave[F, Dom, Cod]]],
-                                              log: Ref[F, Vector[String]]) {
+                                                      log: Ref[F, Vector[String]]) {
 
   val fk: Aspect.Weave[F, Dom, Cod, *] ~> F =
     new (Aspect.Weave[F, Dom, Cod, *] ~> F) {
