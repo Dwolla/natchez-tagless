@@ -1,8 +1,9 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.Eval
 import cats.data.EitherT
+import cats.effect.{Ref, Sync, SyncIO}
+import cats.effect.testkit.TestInstances
 import cats.kernel.laws.discipline.SerializableTests
 import cats.mtl.Raise
 import cats.syntax.all.*
@@ -10,12 +11,13 @@ import cats.tagless.Trivial
 import com.dwolla.tagless.mtl.TestError.*
 import com.dwolla.tagless.mtl.laws.LawsInstances.*
 import com.dwolla.tagless.mtl.laws.discipline.RaiseAspectTests
-import munit.DisciplineSuite
+import munit.{CatsEffectSuite, DisciplineSuite}
 import org.scalacheck.{Arbitrary, Gen}
+import SyncIOTestSyntax.*
 
 /** The complete law test suite for a `RaiseAspect[TestAlg, Render, Render, Render]`.
   */
-abstract class RaiseAspectSuite extends DisciplineSuite {
+abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite with TestInstances {
 
   /** The instance under test. Override this and nothing else. */
   def instance: RaiseAspect[TestAlg, Render, Render, Render]
@@ -45,7 +47,7 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
   // ...and L1/L2 again over a genuinely non-trivial arrow. Before M12 that was
   // `eraseWeave`, between the woven carrier and `Result`; fusion deletes both
   // ends of it. `CarrierArrows.resultToLazily` is a real change of effect —
-  // `Either[TestError, *]` to `EitherT[Eval, TestError, *]` — with a real pull
+  // `Either[TestError, *]` to `EitherT[SyncIO, TestError, *]` — with a real pull
   // in the opposite direction. Testing mapK only at the identity arrow would
   // be a coverage loss disguised as a deletion.
   checkAll(
@@ -62,7 +64,7 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
         raiseLazily,
         e
       )
-      assertEquals(law.lhs.value.value, law.rhs.value.value)
+      (law.lhs.value, law.rhs.value).mapN(_ == _)
     }
   }
 
@@ -74,6 +76,7 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
         e
       )
       assertEquals(law.lhs, law.rhs)
+      true.pure[SyncIO]
     }
   }
 
@@ -84,7 +87,7 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
         raiseLazily,
         e
       )
-      assertEquals(law.lhs.value.value, law.rhs.value.value)
+      (law.lhs.value, law.rhs.value).mapN(_ == _)
     }
   }
 
@@ -113,95 +116,122 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
         raiseLazily,
         e
       )
-      assertEquals(law.lhs.value.value, law.rhs.value.value)
+      (law.lhs.value, law.rhs.value).mapN(_ == _)
     }
   }
 
   test("L8 the interpreter receives one weave per call, naming the algebra and the method") {
-    val (w, recorder) = LawsInstances.instrumented(instance, 0)
-
-    w.a(1)(raiseResult)
-    w.b("x", 1)(raiseResult)
-    w.c(1)
-    w.d(1)(2)(raiseResult)
-    w.e(raiseResult, raiseResult)
-
-    assertEquals(recorder.weaves.map(_.weave.algebraName), List.fill(5)("TestAlg"))
-    assertEquals(LawsInstances.renderedWeaves(recorder).map(_.methodName), List("a", "b", "c", "d", "e"))
+    (for {
+      pair <- LawsInstances.instrumented(instance, 0)
+      (w, recorder) = pair
+      _ <- w.a(1)(raiseLazily)
+      _ <- w.b("x", 1)(raiseLazily)
+      _ <- w.c(1)
+      _ <- w.d(1)(2)(raiseLazily)
+      _ <- w.e(raiseLazily, raiseLazily)
+      weaves <- recorder.weaves
+      _ = assertEquals(weaves.map(_.weave.algebraName).toList, List.fill(5)("TestAlg"))
+      rendered <- LawsInstances.renderedWeaves(recorder)
+      _ = assertEquals(rendered.map(_.methodName), List("a", "b", "c", "d", "e"))
+    } yield ()).runOrFail
   }
 
   test("L8 the domain matches the declared parameter lists, capabilities absent") {
-    val (w, recorder) = LawsInstances.instrumented(instance, 0)
-
-    w.a(7)(raiseResult)
-    w.b("ab", 2)(raiseResult)
-    w.c(3)
-    w.d(4)(5)(raiseResult)
-    w.e(raiseResult, raiseResult)
-
-    assertEquals(
-      LawsInstances.renderedWeaves(recorder).map(_.domain),
-      List(
-        List(List("i" -> "7")),
-        List(List("x" -> "ab", "y" -> "2")),
-        List(List("i" -> "3")),
-        List(List("i" -> "4"), List("j" -> "5")),
-        // every parameter of `e` is a capability, so it contributes no clause
-        List.empty[List[(String, String)]]
+    (for {
+      pair <- LawsInstances.instrumented(instance, 0)
+      (w, recorder) = pair
+      _ <- w.a(7)(raiseLazily)
+      _ <- w.b("ab", 2)(raiseLazily)
+      _ <- w.c(3)
+      _ <- w.d(4)(5)(raiseLazily)
+      _ <- w.e(raiseLazily, raiseLazily)
+      rendered <- LawsInstances.renderedWeaves(recorder)
+      _ = assertEquals(
+        rendered.map(_.domain),
+        List(
+          List(List("i" -> "7")),
+          List(List("x" -> "ab", "y" -> "2")),
+          List(List("i" -> "3")),
+          List(List("i" -> "4"), List("j" -> "5")),
+          // every parameter of `e` is a capability, so it contributes no clause
+          List.empty[List[(String, String)]]
+        )
       )
-    )
+    } yield ()).runOrFail
   }
 
   test("L8 intercepting does not force a by-name argument") {
-    val (w, recorder) = LawsInstances.instrumented(instance, 0)
-
-    // the empty string makes the underlying implementation raise without
-    // touching `y`, so nothing but the weaving itself could force it
-    val out = w.b("", throw new RuntimeException("by-name argument was forced"))(raiseResult)
-
-    assertEquals(out, EmptyInput("x").asLeft[Int].leftWiden[TestError])
-    intercept[RuntimeException](recorder.weaves.head.weave.domain.head(1).target.value)
+    (for {
+      pair <- LawsInstances.instrumented(instance, 0)
+      (w, recorder) = pair
+      // the empty string makes the underlying implementation raise without
+      // touching `y`, so nothing but the weaving itself could force it
+      out <- EitherT.liftF[SyncIO, TestError, Either[TestError, Int]](
+        w.b("", throw new RuntimeException("by-name argument was forced"))(raiseLazily).value
+      )
+      _ = assertEquals(out, EmptyInput("x").asLeft[Int].leftWiden[TestError])
+      weaves <- recorder.weaves
+      _ = intercept[RuntimeException](weaves.head.weave.domain.head(1).target.value)
+    } yield ()).runOrFail
   }
 
   test("L8 an intercepted method returns what the underlying call returns") {
-    val impl = new EitherTestAlg(0)
-    val (w, _) = LawsInstances.instrumented(instance, 0)
+    val impl = new GenericTestAlg[Lazily](0)
 
-    exhaustiveInt.allValues.foreach { i =>
-      assertEquals(w.a(i)(raiseResult), impl.a(i)(raiseResult))
-      assertEquals(w.c(i), impl.c(i))
-    }
+    (for {
+      pair <- LawsInstances.instrumented(instance, 0)
+      (w, _) = pair
+      _ <- EitherT.liftF[SyncIO, TestError, Unit](
+        exhaustiveInt.allValues.toList.traverse_ { i =>
+          for {
+            wa <- w.a(i)(raiseLazily).value
+            ia <- impl.a(i)(raiseLazily).value
+            _ = assertEquals(wa, ia)
+            wc <- w.c(i).value
+            ic <- impl.c(i).value
+            _ = assertEquals(wc, ic)
+          } yield ()
+        }
+      )
+    } yield ()).runOrFail
   }
 
   // ------------------------------------------------- L10 laziness parity
 
   test("L10 intercepting performs no effects until the result is run") {
-    val counter = new java.util.concurrent.atomic.AtomicInteger(0)
-    val recorder = new RecordingFk[Lazily, Render, Render]
-
-    val inst = instance.intercept(countingAlg(counter))(recorder.fk, OnRaise.noop[Lazily, Render])
-    val out = inst.a(1)(raiseLazily)
-    assertEquals(counter.get(), 0, "intercepting must not run the underlying effect")
-
-    val _ = out.value.value
-    assertEquals(counter.get(), 1, "running the instrumented result must run the effect exactly once")
+    (for {
+      counter <- Ref.of[Lazily, Int](0)
+      recorder <- RecordingFk[Lazily, Render, Render]
+      inst = instance.intercept(countingAlg(counter))(recorder.fk, OnRaise.noop[Lazily, Render])
+      // built but not yet forced -- nothing has run.
+      out = inst.a(1)(raiseLazily)
+      c0 <- counter.get
+      _ = assertEquals(c0, 0, "intercepting must not run the underlying effect")
+      _ <- out
+      c1 <- counter.get
+      _ = assertEquals(c1, 1, "running the instrumented result must run the effect exactly once")
+    } yield ()).runOrFail
   }
 
   test("L10 the intercepted path runs the same number of effects as the plain one") {
-    val interceptedCounter = new java.util.concurrent.atomic.AtomicInteger(0)
-    val plainCounter = new java.util.concurrent.atomic.AtomicInteger(0)
-
-    val recorder = new RecordingFk[Lazily, Render, Render]
-    val inst = instance.intercept(countingAlg(interceptedCounter))(recorder.fk, OnRaise.noop[Lazily, Render])
-    val plain = countingAlg(plainCounter)
-
-    exhaustiveInt.allValues.foreach { i =>
-      val throughIntercepted = inst.a(i)(raiseLazily).value.value
-      val throughPlain = plain.a(i)(raiseLazily).value.value
-      assertEquals(throughIntercepted, throughPlain, s"intercepted and plain results differ for input $i")
-    }
-
-    assertEquals(interceptedCounter.get(), plainCounter.get())
+    (for {
+      interceptedCounter <- Ref.of[Lazily, Int](0)
+      plainCounter <- Ref.of[Lazily, Int](0)
+      recorder <- RecordingFk[Lazily, Render, Render]
+      inst = instance.intercept(countingAlg(interceptedCounter))(recorder.fk, OnRaise.noop[Lazily, Render])
+      plain = countingAlg(plainCounter)
+      _ <- EitherT.liftF[SyncIO, TestError, Unit](
+        exhaustiveInt.allValues.toList.traverse_ { i =>
+          for {
+            throughIntercepted <- inst.a(i)(raiseLazily).value
+            throughPlain <- plain.a(i)(raiseLazily).value
+          } yield assertEquals(throughIntercepted, throughPlain, s"intercepted and plain results differ for input $i")
+        }
+      )
+      ic <- interceptedCounter.get
+      pc <- plainCounter.get
+      _ = assertEquals(ic, pc)
+    } yield ()).runOrFail
   }
 
   // ----------------------------------------------------------- Serializable
@@ -211,14 +241,13 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
 
   // ------------------------------------------------------------- helpers
 
-  /** A fixture whose effects are observable only when the `Eval` is forced. */
-  private def countingAlg(counter: java.util.concurrent.atomic.AtomicInteger): TestAlg[Lazily] =
+  /** A fixture whose effects are observable only when the returned `Lazily` is run. */
+  private def countingAlg(counter: Ref[Lazily, Int]): TestAlg[Lazily] =
     new TestAlg[Lazily] {
-      private def count[A](a: => A): Lazily[A] =
-        EitherT(Eval.always { val _ = counter.incrementAndGet(); a.asRight[TestError] })
+      private def count[A](a: => A): Lazily[A] = counter.update(_ + 1) *> Sync[Lazily].delay(a)
 
       def a(i: Int)(implicit R: Raise[Lazily, ErrA]): Lazily[String] =
-        if (i < 0) EitherT(Eval.always { val _ = counter.incrementAndGet(); NegativeInput(i).asLeft[String].leftWiden[TestError] })
+        if (i < 0) counter.update(_ + 1) *> EitherT.leftT[SyncIO, String](NegativeInput(i): TestError)
         else count(s"a:$i")
 
       def b(x: String, y: => Int)(implicit R: Raise[Lazily, ErrB]): Lazily[Int] =
@@ -233,8 +262,6 @@ abstract class RaiseAspectSuite extends DisciplineSuite {
         count(())
     }
 
-  private def forAllErrors(f: TestError => Unit): org.scalacheck.Prop =
-    org.scalacheck.Prop.forAll(Gen.oneOf[TestError](NegativeInput(-1), EmptyInput("boom")))(e => {
-      f(e); true
-    })
+  private def forAllErrors(f: TestError => SyncIO[Boolean]): org.scalacheck.Prop =
+    org.scalacheck.Prop.forAll(Gen.oneOf[TestError](NegativeInput(-1), EmptyInput("boom")))(f)
 }
