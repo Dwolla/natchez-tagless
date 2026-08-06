@@ -1,12 +1,17 @@
 package com.dwolla.tagless.mtl
 package laws
 
+import cats.Applicative
 import cats.arrow.FunctionK
+import cats.data.EitherT
+import cats.effect.{Ref, SyncIO}
 import cats.mtl.Raise
+import cats.syntax.all.*
 import munit.FunSuite
 
+import com.dwolla.tagless.mtl.SyncIOTestSyntax.*
+
 import scala.annotation.experimental
-import scala.collection.mutable.ListBuffer
 
 /** M7 — instances the derivation cannot see, because the method supplies them
   * itself.
@@ -135,6 +140,7 @@ trait PrecedenceAlg[F[_]]:
 
 object MethodLocal:
   type WidgetResult[A] = Either[WidgetError, A]
+  type WidgetLazily[A] = EitherT[SyncIO, WidgetError, A]
   type AliasedRender = Render[Widget]
 
   /** Two visibly different instances of each type class, so a test can prove the
@@ -150,48 +156,47 @@ object MethodLocal:
   given Renderable[Contra] with
     def render[A](instance: Contra[A])(a: A): String = instance.describe(a)
 
-  val widgets: WidgetAlg[WidgetResult] = new WidgetAlg[WidgetResult]:
-    def show(w: Widget)(using R: Render[Widget]): WidgetResult[String] = Right(R.render(w))
-    def make(i: Int)(using R: Render[Widget]): WidgetResult[Widget] = Right(Widget(i))
-    def risky(i: Int)(using RE: Render[WidgetError], R: Raise[WidgetResult, WidgetError]): WidgetResult[String] =
-      if i < 0 then R.raise(WidgetError(s"negative:$i")) else Right(s"ok:$i")
+  def widgets[F[_]: Applicative]: WidgetAlg[F] = new WidgetAlg[F]:
+    def show(w: Widget)(using R: Render[Widget]): F[String] = R.render(w).pure[F]
+    def make(i: Int)(using R: Render[Widget]): F[Widget] = Widget(i).pure[F]
+    def risky(i: Int)(using RE: Render[WidgetError], R: Raise[F, WidgetError]): F[String] =
+      if i < 0 then R.raise(WidgetError(s"negative:$i")) else s"ok:$i".pure[F]
 
-  val poly: WidgetPolyAlg[WidgetResult] = new WidgetPolyAlg[WidgetResult]:
-    def poly[A](a: A)(using R: Render[A]): WidgetResult[A] = Right(a)
+  def poly[F[_]: Applicative]: WidgetPolyAlg[F] = new WidgetPolyAlg[F]:
+    def poly[A](a: A)(using R: Render[A]): F[A] = a.pure[F]
 
-  val bounded: WidgetBoundedAlg[WidgetResult] = new WidgetBoundedAlg[WidgetResult]:
-    def bounded[A: Render](a: A): WidgetResult[A] = Right(a)
+  def bounded[F[_]: Applicative]: WidgetBoundedAlg[F] = new WidgetBoundedAlg[F]:
+    def bounded[A: Render](a: A): F[A] = a.pure[F]
 
-  val variations: WidgetVariationsAlg[WidgetResult] = new WidgetVariationsAlg[WidgetResult]:
-    def sub(w: Widget)(using R: WidgetRender): WidgetResult[String] = Right(R.render(w))
-    def aliased(w: Widget)(using R: AliasedRender): WidgetResult[String] = Right(R.render(w))
-    def several(w: Widget)(using S: Render[WidgetError], R: Render[Widget]): WidgetResult[String] =
-      Right(R.render(w))
+  def variations[F[_]: Applicative]: WidgetVariationsAlg[F] = new WidgetVariationsAlg[F]:
+    def sub(w: Widget)(using R: WidgetRender): F[String] = R.render(w).pure[F]
+    def aliased(w: Widget)(using R: AliasedRender): F[String] = R.render(w).pure[F]
+    def several(w: Widget)(using S: Render[WidgetError], R: Render[Widget]): F[String] =
+      R.render(w).pure[F]
 
-  val multiUsing: WidgetMultiUsingAlg[WidgetResult] = new WidgetMultiUsingAlg[WidgetResult]:
-    def multi(w: Widget)(using R: Render[Widget])(using i: Render[Int]): WidgetResult[String] =
-      Right(R.render(w))
+  def multiUsing[F[_]: Applicative]: WidgetMultiUsingAlg[F] = new WidgetMultiUsingAlg[F]:
+    def multi(w: Widget)(using R: Render[Widget])(using i: Render[Int]): F[String] =
+      R.render(w).pure[F]
 
-  val contra: ContraAlg[WidgetResult] = new ContraAlg[WidgetResult]:
-    def sub(s: SubThing)(using C: Contra[Thing]): WidgetResult[String] = Right(C.describe(s))
+  def contra[F[_]: Applicative]: ContraAlg[F] = new ContraAlg[F]:
+    def sub(s: SubThing)(using C: Contra[Thing]): F[String] = C.describe(s).pure[F]
 
-  val precedence: PrecedenceAlg[WidgetResult] = new PrecedenceAlg[WidgetResult]:
-    def pick(i: Int)(using R: Render[Int]): WidgetResult[String] = Right(R.render(i))
+  def precedence[F[_]: Applicative]: PrecedenceAlg[F] = new PrecedenceAlg[F]:
+    def pick(i: Int)(using R: Render[Int]): F[String] = R.render(i).pure[F]
 
   /** An arrow whose `pull` renders every raised error through the `Err` evidence
     * the ''derivation'' handed it. That evidence is the only observable trace of
     * which `Err[E]` the macro resolved, since `RaisePull.id` ignores it.
     */
-  def recordingArrow(recorded: ListBuffer[String]): RaiseArrow[WidgetResult, WidgetResult, Render] =
+  def recordingArrow[F[_]: Applicative](recorded: Ref[F, Vector[String]]): RaiseArrow[F, F, Render] =
     RaiseArrow(
-      FunctionK.id[WidgetResult],
-      new RaisePull[WidgetResult, WidgetResult, Render]:
-        def apply[E](rg: Raise[WidgetResult, E])(implicit ev: Render[E]): Raise[WidgetResult, E] =
-          new Raise[WidgetResult, E]:
-            val functor: cats.Functor[WidgetResult] = rg.functor
-            def raise[E2 <: E, A](e: E2): WidgetResult[A] =
-              recorded += ev.render(e)
-              rg.raise[E2, A](e)
+      FunctionK.id[F],
+      new RaisePull[F, F, Render]:
+        def apply[E](rg: Raise[F, E])(implicit ev: Render[E]): Raise[F, E] =
+          new Raise[F, E]:
+            val functor: cats.Functor[F] = rg.functor
+            def raise[E2 <: E, A](e: E2): F[A] =
+              recorded.update(_ :+ ev.render(e)) *> rg.raise[E2, A](e)
     )
 
 @experimental
@@ -222,55 +227,61 @@ class MethodLocalInstanceSpec extends FunSuite:
   private val riskyFunctorK: RaiseFunctorK[WidgetRiskyAlg, Render] =
     DeriveRaise.functorK[WidgetRiskyAlg, Render]
 
-  private val raiseWidget: Raise[WidgetResult, WidgetError] = Raise[WidgetResult, WidgetError]
+  private val raiseWidgetLazily: Raise[WidgetLazily, WidgetError] = Raise[WidgetLazily, WidgetError]
 
   test("the Dom advice carries the Render the method itself was handed") {
-    val recorder = new RecordingFk[WidgetResult, Render, Render]
-    val instrumented = showAspect.intercept(widgets)(recorder.fk, OnRaise.noop[WidgetResult, Render])
-
-    instrumented.show(Widget(1))(using loud)
-    val rendered = WeaveRenderer.render(recorder.weaves.last.weave)
-    assertEquals(rendered.algebraName, "WidgetShowAlg")
-    assertEquals(rendered.methodName, "show")
-    assertEquals(rendered.domain, List(List("w" -> "loud:1")))
-
-    instrumented.show(Widget(1))(using quiet)
-    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("w" -> "quiet:1")))
+    (for {
+      recorder <- RecordingFk[WidgetLazily, Render, Render]
+      instrumented = showAspect.intercept(widgets[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+      _ <- instrumented.show(Widget(1))(using loud)
+      w1 <- recorder.weaves
+      rendered1 = WeaveRenderer.render(w1.last.weave)
+      _ = assertEquals(rendered1.algebraName, "WidgetShowAlg")
+      _ = assertEquals(rendered1.methodName, "show")
+      _ = assertEquals(rendered1.domain, List(List("w" -> "loud:1")))
+      _ <- instrumented.show(Widget(1))(using quiet)
+      w2 <- recorder.weaves
+      _ = assertEquals(WeaveRenderer.render(w2.last.weave).domain, List(List("w" -> "quiet:1")))
+    } yield ()).runOrFail
   }
 
   test("the Cod advice carries the Render the method itself was handed") {
-    val recorder = new RecordingFk[WidgetResult, Render, Render]
-    val instrumented = makeAspect.intercept(widgets)(recorder.fk, OnRaise.noop[WidgetResult, Render])
-
-    instrumented.make(2)(using loud)
-    val loudly = recorder.weaves.last.weave
-    assertEquals(loudly.codomain.name, "make")
-    assertEquals(
-      loudly.codomain.target.map(loudly.codomain.instance.render),
-      Right("loud:2"): WidgetResult[String]
-    )
-
-    instrumented.make(2)(using quiet)
-    val quietly = recorder.weaves.last.weave
-    assertEquals(
-      quietly.codomain.target.map(quietly.codomain.instance.render),
-      Right("quiet:2"): WidgetResult[String]
-    )
+    (for {
+      recorder <- RecordingFk[WidgetLazily, Render, Render]
+      instrumented = makeAspect.intercept(widgets[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+      _ <- instrumented.make(2)(using loud)
+      w1 <- recorder.weaves
+      loudly = w1.last.weave
+      _ = assertEquals(loudly.codomain.name, "make")
+      loudTarget <- EitherT.liftF[SyncIO, WidgetError, WidgetResult[String]](
+        loudly.codomain.target.map(loudly.codomain.instance.render).value
+      )
+      _ = assertEquals(loudTarget, Right("loud:2"): WidgetResult[String])
+      _ <- instrumented.make(2)(using quiet)
+      w2 <- recorder.weaves
+      quietly = w2.last.weave
+      quietTarget <- EitherT.liftF[SyncIO, WidgetError, WidgetResult[String]](
+        quietly.codomain.target.map(quietly.codomain.instance.render).value
+      )
+      _ = assertEquals(quietTarget, Right("quiet:2"): WidgetResult[String])
+    } yield ()).runOrFail
   }
 
   test("the Err evidence transported with the capability is the one the method was handed") {
-    val recorded = ListBuffer.empty[String]
-    val mapped = riskyAspect.mapK(widgets)(recordingArrow(recorded))
-
-    assertEquals(
-      mapped.risky(-1)(using loudError, raiseWidget),
-      Left(WidgetError("negative:-1")): WidgetResult[String]
-    )
-    assertEquals(
-      mapped.risky(-2)(using quietError, raiseWidget),
-      Left(WidgetError("negative:-2")): WidgetResult[String]
-    )
-    assertEquals(recorded.toList, List("loudError:negative:-1", "quietError:negative:-2"))
+    (for {
+      recorded <- Ref.of[WidgetLazily, Vector[String]](Vector.empty)
+      mapped = riskyAspect.mapK(widgets[WidgetLazily])(recordingArrow(recorded))
+      r1 <- EitherT.liftF[SyncIO, WidgetError, WidgetResult[String]](
+        mapped.risky(-1)(using loudError, raiseWidgetLazily).value
+      )
+      _ = assertEquals(r1, Left(WidgetError("negative:-1")): WidgetResult[String])
+      r2 <- EitherT.liftF[SyncIO, WidgetError, WidgetResult[String]](
+        mapped.risky(-2)(using quietError, raiseWidgetLazily).value
+      )
+      _ = assertEquals(r2, Left(WidgetError("negative:-2")): WidgetResult[String])
+      seen <- recorded.get
+      _ = assertEquals(seen.toList, List("loudError:negative:-1", "quietError:negative:-2"))
+    } yield ()).runOrFail
   }
 
   test("the intercept hook renders a raise through the method-local Err instance") {
@@ -281,118 +292,153 @@ class MethodLocalInstanceSpec extends FunSuite:
     // — so this asserts the stronger claim: the *method-local* `Err[WidgetError]`
     // the call was handed is exactly what reaches the hook, not a derivation-site
     // instance and not `toString`.
-    val rendered = ListBuffer.empty[String]
-    val hook: OnRaise[WidgetResult, Render] = new OnRaise[WidgetResult, Render]:
-      def apply[E](e: E)(implicit ev: Render[E]): WidgetResult[Unit] =
-        rendered += ev.render(e)
-        Right(())
-    val recorder = new RecordingFk[WidgetResult, Render, Render]
-    val instrumented = riskyAspect.intercept(widgets)(recorder.fk, hook)
-
-    instrumented.risky(-7)(using loudError, raiseWidget)
-    assertEquals(rendered.toList, List("loudError:negative:-7"))
-
-    instrumented.risky(-8)(using quietError, raiseWidget)
-    assertEquals(rendered.toList, List("loudError:negative:-7", "quietError:negative:-8"))
+    (for {
+      rendered <- Ref.of[WidgetLazily, Vector[String]](Vector.empty)
+      hook = new OnRaise[WidgetLazily, Render]:
+        def apply[E](e: E)(implicit ev: Render[E]): WidgetLazily[Unit] = rendered.update(_ :+ ev.render(e))
+      recorder <- RecordingFk[WidgetLazily, Render, Render]
+      instrumented = riskyAspect.intercept(widgets[WidgetLazily])(recorder.fk, hook)
+      _ <- EitherT.liftF[SyncIO, WidgetError, Unit](
+        instrumented.risky(-7)(using loudError, raiseWidgetLazily).value.void
+      )
+      seen1 <- rendered.get
+      _ = assertEquals(seen1.toList, List("loudError:negative:-7"))
+      _ <- EitherT.liftF[SyncIO, WidgetError, Unit](
+        instrumented.risky(-8)(using quietError, raiseWidgetLazily).value.void
+      )
+      seen2 <- rendered.get
+      _ = assertEquals(seen2.toList, List("loudError:negative:-7", "quietError:negative:-8"))
+    } yield ()).runOrFail
   }
 
   test("the functorK path resolves Err from the method's own using clause too") {
-    val recorded = ListBuffer.empty[String]
-    val mapped = riskyFunctorK.mapK(widgets)(recordingArrow(recorded))
-
-    assertEquals(mapped.risky(3)(using loudError, raiseWidget), Right("ok:3"): WidgetResult[String])
-    assertEquals(recorded.toList, Nil)
-
-    mapped.risky(-3)(using loudError, raiseWidget)
-    assertEquals(recorded.toList, List("loudError:negative:-3"))
+    (for {
+      recorded <- Ref.of[WidgetLazily, Vector[String]](Vector.empty)
+      mapped = riskyFunctorK.mapK(widgets[WidgetLazily])(recordingArrow(recorded))
+      r1 <- EitherT.liftF[SyncIO, WidgetError, WidgetResult[String]](
+        mapped.risky(3)(using loudError, raiseWidgetLazily).value
+      )
+      _ = assertEquals(r1, Right("ok:3"): WidgetResult[String])
+      seen1 <- recorded.get
+      _ = assertEquals(seen1.toList, Nil)
+      _ <- EitherT.liftF[SyncIO, WidgetError, Unit](
+        mapped.risky(-3)(using loudError, raiseWidgetLazily).value.void
+      )
+      seen2 <- recorded.get
+      _ = assertEquals(seen2.toList, List("loudError:negative:-3"))
+    } yield ()).runOrFail
   }
 
   test("all three instance kinds resolve on one algebra") {
-    val recorder = new RecordingFk[WidgetResult, Render, Render]
-    val instrumented = widgetAspect.intercept(widgets)(recorder.fk, OnRaise.noop[WidgetResult, Render])
-
-    instrumented.show(Widget(4))(using loud)
-    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("w" -> "loud:4")))
-
-    instrumented.make(5)(using quiet)
-    val made = recorder.weaves.last.weave
-    assertEquals(made.codomain.target.map(made.codomain.instance.render), Right("quiet:5"): WidgetResult[String])
-
-    val recorded = ListBuffer.empty[String]
-    val mapped = widgetAspect.mapK(widgets)(recordingArrow(recorded))
-    mapped.risky(-6)(using loudError, raiseWidget)
-    assertEquals(recorded.toList, List("loudError:negative:-6"))
+    (for {
+      recorder <- RecordingFk[WidgetLazily, Render, Render]
+      instrumented = widgetAspect.intercept(widgets[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+      _ <- instrumented.show(Widget(4))(using loud)
+      w1 <- recorder.weaves
+      _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("w" -> "loud:4")))
+      _ <- instrumented.make(5)(using quiet)
+      w2 <- recorder.weaves
+      made = w2.last.weave
+      madeTarget <- EitherT.liftF[SyncIO, WidgetError, WidgetResult[String]](
+        made.codomain.target.map(made.codomain.instance.render).value
+      )
+      _ = assertEquals(madeTarget, Right("quiet:5"): WidgetResult[String])
+      recorded <- Ref.of[WidgetLazily, Vector[String]](Vector.empty)
+      mapped = widgetAspect.mapK(widgets[WidgetLazily])(recordingArrow(recorded))
+      _ <- EitherT.liftF[SyncIO, WidgetError, Unit](
+        mapped.risky(-6)(using loudError, raiseWidgetLazily).value.void
+      )
+      seen <- recorded.get
+      _ = assertEquals(seen.toList, List("loudError:negative:-6"))
+    } yield ()).runOrFail
   }
 
   test("a polymorphic method resolves both Dom and Cod from its own given parameter") {
-    val recorder = new RecordingFk[WidgetResult, Render, Render]
-    val instrumented = polyAspect.intercept(poly)(recorder.fk, OnRaise.noop[WidgetResult, Render])
-
-    instrumented.poly(Widget(7))(using loud)
-    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("a" -> "loud:7")))
-
-    instrumented.poly(Widget(8))(using quiet)
-    val out = recorder.weaves.last.weave
-    assertEquals(out.codomain.target.map(out.codomain.instance.render), Right("quiet:8"): WidgetResult[String])
+    (for {
+      recorder <- RecordingFk[WidgetLazily, Render, Render]
+      instrumented = polyAspect.intercept(poly[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+      _ <- instrumented.poly(Widget(7))(using loud)
+      w1 <- recorder.weaves
+      _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("a" -> "loud:7")))
+      _ <- instrumented.poly(Widget(8))(using quiet)
+      w2 <- recorder.weaves
+      out = w2.last.weave
+      outTarget <- EitherT.liftF[SyncIO, WidgetError, WidgetResult[String]](
+        out.codomain.target.map(out.codomain.instance.render).value
+      )
+      _ = assertEquals(outTarget, Right("quiet:8"): WidgetResult[String])
+    } yield ()).runOrFail
   }
 
   test("a context-bound method resolves from its synthetic evidence parameter") {
-    val recorder = new RecordingFk[WidgetResult, Render, Render]
-    val instrumented = boundedAspect.intercept(bounded)(recorder.fk, OnRaise.noop[WidgetResult, Render])
-
-    instrumented.bounded(Widget(9))(using loud)
-    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("a" -> "loud:9")))
-
-    instrumented.bounded(Widget(9))(using quiet)
-    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("a" -> "quiet:9")))
+    (for {
+      recorder <- RecordingFk[WidgetLazily, Render, Render]
+      instrumented = boundedAspect.intercept(bounded[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+      _ <- instrumented.bounded(Widget(9))(using loud)
+      w1 <- recorder.weaves
+      _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("a" -> "loud:9")))
+      _ <- instrumented.bounded(Widget(9))(using quiet)
+      w2 <- recorder.weaves
+      _ = assertEquals(WeaveRenderer.render(w2.last.weave).domain, List(List("a" -> "quiet:9")))
+    } yield ()).runOrFail
   }
 
   test("a subtype, an alias, and one conforming instance among several all resolve") {
-    val recorder = new RecordingFk[WidgetResult, Render, Render]
-    val instrumented = variationsAspect.intercept(variations)(recorder.fk, OnRaise.noop[WidgetResult, Render])
-
     val widgetRender: WidgetRender = (w: Widget) => s"widgetRender:${w.id}"
-    instrumented.sub(Widget(10))(using widgetRender)
-    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("w" -> "widgetRender:10")))
 
-    instrumented.aliased(Widget(11))(using loud)
-    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("w" -> "loud:11")))
-
-    instrumented.several(Widget(12))(using quietError, quiet)
-    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("w" -> "quiet:12")))
+    (for {
+      recorder <- RecordingFk[WidgetLazily, Render, Render]
+      instrumented = variationsAspect.intercept(variations[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+      _ <- instrumented.sub(Widget(10))(using widgetRender)
+      w1 <- recorder.weaves
+      _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("w" -> "widgetRender:10")))
+      _ <- instrumented.aliased(Widget(11))(using loud)
+      w2 <- recorder.weaves
+      _ = assertEquals(WeaveRenderer.render(w2.last.weave).domain, List(List("w" -> "loud:11")))
+      _ <- instrumented.several(Widget(12))(using quietError, quiet)
+      w3 <- recorder.weaves
+      _ = assertEquals(WeaveRenderer.render(w3.last.weave).domain, List(List("w" -> "quiet:12")))
+    } yield ()).runOrFail
   }
 
   test("a conforming given in a non-final using clause resolves") {
-    val recorder = new RecordingFk[WidgetResult, Render, Render]
-    val instrumented = multiUsingAspect.intercept(multiUsing)(recorder.fk, OnRaise.noop[WidgetResult, Render])
-
-    instrumented.multi(Widget(13))(using loud)(using Render[Int])
-    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("w" -> "loud:13")))
-
-    instrumented.multi(Widget(13))(using quiet)(using Render[Int])
-    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("w" -> "quiet:13")))
+    (for {
+      recorder <- RecordingFk[WidgetLazily, Render, Render]
+      instrumented = multiUsingAspect.intercept(multiUsing[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+      _ <- instrumented.multi(Widget(13))(using loud)(using Render[Int])
+      w1 <- recorder.weaves
+      _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("w" -> "loud:13")))
+      _ <- instrumented.multi(Widget(13))(using quiet)(using Render[Int])
+      w2 <- recorder.weaves
+      _ = assertEquals(WeaveRenderer.render(w2.last.weave).domain, List(List("w" -> "quiet:13")))
+    } yield ()).runOrFail
   }
 
   test("a wider contravariant instance stands in for the narrower one the derivation needs") {
-    val recorder = new RecordingFk[WidgetResult, Contra, Render]
-    val instrumented = contraAspect.intercept(contra)(recorder.fk, OnRaise.noop[WidgetResult, Render])
-
-    instrumented.sub(SubThing("x"))(using loudThing)
-    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("s" -> "loudThing:x")))
-
-    instrumented.sub(SubThing("x"))(using quietThing)
-    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("s" -> "quietThing:x")))
+    (for {
+      recorder <- RecordingFk[WidgetLazily, Contra, Render]
+      instrumented = contraAspect.intercept(contra[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+      _ <- instrumented.sub(SubThing("x"))(using loudThing)
+      w1 <- recorder.weaves
+      _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("s" -> "loudThing:x")))
+      _ <- instrumented.sub(SubThing("x"))(using quietThing)
+      w2 <- recorder.weaves
+      _ = assertEquals(WeaveRenderer.render(w2.last.weave).domain, List(List("s" -> "quietThing:x")))
+    } yield ()).runOrFail
   }
 
   test("resolution is derivation-site first: a method-local instance does not override one in scope") {
-    val recorder = new RecordingFk[WidgetResult, Render, Render]
-    val instrumented = precedenceAspect.intercept(precedence)(recorder.fk, OnRaise.noop[WidgetResult, Render])
     val shouty: Render[Int] = (i: Int) => s"shouty:$i"
 
-    // `Render.renderInt` renders "7"; the method-local `shouty` would render
-    // "shouty:7". The fallback only fires when derivation-site search fails.
-    instrumented.pick(7)(using shouty)
-    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("i" -> "7")))
+    (for {
+      recorder <- RecordingFk[WidgetLazily, Render, Render]
+      instrumented = precedenceAspect.intercept(precedence[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+      // `Render.renderInt` renders "7"; the method-local `shouty` would render
+      // "shouty:7". The fallback only fires when derivation-site search fails.
+      _ <- instrumented.pick(7)(using shouty)
+      w1 <- recorder.weaves
+      _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("i" -> "7")))
+    } yield ()).runOrFail
   }
 
   // --- rejections ----------------------------------------------------------
