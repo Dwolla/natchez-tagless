@@ -1,9 +1,14 @@
 package com.dwolla.tagless.mtl
 package laws
 
+import cats.Applicative
+import cats.data.EitherT
+import cats.effect.SyncIO
 import cats.mtl.Raise
 import cats.syntax.all._
-import munit.FunSuite
+import munit.CatsEffectSuite
+
+import com.dwolla.tagless.mtl.SyncIOTestSyntax._
 
 import LawsInstances._
 import TestError._
@@ -25,75 +30,93 @@ trait EdgeAlg[F[_]] extends ParentAlg[F] {
 }
 
 object EdgeAlg {
-  def either: EdgeAlg[LawsInstances.Result] = new EdgeAlg[LawsInstances.Result] {
-    def inherited(i: Int)(implicit R: Raise[LawsInstances.Result, ErrA]): LawsInstances.Result[String] =
-      if (i < 0) R.raise(NegativeInput(i)) else Right(s"inherited:$i")
-    def own(i: Int): LawsInstances.Result[Int] = Right(i * 3)
-    def nullary: LawsInstances.Result[Int] = Right(42)
-    def overloaded(i: Int): LawsInstances.Result[String] = Right(s"int:$i")
-    def overloaded(s: String): LawsInstances.Result[String] = Right(s"string:$s")
+  def instance[F[_]](implicit F: Applicative[F]): EdgeAlg[F] = new EdgeAlg[F] {
+    def inherited(i: Int)(implicit R: Raise[F, ErrA]): F[String] =
+      if (i < 0) R.raise(NegativeInput(i)) else s"inherited:$i".pure[F]
+    def own(i: Int): F[Int] = (i * 3).pure[F]
+    def nullary: F[Int] = 42.pure[F]
+    def overloaded(i: Int): F[String] = s"int:$i".pure[F]
+    def overloaded(s: String): F[String] = s"string:$s".pure[F]
   }
 }
 
-class EdgeCaseDerivationSpec extends FunSuite {
+class EdgeCaseDerivationSpec extends CatsEffectSuite {
 
   private val derived: RaiseAspect[EdgeAlg, Render, Render, Render] =
     DeriveRaise.aspect[EdgeAlg, Render, Render, Render]
 
-  private val impl = EdgeAlg.either
+  private val impl = EdgeAlg.instance[Lazily]
+
+  private val raiseLazily: Raise[Lazily, TestError] = Raise[Lazily, TestError]
 
   test("a capability method inherited from a parent trait is woven") {
-    val recorder = new RecordingFk[Result, Render, Render]
-    val instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
-
-    val out = instrumented.inherited(2)(raiseResult)
-    val rendered = WeaveRenderer.render(recorder.weaves.last.weave)
-    assertEquals(rendered.algebraName, "EdgeAlg")
-    assertEquals(rendered.methodName, "inherited")
-    assertEquals(rendered.domain, List(List("i" -> "2")))
-    assertEquals(out, impl.inherited(2)(raiseResult))
+    (for {
+      recorder <- RecordingFk[Lazily, Render, Render]
+      instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Lazily, Render])
+      out <- instrumented.inherited(2)(raiseLazily)
+      w1 <- recorder.weaves
+      rendered = WeaveRenderer.render(w1.last.weave)
+      _ = assertEquals(rendered.algebraName, "EdgeAlg")
+      _ = assertEquals(rendered.methodName, "inherited")
+      _ = assertEquals(rendered.domain, List(List("i" -> "2")))
+      implOut <- impl.inherited(2)(raiseLazily)
+      _ = assertEquals(out, implOut)
+    } yield ()).runOrFail
   }
 
   test("the inherited capability's raise survives intercept unchanged") {
-    val recorder = new RecordingFk[Result, Render, Render]
-    val instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
-
-    assertEquals(instrumented.inherited(-4)(raiseResult), NegativeInput(-4).asLeft[String].leftWiden[TestError])
-    assertEquals(instrumented.inherited(-4)(raiseResult), impl.inherited(-4)(raiseResult))
+    (for {
+      recorder <- RecordingFk[Lazily, Render, Render]
+      instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Lazily, Render])
+      out <- EitherT.liftF[SyncIO, TestError, Result[String]](
+        instrumented.inherited(-4)(raiseLazily).value
+      )
+      _ = assertEquals(out, NegativeInput(-4).asLeft[String].leftWiden[TestError])
+      implOut <- EitherT.liftF[SyncIO, TestError, Result[String]](
+        impl.inherited(-4)(raiseLazily).value
+      )
+      _ = assertEquals(out, implOut)
+    } yield ()).runOrFail
   }
 
   test("a nullary def returning F[A] is woven with an empty domain") {
-    val recorder = new RecordingFk[Result, Render, Render]
-    val instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
-
-    val out = instrumented.nullary
-    val rendered = WeaveRenderer.render(recorder.weaves.last.weave)
-    assertEquals(rendered.methodName, "nullary")
-    assertEquals(rendered.domain, List.empty[List[(String, String)]])
-    assertEquals(out, 42.asRight[TestError])
+    (for {
+      recorder <- RecordingFk[Lazily, Render, Render]
+      instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Lazily, Render])
+      out <- instrumented.nullary
+      w1 <- recorder.weaves
+      rendered = WeaveRenderer.render(w1.last.weave)
+      _ = assertEquals(rendered.methodName, "nullary")
+      _ = assertEquals(rendered.domain, List.empty[List[(String, String)]])
+      _ = assertEquals(out, 42)
+    } yield ()).runOrFail
   }
 
   test("overloads are woven independently, each keeping its own parameter type") {
-    val recorder = new RecordingFk[Result, Render, Render]
-    val instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
-
-    val outInt = instrumented.overloaded(7)
-    val renderedInt = WeaveRenderer.render(recorder.weaves.last.weave)
-    val outString = instrumented.overloaded("z")
-    val renderedString = WeaveRenderer.render(recorder.weaves.last.weave)
-
-    assertEquals(renderedInt.domain, List(List("i" -> "7")))
-    assertEquals(renderedString.domain, List(List("s" -> "z")))
-    assertEquals(outInt, "int:7".asRight[TestError])
-    assertEquals(outString, "string:z".asRight[TestError])
+    (for {
+      recorder <- RecordingFk[Lazily, Render, Render]
+      instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Lazily, Render])
+      outInt <- instrumented.overloaded(7)
+      w1 <- recorder.weaves
+      renderedInt = WeaveRenderer.render(w1.last.weave)
+      outString <- instrumented.overloaded("z")
+      w2 <- recorder.weaves
+      renderedString = WeaveRenderer.render(w2.last.weave)
+      _ = assertEquals(renderedInt.domain, List(List("i" -> "7")))
+      _ = assertEquals(renderedString.domain, List(List("s" -> "z")))
+      _ = assertEquals(outInt, "int:7")
+      _ = assertEquals(outString, "string:z")
+    } yield ()).runOrFail
   }
 
   test("a capability-free method on the same algebra is woven unchanged") {
-    val recorder = new RecordingFk[Result, Render, Render]
-    val instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
-
-    val out = instrumented.own(5)
-    assertEquals(WeaveRenderer.render(recorder.weaves.last.weave).domain, List(List("i" -> "5")))
-    assertEquals(out, 15.asRight[TestError])
+    (for {
+      recorder <- RecordingFk[Lazily, Render, Render]
+      instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Lazily, Render])
+      out <- instrumented.own(5)
+      w1 <- recorder.weaves
+      _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("i" -> "5")))
+      _ = assertEquals(out, 15)
+    } yield ()).runOrFail
   }
 }
