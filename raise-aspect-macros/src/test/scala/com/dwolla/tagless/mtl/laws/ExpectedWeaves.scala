@@ -48,19 +48,15 @@ object ExpectedWeaves {
     * moved, from inspecting an `Alg[Weave[…]]` to reading a recording `fk`.
     */
   def rendered(
-      instrumented: TestAlg[Result],
-      recorder: RecordingFk[Result, Render, Render]
-  ): List[RenderedWeave] = {
-    // Bare calls rather than `val _ = ...`: 2.12 treats `_` as a real value
-    // name, so only one `val _` may appear per block (see `RecordingFk`).
-    // These are method calls performed for effect, not pure expressions in
-    // statement position, so they warn under neither axis.
-    instrumented.a(7)(Raise[Result, ErrA])
-    instrumented.b("ab", 2)(Raise[Result, ErrB])
-    instrumented.c(3)
-    instrumented.d(4)(5)(Raise[Result, ErrA])
-    instrumented.e(Raise[Result, ErrA], Raise[Result, ErrB])
-
-    recorder.weaves.map(r => WeaveRenderer.render(r.weave))
-  }
+      instrumented: TestAlg[Lazily],
+      recorder: RecordingFk[Lazily, Render, Render]
+  ): Lazily[List[RenderedWeave]] =
+    for {
+      _ <- instrumented.a(7)(Raise[Lazily, ErrA])
+      _ <- instrumented.b("ab", 2)(Raise[Lazily, ErrB])
+      _ <- instrumented.c(3)
+      _ <- instrumented.d(4)(5)(Raise[Lazily, ErrA])
+      _ <- instrumented.e(Raise[Lazily, ErrA], Raise[Lazily, ErrB])
+      weaves <- recorder.weaves
+    } yield weaves.map(r => WeaveRenderer.render(r.weave)).toList
 }
