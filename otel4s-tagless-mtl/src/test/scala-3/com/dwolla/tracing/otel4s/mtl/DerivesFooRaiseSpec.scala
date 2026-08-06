@@ -109,16 +109,20 @@ class DerivesFooRaiseSpec extends munit.CatsEffectSuite {
   }
 
   test("mapK forwards to the underlying instance") {
+    // Strict predates the file-level F's migration to EitherT[SyncIO, ...];
+    // this test needs no Sync capability, so it keeps the original Either
+    // carrier rather than bridging back through F with unsafeRunSync().
+    type Strict[A] = Either[FooError, A]
     type G[A] = EitherT[Eval, FooError, A]
 
-    val arrow: RaiseArrow[F, G, ToAnyValue] =
+    val arrow: RaiseArrow[Strict, G, ToAnyValue] =
       RaiseArrow(
-        new (F ~> G) { def apply[A](fa: F[A]): G[A] = EitherT(Eval.now(fa.value.unsafeRunSync())) },
-        new RaisePull[G, F, ToAnyValue] {
-          def apply[E](rg: Raise[G, E])(implicit ev: ToAnyValue[E]): Raise[F, E] =
-            new Raise[F, E] {
-              val functor: Functor[F] = Functor[F]
-              def raise[E2 <: E, A](e: E2): F[A] = EitherT(SyncIO.pure(rg.raise[E2, A](e).value.value))
+        new (Strict ~> G) { def apply[A](fa: Strict[A]): G[A] = EitherT(Eval.now(fa)) },
+        new RaisePull[G, Strict, ToAnyValue] {
+          def apply[E](rg: Raise[G, E])(implicit ev: ToAnyValue[E]): Raise[Strict, E] =
+            new Raise[Strict, E] {
+              val functor: Functor[Strict] = Functor[Strict]
+              def raise[E2 <: E, A](e: E2): Strict[A] = rg.raise[E2, A](e).value.value
             }
         }
       )
@@ -126,11 +130,11 @@ class DerivesFooRaiseSpec extends munit.CatsEffectSuite {
     val raiseG: Raise[G, FooError] = Raise[G, FooError]
 
     assertEquals(
-      narrow.mapK(Foo[F])(arrow).foo(5)(raiseG).value.value,
-      wide.mapK(Foo[F])(arrow).foo(5)(raiseG).value.value
+      narrow.mapK(Foo[Strict])(arrow).foo(5)(raiseG).value.value,
+      wide.mapK(Foo[Strict])(arrow).foo(5)(raiseG).value.value
     )
     assertEquals(
-      narrow.mapK(Foo[F])(arrow).foo(-1)(raiseG).value.value,
+      narrow.mapK(Foo[Strict])(arrow).foo(-1)(raiseG).value.value,
       FooError.Negative(-1).asLeft[String]
     )
   }

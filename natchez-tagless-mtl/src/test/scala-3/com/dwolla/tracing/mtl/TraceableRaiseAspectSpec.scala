@@ -117,16 +117,20 @@ class TraceableRaiseAspectSpec extends munit.CatsEffectSuite {
   }
 
   test("mapK forwards to the underlying instance") {
+    // Strict predates the file-level F's migration to EitherT[SyncIO, ...];
+    // this test needs no Sync capability, so it keeps the original Either
+    // carrier rather than bridging back through F with unsafeRunSync().
+    type Strict[A] = Either[BarError, A]
     type G[A] = EitherT[Eval, BarError, A]
 
-    val arrow: RaiseArrow[F, G, TraceableValue] =
+    val arrow: RaiseArrow[Strict, G, TraceableValue] =
       RaiseArrow(
-        new (F ~> G) { def apply[A](fa: F[A]): G[A] = EitherT(Eval.now(fa.value.unsafeRunSync())) },
-        new RaisePull[G, F, TraceableValue] {
-          def apply[E](rg: Raise[G, E])(implicit ev: TraceableValue[E]): Raise[F, E] =
-            new Raise[F, E] {
-              val functor: Functor[F] = Functor[F]
-              def raise[E2 <: E, A](e: E2): F[A] = EitherT(SyncIO.pure(rg.raise[E2, A](e).value.value))
+        new (Strict ~> G) { def apply[A](fa: Strict[A]): G[A] = EitherT(Eval.now(fa)) },
+        new RaisePull[G, Strict, TraceableValue] {
+          def apply[E](rg: Raise[G, E])(implicit ev: TraceableValue[E]): Raise[Strict, E] =
+            new Raise[Strict, E] {
+              val functor: Functor[Strict] = Functor[Strict]
+              def raise[E2 <: E, A](e: E2): Strict[A] = rg.raise[E2, A](e).value.value
             }
         }
       )
@@ -134,11 +138,11 @@ class TraceableRaiseAspectSpec extends munit.CatsEffectSuite {
     val raiseG: Raise[G, BarError] = Raise[G, BarError]
 
     assertEquals(
-      narrow.mapK(Bar[F])(arrow).bar(5)(raiseG).value.value,
-      wide.mapK(Bar[F])(arrow).bar(5)(raiseG).value.value
+      narrow.mapK(Bar[Strict])(arrow).bar(5)(raiseG).value.value,
+      wide.mapK(Bar[Strict])(arrow).bar(5)(raiseG).value.value
     )
     assertEquals(
-      narrow.mapK(Bar[F])(arrow).bar(-1)(raiseG).value.value,
+      narrow.mapK(Bar[Strict])(arrow).bar(-1)(raiseG).value.value,
       BarError.Negative(-1).asLeft[String]
     )
   }
