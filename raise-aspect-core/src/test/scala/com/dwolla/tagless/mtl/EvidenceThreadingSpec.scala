@@ -10,6 +10,12 @@ import SyncIOTestSyntax._
 import TestError._
 
 class EvidenceThreadingSpec extends CatsEffectSuite {
+  // The single-error-type case (`observing` decorates `Raise[F, ErrA]`, the
+  // hook renders `NegativeInput(-3)` as `"errA:NegativeInput(-3)"`) is covered
+  // by `ObservingCapabilitySpec`'s "the hook renders the raised error through
+  // its Err evidence, exactly once", assertion for assertion. This spec keeps
+  // only the case that test doesn't cover: two error types on the same
+  // carrier, each resolving its own `Err` evidence.
   test("a second error type on the same carrier gets its own evidence") {
     (for {
       rendered <- Ref.of[Lazily, Vector[String]](Vector.empty)
