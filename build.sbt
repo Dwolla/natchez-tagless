@@ -129,6 +129,7 @@ lazy val raiseAspectCore = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-mtl" % catsMtlVersion,
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
       "org.typelevel" %%% "cats-effect" % catsEffectVersion % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % catsEffectVersion % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
       "org.scalameta" %%% "munit" % munitVersion % Test,
       "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
