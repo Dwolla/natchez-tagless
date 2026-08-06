@@ -142,7 +142,7 @@ class ObservingCapabilitySpec extends CatsEffectSuite with ScalaCheckSuite with 
             assertEquals(c, 0, s"the hook must not run on the success path for i=$i")
             assertEquals(result, s"a:$i".asRight[TestError])
           }
-      } yield true).value.map(_.getOrElse(false))
+      } yield true).value.map(_.fold(e => fail(s"raised unexpectedly: $e"), identity))
     }
   }
 
