@@ -1,9 +1,9 @@
 package com.dwolla.tracing.otel4s
 
 import cats.Id
+import cats.effect.{Ref, SyncIO}
 import cats.tagless.aop.Aspect
 import com.dwolla.tracing.otel4s.syntax._
-import munit.FunSuite
 import org.typelevel.otel4s.trace.Tracer
 
 /** What can be checked without a testkit, on every platform.
@@ -38,12 +38,10 @@ import org.typelevel.otel4s.trace.Tracer
   * the function — which is what makes the "never encoded" assertion below
   * meaningful.
   */
-class TracerTransparencySpec extends FunSuite {
+class TracerTransparencySpec extends munit.CatsEffectSuite {
   private implicit val tracer: Tracer[Id] = Tracer.noop[Id]
 
-  /** `Id` cannot defer anything, so the count records the call itself. */
-  private def underlyingFoo(counts: FooCallCounts): Foo[Id] =
-    Foo.counting[Id](counts)(f => f())
+  private def underlyingFoo: Foo[Id] = Foo.plain[Id]
 
   // No count assertions anywhere in this suite, deliberately: under Id the
   // underlying call has already run by the time the Weave exists, so
@@ -52,7 +50,7 @@ class TracerTransparencySpec extends FunSuite {
   // assertion in this module lives in SpanContentSpec, over IO. See
   // FooCallCounts.
   test("an instrumented call returns exactly what the underlying call returns") {
-    val underlying = underlyingFoo(new FooCallCounts)
+    val underlying = underlyingFoo
     val instrumented: Foo[Id] = underlying.instrumentAndTrace
 
     assertEquals(instrumented.greet("world", 2), underlying.greet("world", 2))
@@ -60,7 +58,7 @@ class TracerTransparencySpec extends FunSuite {
   }
 
   test("TracerWeaveCapturingInputs returns exactly what the underlying call returns") {
-    val underlying = underlyingFoo(new FooCallCounts)
+    val underlying = underlyingFoo
     val traced: Foo[Id] = underlying.traceWithInputs[ToAnyValue]
 
     assertEquals(traced.greet("world", 2), underlying.greet("world", 2))
@@ -68,7 +66,7 @@ class TracerTransparencySpec extends FunSuite {
   }
 
   test("TracerWeaveCapturingInputsAndOutputs returns exactly what the underlying call returns") {
-    val underlying = underlyingFoo(new FooCallCounts)
+    val underlying = underlyingFoo
     val traced: Foo[Id] = underlying.traceWithInputsAndOutputs
 
     assertEquals(traced.greet("world", 2), underlying.greet("world", 2))
@@ -81,14 +79,17 @@ class TracerTransparencySpec extends FunSuite {
   // modifyState lambda. Hoisting it to a val outside would break this test,
   // which is the point of having it.
   test("with a noop Tracer the parameter encoding is never performed") {
-    var forced = 0
-    val weave = Aspect.Weave[Id, ToAnyValue, ToAnyValue, String](
-      "Foo",
-      List(List(Aspect.Advice.byName[ToAnyValue, String]("lazyParam", { forced += 1; "x" }))),
-      Aspect.Advice[Id, ToAnyValue, String]("greet", "hi")
-    )
-
-    assertEquals(TracerWeaveCapturingInputs[Id, ToAnyValue].apply(weave), "hi")
-    assertEquals(forced, 0)
+    for {
+      forced <- Ref.of[SyncIO, Int](0)
+      weave = Aspect.Weave[Id, ToAnyValue, ToAnyValue, String](
+        "Foo",
+        List(List(Aspect.Advice.byName[ToAnyValue, String]("lazyParam", { forced.update(_ + 1).unsafeRunSync(); "x" }))),
+        Aspect.Advice[Id, ToAnyValue, String]("greet", "hi")
+      )
+      result = TracerWeaveCapturingInputs[Id, ToAnyValue].apply(weave)
+      _ = assertEquals(result, "hi")
+      f <- forced.get
+      _ = assertEquals(f, 0)
+    } yield ()
   }
 }

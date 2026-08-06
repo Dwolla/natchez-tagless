@@ -255,6 +255,7 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
       "io.circe" %%% "circe-core" % "0.14.16",
       "org.scalameta" %%% "munit" % munitVersion % Test,
       "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
       "org.typelevel" %%% "cats-laws" % catsVersion % Test,
       "org.typelevel" %%% "discipline-munit" % disciplineMunitVersion % Test,
       "io.circe" %%% "circe-testing" % "0.14.16" % Test,
@@ -283,8 +284,11 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
   // 0.19.0 — so at otel4s 1.0.1 the only option is the JVM one. Cross-platform
   // coverage lives in TracerTransparencySpec, which needs no testkit.
   //
-  // `%%` is correct here and only here: .jvmSettings has no JS artifact to
-  // resolve. Everything in the shared settings block above uses `%%%`.
+  // `%%` is correct for both coordinates below: neither `otel4s-oteljava-*`
+  // artifact is published for JS, so `.jvmSettings` is the only place they can
+  // resolve. `munit-cats-effect`, used cross-platform (`TracerTransparencySpec`,
+  // `WeaveAttributesOpsSpec`), is declared `%%%` in the shared block above
+  // instead.
   //
   // Both the dependencies and the source directory are gated on
   // `isOtel4sScalaVersion` for the same reason the shared block is: otel4s
@@ -304,7 +308,6 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
           // exposes its types in its own signatures, but SpanContentSpec names
           // it directly, so it is declared directly.
           "org.typelevel" %% "otel4s-oteljava-common" % otel4sVersion % Test,
-          "org.typelevel" %% "munit-cats-effect" % "2.2.0" % Test,
         )
       else Seq.empty
     },

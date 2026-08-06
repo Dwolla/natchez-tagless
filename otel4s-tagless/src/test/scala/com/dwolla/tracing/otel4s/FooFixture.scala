@@ -1,6 +1,8 @@
 package com.dwolla.tracing.otel4s
 
-import cats.Functor
+import cats.Applicative
+import cats.FlatMap
+import cats.effect.{Ref, Sync}
 import cats.syntax.all._
 import cats.tagless.aop.Aspect
 import cats.~>
@@ -36,40 +38,50 @@ trait Foo[F[_]] {
   * This was checked, not assumed: an interpreter mutated to evaluate its
   * target twice leaves `TracerTransparencySpec` green while failing the
   * counts in the `IO` suite.
+  *
+  * `Id` has no `Sync[Id]`, so a `FooCallCounts` cannot be constructed for
+  * `Id` at all — every `Id`-based call site in this module uses `Foo.plain`
+  * instead, and never touches this class.
   */
-final class FooCallCounts {
-  private var greetRuns = 0
-  private var pingRuns = 0
+final class FooCallCounts[F[_]](greetRuns: Ref[F, Int], pingRuns: Ref[F, Int]) {
+  def greet: F[Int] = greetRuns.get
+  def ping: F[Int] = pingRuns.get
 
-  def greet: Int = greetRuns
-  def ping: Int = pingRuns
+  private[otel4s] def recordGreet(): F[Unit] = greetRuns.update(_ + 1)
+  private[otel4s] def recordPing(): F[Unit] = pingRuns.update(_ + 1)
+}
 
-  private[otel4s] def recordGreet(): Unit = greetRuns += 1
-  private[otel4s] def recordPing(): Unit = pingRuns += 1
+object FooCallCounts {
+  def of[F[_]: Sync]: F[FooCallCounts[F]] =
+    (Ref.of[F, Int](0), Ref.of[F, Int](0)).mapN(new FooCallCounts[F](_, _))
 }
 
 object Foo {
-  /** A `Foo[F]` that counts each of its own runs into `counts`.
-    *
-    * `suspend` says how the counting side effect is deferred into `F`: pass
-    * `f => IO(f())` for an effectful `F`, or `f => f()` for `Id`, which has
-    * nothing to defer into. Taking it as a parameter is what lets one fixture
-    * serve both suites without a `Sync[F]` that `Id` cannot satisfy.
-    *
-    * Deferring matters: with an eager `IO.pure(…)` body the count would record
-    * how many times the effect was ''built'', which is once no matter how many
-    * times an interpreter then runs it — exactly the bug the count exists to
-    * catch.
+  /** A `Foo[F]` with no recording apparatus at all — for call sites that only
+    * need a `Foo[F]` value and never inspect call counts (every `Id`-based
+    * site in this module: `Id` has no `Sync`, so it cannot host
+    * `FooCallCounts`'s `Ref`s, and none of these sites read counts anyway).
     */
-  def counting[F[_]: Functor](counts: FooCallCounts)(suspend: (() => Unit) => F[Unit]): Foo[F] =
+  def plain[F[_]: Applicative]: Foo[F] =
     new Foo[F] {
-      override def greet(name: String, times: Int): F[String] =
-        suspend(() => counts.recordGreet()).as(s"hello $name" * times)
-
-      override def ping(): F[Unit] =
-        suspend(() => counts.recordPing())
+      override def greet(name: String, times: Int): F[String] = (s"hello $name" * times).pure[F]
+      override def ping(): F[Unit] = ().pure[F]
     }
 
+  /** A `Foo[F]` that counts each of its own runs into `counts`. `counts.recordGreet()`/
+    * `recordPing()` are already properly-deferred `F[Unit]` actions (via `Ref#update`),
+    * so sequencing them ahead of the return value only needs `FlatMap[F]` — there is no
+    * longer a `suspend` parameter to say how a plain side effect enters `F`, because there
+    * is no plain side effect: recording is already an `F`-native action.
+    */
+  def counting[F[_]: FlatMap](counts: FooCallCounts[F]): Foo[F] =
+    new Foo[F] {
+      override def greet(name: String, times: Int): F[String] =
+        counts.recordGreet().as(s"hello $name" * times)
+
+      override def ping(): F[Unit] =
+        counts.recordPing()
+    }
 
   // Hand-written rather than derived, so this fixture needs no
   // cats-tagless-macros dependency on Scala 2 and is identical on both axes.

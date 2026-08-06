@@ -50,7 +50,7 @@ class ToAnyValueResolutionSpec extends FunSuite {
       alg.instrumentAndTrace
 
     implicit val tracer: Tracer[Id] = Tracer.noop[Id]
-    val underlying = Foo.counting[Id](new FooCallCounts)(f => f())
+    val underlying = Foo.plain[Id]
 
     assertEquals(onlyTracer[Foo, Id, ToAnyValue](underlying).greet("world", 2), "hello worldhello world")
     assertEquals(onlyTracerInstrument[Foo, Id](underlying).greet("world", 2), "hello worldhello world")
