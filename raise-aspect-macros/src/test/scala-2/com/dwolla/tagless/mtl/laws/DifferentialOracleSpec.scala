@@ -50,7 +50,7 @@ class DifferentialOracleSpec extends CatsEffectSuite {
         rPair <- observed(reference, outcome)
         (r, rRec) = rPair
         _ <- EitherT.liftF[SyncIO, TestError, Unit](
-          exhaustiveInt.allValues.traverse_ { i =>
+          exhaustiveInt.allValues.toList.traverse_ { i =>
             for {
               da <- d.a(i)(raiseLazily).value
               ra <- r.a(i)(raiseLazily).value
@@ -61,7 +61,7 @@ class DifferentialOracleSpec extends CatsEffectSuite {
               de <- d.e(raiseLazily, raiseLazily).value
               re <- r.e(raiseLazily, raiseLazily).value
               _ = assertEquals(de, re)
-              _ <- exhaustiveInt.allValues.traverse_ { j =>
+              _ <- exhaustiveInt.allValues.toList.traverse_ { j =>
                 for {
                   dd <- d.d(i)(j)(raiseLazily).value
                   rd <- r.d(i)(j)(raiseLazily).value
