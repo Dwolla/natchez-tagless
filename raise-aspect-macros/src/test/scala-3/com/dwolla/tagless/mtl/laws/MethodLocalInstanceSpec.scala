@@ -7,7 +7,7 @@ import cats.data.EitherT
 import cats.effect.{Ref, SyncIO}
 import cats.mtl.Raise
 import cats.syntax.all.*
-import munit.FunSuite
+import munit.CatsEffectSuite
 
 import com.dwolla.tagless.mtl.SyncIOTestSyntax.*
 
@@ -200,7 +200,7 @@ object MethodLocal:
     )
 
 @experimental
-class MethodLocalInstanceSpec extends FunSuite:
+class MethodLocalInstanceSpec extends CatsEffectSuite:
   import LawsInstances.renderableRender
   import MethodLocal.{*, given}
 
