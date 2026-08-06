@@ -1,15 +1,17 @@
 package com.dwolla.tagless.mtl
 
+import cats.data.EitherT
+import cats.effect.{Ref, SyncIO}
 import cats.mtl.Raise
 import cats.tagless.aop.Aspect
 import cats.~>
-import munit.FunSuite
+import munit.CatsEffectSuite
 
-import scala.collection.mutable.ListBuffer
-
+import CarrierArrows.Lazily
+import SyncIOTestSyntax._
 import TestError._
 
-class WeaveInterpreterSpec extends FunSuite {
+class WeaveInterpreterSpec extends CatsEffectSuite {
   private type F[A] = Either[TestError, A]
   private type W[A] = Aspect.Weave[F, Render, Render, A]
 
@@ -33,22 +35,25 @@ class WeaveInterpreterSpec extends FunSuite {
     implicit val reference: RaiseAspect[TestAlg, Render, Render, Render] =
       TestAlgReference.referenceRaiseAspect[Render, Render, Render]
 
-    val rendered = ListBuffer.empty[String]
-    val hook: OnRaise[F, Render] = new OnRaise[F, Render] {
-      def apply[E](e: E)(implicit ev: Render[E]): F[Unit] = {
-        rendered += ev.render(e)
-        Right(())
+    type WLazily[A] = Aspect.Weave[Lazily, Render, Render, A]
+    val eraseLazily: WLazily ~> Lazily = WeaveArrows.codomainTarget[Lazily, Render, Render]
+
+    (for {
+      rendered <- Ref.of[Lazily, Vector[String]](Vector.empty)
+      hook = new OnRaise[Lazily, Render] {
+        def apply[E](e: E)(implicit ev: Render[E]): Lazily[Unit] = rendered.update(_ :+ ev.render(e))
       }
-    }
-
-    val interpreted =
-      WeaveInterpreter[TestAlg, Render, Render, Render, F]
-        .apply(new EitherTestAlg(0))(erase, hook)
-
-    assertEquals(interpreted.a(3)(Raise[F, ErrA]), Right("a:3"))
-    assertEquals(rendered.toList, Nil)
-
-    assertEquals(interpreted.a(-3)(Raise[F, ErrA]), Left(NegativeInput(-3)): F[String])
-    assertEquals(rendered.toList, List("errA:NegativeInput(-3)"))
+      interpreted =
+        WeaveInterpreter[TestAlg, Render, Render, Render, Lazily]
+          .apply(new GenericTestAlg[Lazily](0))(eraseLazily, hook)
+      r1 <- EitherT.liftF[SyncIO, TestError, Either[TestError, String]](interpreted.a(3)(Raise[Lazily, ErrA]).value)
+      _ = assertEquals(r1, Right("a:3"))
+      seen1 <- rendered.get
+      _ = assertEquals(seen1.toList, Nil)
+      r2 <- EitherT.liftF[SyncIO, TestError, Either[TestError, String]](interpreted.a(-3)(Raise[Lazily, ErrA]).value)
+      _ = assertEquals(r2, Left(NegativeInput(-3)): F[String])
+      seen2 <- rendered.get
+      _ = assertEquals(seen2.toList, List("errA:NegativeInput(-3)"))
+    } yield ()).runOrFail
   }
 }
