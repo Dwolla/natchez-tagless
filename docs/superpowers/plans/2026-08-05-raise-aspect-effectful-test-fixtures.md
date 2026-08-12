@@ -48,7 +48,7 @@ Modified files, grouped by phase (see Tasks below for exact diffs):
 - Produces: `implicit class RunOrFailSyncIOOps[E, A](fa: EitherT[SyncIO, E, A])` with `.runOrFail: SyncIO[A]` — the one place `Left` becomes a test failure.
 - Produces: `CarrierArrows.Result`/`CarrierArrows.Lazily` (unchanged names, `Lazily`'s base now `SyncIO`).
 
-- [ ] **Step 1: Add `cats-effect-testkit` to `raiseAspectLaws`**
+- [x] **Step 1: Add `cats-effect-testkit` to `raiseAspectLaws`**
 
 In `build.sbt`, find the `raiseAspectLaws` project's `libraryDependencies` (already carries the uncommitted `cats-effect`/`munit-cats-effect` additions from an earlier session):
 
@@ -78,7 +78,7 @@ Add `cats-effect-testkit` (provides `Eq[SyncIO[A]]` and the `SyncIO[Boolean] => 
     ),
 ```
 
-- [ ] **Step 2: Add the `RecordingFk` companion factory**
+- [x] **Step 2: Add the `RecordingFk` companion factory**
 
 `RecordingFk.scala` already has (uncommitted) the `Ref`-backed class shape. Add a companion object with a factory that builds both `Ref`s and requires only `Sync[F]` (stronger than the class's own `Monad[F]`, needed only here to construct):
 
@@ -94,12 +94,12 @@ object RecordingFk {
 
 Place this immediately after the `RecordedWeave`/`object RecordedWeave` block (line 26) and before `final class RecordingFk` (so the class stays the primary declaration). `cats.effect.*`/`cats.syntax.all.*` are already imported at the top of the file (per the uncommitted diff).
 
-- [ ] **Step 3: Run existing tests to confirm the factory compiles**
+- [x] **Step 3: Run existing tests to confirm the factory compiles**
 
 `sbt raiseAspectCoreJVM/Test/compile`
 Expected: still fails (call sites elsewhere aren't fixed yet) — this step only confirms `RecordingFk.scala` itself compiles in isolation. If it reports an error *inside* `RecordingFk.scala`, fix that before continuing; errors from other files are expected and addressed in later tasks.
 
-- [ ] **Step 4: Add `GenericTestAlg`/`GenericPlainAlg` to `TestFixtures.scala`**
+- [x] **Step 4: Add `GenericTestAlg`/`GenericPlainAlg` to `TestFixtures.scala`**
 
 `EitherTestAlg`/`EitherPlainAlg` (lines 74-102 of `TestFixtures.scala`) are hardcoded to `Either[TestError, *]` and stay exactly as they are — every `Result`-typed call site keeps using them unchanged. Add two new, `F`-polymorphic siblings immediately after `EitherPlainAlg`'s closing brace (line 102), for the call sites that need `TestAlg[Lazily]`/`PlainAlg[Lazily]`. `PlainAlg`'s `p` returns a `Left` directly rather than through a `Raise` capability (see `EitherPlainAlg`'s own doc comment) — a polymorphic `F` has no built-in "return a Left", so `GenericPlainAlg` needs `ApplicativeError[F, TestError]`, not plain `Applicative[F]`; both `Result` (`Either[TestError, *]`) and `Lazily` (`EitherT[SyncIO, TestError, *]`, deriving it from `Sync[SyncIO]`) satisfy that:
 
@@ -138,7 +138,7 @@ final class GenericPlainAlg[F[_]](implicit F: ApplicativeError[F, TestError]) ex
 
 Add `import cats.{Applicative, ApplicativeError}` and `import cats.syntax.all._` (for `.pure`/`.raiseError`) at the top of `TestFixtures.scala` if not already present (check the existing import list first — `cats.mtl.Raise` is almost certainly already imported since `EitherTestAlg` uses it).
 
-- [ ] **Step 5: Create `SyncIOTestSyntax.scala`**
+- [x] **Step 5: Create `SyncIOTestSyntax.scala`**
 
 ```scala
 package com.dwolla.tagless.mtl
@@ -165,7 +165,7 @@ object SyncIOTestSyntax {
 }
 ```
 
-- [ ] **Step 6: Rewrite `CarrierArrows.scala`**
+- [x] **Step 6: Rewrite `CarrierArrows.scala`**
 
 Current (lines 1-42, quoted in full):
 
@@ -267,7 +267,7 @@ object CarrierArrows {
 }
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add build.sbt raise-aspect-core/src/test/scala/com/dwolla/tagless/mtl/RecordingFk.scala raise-aspect-core/src/test/scala/com/dwolla/tagless/mtl/TestFixtures.scala raise-aspect-core/src/test/scala/com/dwolla/tagless/mtl/SyncIOTestSyntax.scala raise-aspect-core/src/test/scala/com/dwolla/tagless/mtl/CarrierArrows.scala
@@ -284,7 +284,7 @@ git commit -m "test: finish RecordingFk's Ref-based redesign; add Sync-capable L
 **Interfaces:**
 - Consumes: `CarrierArrows.Lazily`, `SyncIOTestSyntax.RunOrFailSyncIOOps`.
 
-- [ ] **Step 1: Rewrite the file**
+- [x] **Step 1: Rewrite the file**
 
 Current (full file):
 
@@ -415,12 +415,12 @@ class EvidenceThreadingSpec extends CatsEffectSuite {
 }
 ```
 
-- [ ] **Step 2: Run the test**
+- [x] **Step 2: Run the test**
 
 `sbt raiseAspectCoreJVM/testOnly com.dwolla.tagless.mtl.EvidenceThreadingSpec`
 Expected: PASS (once Task 1 compiles cleanly).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add raise-aspect-core/src/test/scala/com/dwolla/tagless/mtl/EvidenceThreadingSpec.scala
@@ -437,7 +437,7 @@ git commit -m "test: migrate EvidenceThreadingSpec off ListBuffer onto Ref[Lazil
 **Interfaces:**
 - Consumes: `RecordingFk.apply`, `CarrierArrows.Lazily`, `GenericTestAlg`, `SyncIOTestSyntax.RunOrFailSyncIOOps`.
 
-- [ ] **Step 1: Rewrite the file**
+- [x] **Step 1: Rewrite the file**
 
 Current (full file, quoted above in research) uses `F = Either[TestError, A]`, `new EitherTestAlg(eOutcome)`, a `ListBuffer`-backed hook, and a zero-arg `RecordingFk[F, ...]`. Since this test both records (via the hook) and constructs a `RecordingFk`, its whole `F` moves to `Lazily`, and `new EitherTestAlg(eOutcome)` becomes `new GenericTestAlg[Lazily](eOutcome)`:
 
@@ -496,12 +496,12 @@ class TestAlgReferenceSpec extends CatsEffectSuite {
 
 Note `raisedThrough`'s result is captured via `.value` (stripping to `SyncIO[Either[TestError, Unit]]`) rather than `.runOrFail`, because a `Left` here is the *expected* outcome for two of the three calls — this test's whole point is asserting on which side of the `Either` each call landed, so unlike other tests, we must not treat `Left` as a failure. Only the outermost `for` (over `Lazily`, built from `Ref.of`/`rendered.get`, which cannot themselves raise) uses `.runOrFail`.
 
-- [ ] **Step 2: Run the test**
+- [x] **Step 2: Run the test**
 
 `sbt raiseAspectCoreJVM/testOnly com.dwolla.tagless.mtl.TestAlgReferenceSpec`
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add raise-aspect-core/src/test/scala/com/dwolla/tagless/mtl/TestAlgReferenceSpec.scala
@@ -518,7 +518,7 @@ git commit -m "test: migrate TestAlgReferenceSpec off ListBuffer/zero-arg Record
 **Interfaces:**
 - Consumes: `CarrierArrows.Lazily`, `GenericTestAlg`, `SyncIOTestSyntax.RunOrFailSyncIOOps`.
 
-- [ ] **Step 1: Rewrite the file**
+- [x] **Step 1: Rewrite the file**
 
 Only the second test (`"a RaiseAspect-only algebra resolves to the RaiseAspect instance and runs the hook"`) mutates (`ListBuffer`); the first (`"an Aspect instance outranks..."`) does not and stays exactly as-is on `F = Either[TestError, A]`/`EitherPlainAlg`. Only the second test's `F`/algebra moves to `Lazily`/`GenericTestAlg`:
 
@@ -586,12 +586,12 @@ class WeaveInterpreterSpec extends CatsEffectSuite {
 
 Note: `implicit val reference` is unused by the second test's body as rewritten (the original used `WeaveInterpreter[TestAlg, ...]`'s implicit resolution, which picks between an `Aspect`/`RaiseAspect` instance for `TestAlg` — check whether `WeaveInterpreter.apply` requires this as an *implicit* parameter it resolves internally, in which case keep the `implicit val` exactly as-is since removing it would change what's under test, or as an explicit argument, in which case thread it through explicitly). Read `WeaveInterpreter`'s signature in `raise-aspect-core/src/main/scala/.../WeaveInterpreter.scala` before finalizing this step, and preserve whichever resolution mechanism the original test exercised — this is the one place in this task where you must check the production signature rather than trust this plan's snippet verbatim.
 
-- [ ] **Step 2: Run the test**
+- [x] **Step 2: Run the test**
 
 `sbt raiseAspectCoreJVM/testOnly com.dwolla.tagless.mtl.WeaveInterpreterSpec`
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add raise-aspect-core/src/test/scala/com/dwolla/tagless/mtl/WeaveInterpreterSpec.scala
@@ -608,7 +608,7 @@ git commit -m "test: migrate WeaveInterpreterSpec's hook-recording test off List
 **Interfaces:**
 - Consumes: nothing from other tasks — self-contained (`Id` swaps to `SyncIO` directly, no error channel needed, so no `Lazily`/`EitherT` involved here).
 
-- [ ] **Step 1: Rewrite the file**
+- [x] **Step 1: Rewrite the file**
 
 Current (full file, quoted above in research) uses `cats.Id` and `collection.mutable.Buffer`. Swap `Id` for `SyncIO` (no error type is raised in this file — it's about implicit-priority resolution of `OnRaise`/`DefaultOnRaise`, not about `Raise`'s error channel — so no `EitherT` wrapper is needed) and the buffer for `Ref[SyncIO, Vector[String]]`:
 
@@ -686,12 +686,12 @@ implicitly[RaiseRecorder[SyncIO, Rendered]]"""
 
 Note the first two tests wrap the `implicit val`/`implicitly[...]` block inside a nested block passed to `<-` — this is necessary because the `implicit val`s must be in scope exactly when `implicitly[RaiseRecorder[SyncIO, Rendered]]` resolves, and that resolution must happen *inside* the `for`-comprehension (not before it) so the `log` `Ref` it closes over is the one just constructed. `RaiseRecorder[SyncIO, Rendered].onRaise(42)` returns `SyncIO[Unit]`, which is what the `<-` binds.
 
-- [ ] **Step 2: Run the tests**
+- [x] **Step 2: Run the tests**
 
 `sbt raiseAspectCoreJVM/testOnly com.dwolla.tagless.mtl.RaiseRecorderSpec`
 Expected: all 3 tests PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add raise-aspect-core/src/test/scala/com/dwolla/tagless/mtl/RaiseRecorderSpec.scala
@@ -710,7 +710,7 @@ git commit -m "test: migrate RaiseRecorderSpec off Id/mutable.Buffer onto SyncIO
 
 This file has five tests touching mutable state or `Lazily`/`Eval`, plus two untouched (the `Functor`-identity test and the `Serializable` test, both `F`/`Either`-only, no mutation — leave them exactly as they are).
 
-- [ ] **Step 1: Change the base class and imports**
+- [x] **Step 1: Change the base class and imports**
 
 Replace:
 ```scala
@@ -764,11 +764,11 @@ Keep only:
 ```
 (`Lazily` now comes from the `CarrierArrows.Lazily` import.)
 
-- [ ] **Step 2: Leave the two non-mutating tests untouched**
+- [x] **Step 2: Leave the two non-mutating tests untouched**
 
 `"the decorated capability reports the caller's own Functor, never a synthesized one"` (lines 31-42) and `"decorating does not change the raised value"` (lines 44-52) touch neither `Lazily` nor mutable state — no changes.
 
-- [ ] **Step 3: Migrate `"the hook renders the raised error through its Err evidence, exactly once"`**
+- [x] **Step 3: Migrate `"the hook renders the raised error through its Err evidence, exactly once"`**
 
 Current:
 ```scala
@@ -811,7 +811,7 @@ Replace with:
   }
 ```
 
-- [ ] **Step 4: Migrate `"the hook's effect is sequenced before the raise, and neither runs until the value is forced"`**
+- [x] **Step 4: Migrate `"the hook's effect is sequenced before the raise, and neither runs until the value is forced"`**
 
 This is the laziness-under-test case. Current:
 ```scala
@@ -884,7 +884,7 @@ Replace with (both `counter` and `log` become `Ref[Lazily, _]`; `SyncIO`'s own l
 
 Note: `raised = decorated.raise[...]` is a `Lazily[Int]` value bound with `=`, not `<-` — this is deliberate and load-bearing: it must *not* be forced by the surrounding `for`-comprehension at that point, only later at `result <- raised.value`. Building the whole outer `for`/`Lazily` chain up to this point (via `Ref.of`, `counter.get`) does not force `raised` — `raised` is just a value reference until something explicitly sequences it, which is exactly the same "must not run until forced" property the original `Eval`-based version had (constructing `Eval.always{...}` doesn't run it either; only `.value` does).
 
-- [ ] **Step 5: Migrate `countingOnRaise`, `countingLazilyAlg`, `ambientRaise`, and the `property(...)` test**
+- [x] **Step 5: Migrate `countingOnRaise`, `countingLazilyAlg`, `ambientRaise`, and the `property(...)` test**
 
 Current:
 ```scala
@@ -997,16 +997,16 @@ Then:
 
 Note the property body's final line: `raised.value` here is `SyncIO[Either[TestError, Boolean]]` — `.map(_.getOrElse(false))` turns an unexpected `Left` (from `GenericTestAlg`'s own raise path — shouldn't happen since `ambientRaise`, not `GenericTestAlg`'s own capability, is what raises here, but the `for`-comprehension is still `EitherT`-shaped so a `Left` is possible in principle) into a scalacheck-visible `false` rather than swallowing it silently, and `SyncIO[Boolean]` is picked up by the `cats-effect-testkit` `syncIoBooleanToProp` implicit. This changes the failure-reporting shape from `assertEquals`'s detailed diff to a plain scalacheck counterexample (the generated `i`) — acceptable for a property test, and scalacheck still reports which `i` failed.
 
-- [ ] **Step 6: Leave `"the observing result is Serializable"` untouched**
+- [x] **Step 6: Leave `"the observing result is Serializable"` untouched**
 
 Lines 189-217 use `F`/`Either` only, no mutation, no `Lazily` — no changes.
 
-- [ ] **Step 7: Run the tests**
+- [x] **Step 7: Run the tests**
 
 `sbt raiseAspectCoreJVM/testOnly com.dwolla.tagless.mtl.ObservingCapabilitySpec`
 Expected: all tests PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add build.sbt raise-aspect-core/src/test/scala/com/dwolla/tagless/mtl/ObservingCapabilitySpec.scala
@@ -1024,7 +1024,7 @@ git commit -m "test: migrate ObservingCapabilitySpec's mutating tests off ListBu
 - Produces: `LawsInstances.Lazily` (base now `SyncIO`), `LawsInstances.instrumented`/`.observed` now return `Lazily[(TestAlg[Lazily], RecordingFk[Lazily, Render, Render])]` instead of a bare `(TestAlg[Result], RecordingFk[Result, Render, Render])` tuple, `LawsInstances.renderedWeaves` now returns `Lazily[List[RenderedWeave]]`.
 - Consumes: `RecordingFk.apply`, `GenericTestAlg` (raise-aspect-core), `cats.effect.testkit.TestInstances` (for `Eq[SyncIO[A]]`).
 
-- [ ] **Step 1: Swap `Lazily`'s base and delete the stale `Eq` instance**
+- [x] **Step 1: Swap `Lazily`'s base and delete the stale `Eq` instance**
 
 Change:
 ```scala
@@ -1045,7 +1045,7 @@ Delete:
 
 Add `import cats.effect.testkit.TestInstances._` (brings `eqSyncIOA[A: Eq]: Eq[SyncIO[A]]` into implicit scope) and `import cats.effect.SyncIO` at the top; remove the now-unused `import cats.Eval`. `Eq[Lazily[A]]` (i.e. `Eq[EitherT[SyncIO, TestError, A]]`) now resolves automatically via cats' own `EitherT.catsDataEqForEitherT[F, L, R](implicit F: Eq[F[Either[L, R]]])` combined with `eqSyncIOA` and the already-in-scope `Eq[Either[TestError, A]]` (itself derivable from `eqTestError` + whatever `Eq[A]` the call site supplies) — no replacement `def` needed.
 
-- [ ] **Step 2: Rewrite `instrumented`/`observed`/`renderedWeaves` to move off `Result` onto `Lazily`**
+- [x] **Step 2: Rewrite `instrumented`/`observed`/`renderedWeaves` to move off `Result` onto `Lazily`**
 
 Current:
 ```scala
@@ -1109,12 +1109,12 @@ Every caller of these three (Task 8's `RaiseAspectSuite`, Task 9's `Differential
 
 `renderedWeaves` is overloaded: the `Result`-typed overload only exists to keep any *other*, non-mutating `Result`-based caller compiling — grep the codebase for `renderedWeaves(` call sites before finalizing this step, and delete the `Result`-typed overload if nothing calls it (per the Task 7/Phase-3 research, every current caller uses the `Result`-typed `RecordingFk` and will be migrated to `Lazily` in this same plan, so the `Result`-typed overload is very likely dead after Tasks 8-16 land — leave a `TODO` only if you find a genuine remaining caller, otherwise delete it).
 
-- [ ] **Step 3: Run a compile check**
+- [x] **Step 3: Run a compile check**
 
 `sbt raiseAspectLawsJVM/Test/compile`
 Expected: fails in `RaiseAspectSuite.scala`/`ConservativeExtensionSuite.scala` (not yet migrated) — confirms `LawsInstances.scala` itself compiles.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add raise-aspect-laws/src/test/scala/com/dwolla/tagless/mtl/laws/LawsInstances.scala
@@ -1131,7 +1131,7 @@ git commit -m "test: swap LawsInstances.Lazily onto SyncIO; instrumented/observe
 **Interfaces:**
 - Consumes: `LawsInstances.{Result, Lazily, instrumented, renderedWeaves, raiseResult}`, `RecordingFk.apply`, `GenericTestAlg`, `SyncIOTestSyntax.RunOrFailSyncIOOps`, `cats.effect.testkit.TestInstances` (`syncIoBooleanToProp`).
 
-- [ ] **Step 1: Change the base class**
+- [x] **Step 1: Change the base class**
 
 ```scala
 abstract class RaiseAspectSuite extends DisciplineSuite {
@@ -1143,7 +1143,7 @@ abstract class RaiseAspectSuite extends munit.CatsEffectSuite with DisciplineSui
 
 Both `CatsEffectSuite` (abstract class, extends `FunSuite`) and `DisciplineSuite` (a trait, per its `interface munit.DisciplineSuite extends munit.ScalaCheckSuite` bytecode signature — traits compose freely with a single base class) combine without conflict.
 
-- [ ] **Step 2: Rewrite the three `forAllErrors`-based `.value.value` properties**
+- [x] **Step 2: Rewrite the three `forAllErrors`-based `.value.value` properties**
 
 Current `forAllErrors`:
 ```scala
@@ -1240,7 +1240,7 @@ Replace each `assertEquals(law.lhs.value.value, law.rhs.value.value)` line with 
 
 The middle property (`"L4 arrow coherence for the identity arrow"`, lines 69-78) stays exactly as-is — it's `Result`-only (`assertEquals(law.lhs, law.rhs)`, no `.value.value`, no `Lazily`).
 
-- [ ] **Step 3: Rewrite the four `LawsInstances.instrumented`-based L8 tests**
+- [x] **Step 3: Rewrite the four `LawsInstances.instrumented`-based L8 tests**
 
 `instrumented` now returns `Lazily[(TestAlg[Lazily], RecordingFk[Lazily, Render, Render])]` (Task 7). Current:
 ```scala
@@ -1396,7 +1396,7 @@ Replace with (`impl` must also move to `GenericTestAlg[Lazily]` since it's compa
 
 `.traverse_` needs `import cats.syntax.all._` (already present via `cats.syntax.all.*` — confirm the file's existing import list and add `import cats.effect.SyncIO` and `import cats.effect.testkit.TestInstances._` alongside it if not already there from Step 2).
 
-- [ ] **Step 4: Rewrite the two L10 tests**
+- [x] **Step 4: Rewrite the two L10 tests**
 
 Current:
 ```scala
@@ -1473,7 +1473,7 @@ Replace with:
   }
 ```
 
-- [ ] **Step 5: Rewrite `countingAlg`**
+- [x] **Step 5: Rewrite `countingAlg`**
 
 Current:
 ```scala
@@ -1525,12 +1525,12 @@ Current:
 
 Add `import cats.effect.{Ref, Sync, SyncIO}` to the file's imports.
 
-- [ ] **Step 6: Run the full suite**
+- [x] **Step 6: Run the full suite**
 
 `sbt raiseAspectLawsJVM/testOnly com.dwolla.tagless.mtl.laws.ReferenceRaiseAspectSpec`
 Expected: every test PASSES (this concrete spec runs the full `RaiseAspectSuite` against `TestAlgReference`'s hand-written instance).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add build.sbt raise-aspect-laws/src/test/scala/com/dwolla/tagless/mtl/laws/RaiseAspectSuite.scala
@@ -1547,7 +1547,7 @@ git commit -m "test: migrate RaiseAspectSuite's L8/L10 tests and forAllErrors pr
 **Interfaces:**
 - Consumes: `RecordingFk.apply`, `GenericPlainAlg`, `LawsInstances.Lazily`, `SyncIOTestSyntax.RunOrFailSyncIOOps`.
 
-- [ ] **Step 1: Change the base class, and move `impl`/`ourRendered` onto `Lazily`**
+- [x] **Step 1: Change the base class, and move `impl`/`ourRendered` onto `Lazily`**
 
 ```scala
 abstract class ConservativeExtensionSuite extends FunSuite {
@@ -1562,7 +1562,7 @@ abstract class ConservativeExtensionSuite extends munit.CatsEffectSuite {
   private val impl: PlainAlg[Lazily] = new GenericPlainAlg[Lazily]
 ```
 
-- [ ] **Step 2: Rewrite `ourRendered` and the two `RecordingFk`-touching tests**
+- [x] **Step 2: Rewrite `ourRendered` and the two `RecordingFk`-touching tests**
 
 Current:
 ```scala
@@ -1635,16 +1635,16 @@ Replace with:
   }
 ```
 
-- [ ] **Step 3: Leave `"L9 our mapK agrees with upstream's FunctorK.mapK for any pull"` untouched**
+- [x] **Step 3: Leave `"L9 our mapK agrees with upstream's FunctorK.mapK for any pull"` untouched**
 
 This test (lines 63-75 per the earlier catalog) touches no `RecordingFk`/mutation — no changes.
 
-- [ ] **Step 4: Run the suite**
+- [x] **Step 4: Run the suite**
 
 `sbt raiseAspectLawsJVM/testOnly com.dwolla.tagless.mtl.laws.ConservativeExtensionSpec`
 Expected: all tests PASS (both the scala-2 and scala-3 `ConservativeExtensionSpec` variants run this shared suite — run whichever cross-version this session's `scalaVersion` is set to; run the other via `+testOnly` or `++ <version>` before moving on).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add raise-aspect-laws/src/test/scala/com/dwolla/tagless/mtl/laws/ConservativeExtensionSuite.scala
@@ -1662,7 +1662,7 @@ git commit -m "test: migrate ConservativeExtensionSuite's RecordingFk usage onto
 - Produces: `ExpectedWeaves.rendered(instrumented: TestAlg[Lazily], recorder: RecordingFk[Lazily, Render, Render]): Lazily[List[RenderedWeave]]` (was `(TestAlg[Result], RecordingFk[Result, Render, Render]) => List[RenderedWeave]`).
 - Consumes: `LawsInstances.Lazily`, `LawsInstances.raiseResult`-equivalent for `Lazily` (`Raise[Lazily, ErrA]`/`Raise[Lazily, ErrB]`, summoned directly — no shared `val` for these exists yet; summon via `Raise[Lazily, ErrA]` at each call site, matching how `RaiseAspectSuite` already does for `raiseLazily`).
 
-- [ ] **Step 1: Rewrite `rendered`**
+- [x] **Step 1: Rewrite `rendered`**
 
 Current:
 ```scala
@@ -1702,7 +1702,7 @@ Replace with (this file must stay free of version-specific syntax — no `using`
 
 This preserves the doc comment's "arrival-order pin, not just a content pin" property exactly: each call is sequenced via `<-` before the next is even built, and `recorder.weaves` is read only after all five have run — the same strict left-to-right ordering the original imperative version had, now made explicit by the monadic `for` rather than implicit in statement order.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add raise-aspect-macros/src/test/scala/com/dwolla/tagless/mtl/laws/ExpectedWeaves.scala
@@ -1724,7 +1724,7 @@ git commit -m "test: move ExpectedWeaves.rendered onto Lazily, preserving arriva
 
 This is the largest single file in the plan (12 `RecordingFk` sites + 3 `recordingArrow` sites + 1 direct-hook site). Work through it in the following six sub-steps.
 
-- [ ] **Step 1: Add `WidgetLazily` and imports**
+- [x] **Step 1: Add `WidgetLazily` and imports**
 
 In `object MethodLocal`, change:
 ```scala
@@ -1740,7 +1740,7 @@ object MethodLocal:
 
 Add to the top of the file: `import cats.data.EitherT`, `import cats.effect.{Ref, SyncIO}`, `import cats.{Applicative, ApplicativeError}`, and `import com.dwolla.tagless.mtl.SyncIOTestSyntax._`. Change the `import scala.collection.mutable.ListBuffer` line — delete it (no longer used after Step 2).
 
-- [ ] **Step 2: Make the seven fixture algebras `F`-polymorphic**
+- [x] **Step 2: Make the seven fixture algebras `F`-polymorphic**
 
 Current (lines 153-179, quoted in full above in research):
 ```scala
@@ -1806,7 +1806,7 @@ Replace with (`Right(x)` becomes `x.pure[F]`; `risky`'s `R.raise(...)` already t
 
 `import cats.syntax.all.*` must already be present (check the top of the file; add if missing) for `.pure[F]`.
 
-- [ ] **Step 3: Rewrite `recordingArrow`**
+- [x] **Step 3: Rewrite `recordingArrow`**
 
 Current (lines 185-195):
 ```scala
@@ -1837,7 +1837,7 @@ Replace with (`F`-polymorphic, needs `Apply[F]` to sequence `recorded.update(...
     )
 ```
 
-- [ ] **Step 4: Migrate the three `recordingArrow` call sites (all currently on `WidgetResult`; all mutate, so all move to `WidgetLazily`)**
+- [x] **Step 4: Migrate the three `recordingArrow` call sites (all currently on `WidgetResult`; all mutate, so all move to `WidgetLazily`)**
 
 Current, test `"the Err evidence transported with the capability is the one the method was handed"` (line ~262):
 ```scala
@@ -1913,7 +1913,7 @@ Replace with (this half joins the first half of the same test, migrated in Step 
       _ = assertEquals(seen.toList, List("loudError:negative:-6"))
 ```
 
-- [ ] **Step 5: Migrate every `RecordingFk[WidgetResult, ...]` test to `RecordingFk[WidgetLazily, ...]`**
+- [x] **Step 5: Migrate every `RecordingFk[WidgetResult, ...]` test to `RecordingFk[WidgetLazily, ...]`**
 
 Every one of the 12 `RecordingFk` sites follows the identical shape: build the recorder via the factory inside a `for`, instantiate the relevant fixture at `WidgetLazily` (via the now-generic `widgets[WidgetLazily]`/`poly[WidgetLazily]`/etc. from Step 2), sequence each call with `<-`, read `recorder.weaves` with `<-`, assert inside the `yield`, wrap the whole thing in `.runOrFail`. Two full worked examples, then the exhaustive remaining list.
 
@@ -2008,12 +2008,12 @@ Apply the identical pattern (recorder via factory, fixture instantiated at `[Wid
 | 377-384 | "a wider contravariant instance stands in for the narrower one the derivation needs" | `contraAspect`/`contra` — note `RecordingFk[WidgetLazily, Contra, Render]`, **not** `Render` for `Dom` |
 | 388-395 | "resolution is derivation-site first..." | `precedenceAspect`/`precedence` |
 
-- [ ] **Step 6: Run the file's tests**
+- [x] **Step 6: Run the file's tests**
 
 `sbt raiseAspectMacrosJVM/testOnly com.dwolla.tagless.mtl.laws.MethodLocalInstanceSpec`
 Expected: all tests PASS (the `compileErrors`-based rejection tests at the bottom of the file are untouched and should already pass).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add raise-aspect-macros/src/test/scala-3/com/dwolla/tagless/mtl/laws/MethodLocalInstanceSpec.scala
@@ -2030,11 +2030,11 @@ git commit -m "test(scala-3): migrate MethodLocalInstanceSpec off ListBuffer/zer
 **Interfaces:**
 - Consumes: `LawsInstances.Lazily`, `RecordingFk.apply`, `SyncIOTestSyntax.RunOrFailSyncIOOps`. `EdgeAlg.either: EdgeAlg[Result]` (line 30-ish) needs an `EdgeAlg[Lazily]` counterpart — check its body; if it's `Right(...)`-shaped like the `MethodLocal` fixtures, generalize it to `def instance[F[_]: Applicative]: EdgeAlg[F]` following the Task 11 Step 2 pattern, since every test in this file touches `RecordingFk`.
 
-- [ ] **Step 1: Generalize the `EdgeAlg` fixture**
+- [x] **Step 1: Generalize the `EdgeAlg` fixture**
 
 Read `EdgeCaseDerivationSpec.scala:19-37` directly (not fully quoted in this plan's research pass) and apply the Task 11 Step 2 transformation: turn `object EdgeAlg { def either: EdgeAlg[LawsInstances.Result] = new EdgeAlg[LawsInstances.Result] { ... } }`'s body from `Either`-literal (`Right(...)`, or `Raise`-based raises) into an `F[_]: Applicative`-polymorphic `def instance[F[_]: Applicative]: EdgeAlg[F]`, mirroring every `Right(x)` to `x.pure[F]`.
 
-- [ ] **Step 2: Migrate all six `RecordingFk[Result, ...]` tests to `RecordingFk[Lazily, ...]`**
+- [x] **Step 2: Migrate all six `RecordingFk[Result, ...]` tests to `RecordingFk[Lazily, ...]`**
 
 Every test in this file follows exactly the Task 11 Step 5 pattern (`instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[...])`, one or more calls sequenced with `<-`, `recorder.weaves` read with `<-`). Apply it at these line ranges:
 
@@ -2047,12 +2047,12 @@ Every test in this file follows exactly the Task 11 Step 5 pattern (`instrumente
 | 96-114 | "an abstract val returning F[A] is woven eagerly, at construction, unlike on Scala 2" | **read carefully**: this test asserts `recorder.weaves` has exactly one entry *before* `instrumented.constant` is ever read, and still exactly one after re-reading it. Since `recorder.weaves` is now `Lazily[Vector[...]]`, both reads must be sequenced (`<-`) at the right points in the `for` — do not collapse them into one read, or the "before/after, still one entry" assertion becomes vacuous |
 | 117-124 | "a capability-free method on the same algebra is woven unchanged" | |
 
-- [ ] **Step 3: Run the tests**
+- [x] **Step 3: Run the tests**
 
 `sbt raiseAspectMacrosJVM/testOnly com.dwolla.tagless.mtl.laws.EdgeCaseDerivationSpec`
 Expected: all PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add raise-aspect-macros/src/test/scala-3/com/dwolla/tagless/mtl/laws/EdgeCaseDerivationSpec.scala
@@ -2069,7 +2069,7 @@ git commit -m "test(scala-3): migrate EdgeCaseDerivationSpec's RecordingFk usage
 **Interfaces:**
 - Consumes: `LawsInstances.{observed, renderedWeaves, Result, Lazily}` (both now `Lazily`-returning per Task 7).
 
-- [ ] **Step 1: Migrate the one `observed`-based test**
+- [x] **Step 1: Migrate the one `observed`-based test**
 
 Current (lines 35-73, per research catalog):
 ```scala
@@ -2132,16 +2132,16 @@ test("the derived instance is structurally identical to the reference, for every
 }
 ```
 
-- [ ] **Step 2: Leave the remaining four tests untouched**
+- [x] **Step 2: Leave the remaining four tests untouched**
 
 Per the research catalog, `"the derived mapK agrees with the reference under the identity arrow"`, `"...under a genuine carrier change"`, `"...under the forgetful interpreter"`, and `"the derived functorK agrees with the derived aspect's mapK"` use `eqTestAlg[Result]`/`eqTestAlg[Lazily]`-based comparisons, not `RecordingFk` — no code changes needed; they pick up the new `Eq[Lazily[A]]` (Task 7 Step 1) automatically via implicit resolution.
 
-- [ ] **Step 3: Run the tests**
+- [x] **Step 3: Run the tests**
 
 `sbt raiseAspectMacrosJVM/testOnly com.dwolla.tagless.mtl.laws.DifferentialOracleSpec`
 Expected: all PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add raise-aspect-macros/src/test/scala-3/com/dwolla/tagless/mtl/laws/DifferentialOracleSpec.scala
@@ -2160,11 +2160,11 @@ git commit -m "test(scala-3): migrate DifferentialOracleSpec's observed-based te
 
 `UsingAlg.either`/`MultiUsingAlg.either` (referenced at lines 35, 49 per research) need the same `F`-polymorphic treatment as Task 11 Step 2 and Task 12 Step 1 — read their bodies directly and generalize.
 
-- [ ] **Step 1: Generalize `UsingAlg`/`MultiUsingAlg`**
+- [x] **Step 1: Generalize `UsingAlg`/`MultiUsingAlg`**
 
 Same pattern as prior tasks: `def either: UsingAlg[Result] = ...` becomes `def instance[F[_]: Applicative]: UsingAlg[F] = ...` (rename `either` to `instance` throughout this file, or keep the name `either` if you prefer — just make it generic; check for other call sites of `UsingAlg.either`/`MultiUsingAlg.either` outside this file before renaming, there should be none since these types are file-local per the research catalog).
 
-- [ ] **Step 2: Migrate the four `RecordingFk`-touching tests**
+- [x] **Step 2: Migrate the four `RecordingFk`-touching tests**
 
 | Lines | Test name | Notes |
 |---|---|---|
@@ -2173,7 +2173,7 @@ Same pattern as prior tasks: `def either: UsingAlg[Result] = ...` becomes `def i
 | 92-104 | "two separate using clauses are both dropped from the domain" | |
 | 105-115 | "both capabilities from separate using clauses are transported" | |
 
-- [ ] **Step 3: Migrate the `ListBuffer`-based hook test**
+- [x] **Step 3: Migrate the `ListBuffer`-based hook test**
 
 Current (lines 116-131, per research):
 ```scala
@@ -2213,12 +2213,12 @@ Replace with (same `Ref`-backed hook shape as every prior task; `UsingAlg.either
 } yield ()).runOrFail
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 `sbt raiseAspectMacrosJVM/testOnly com.dwolla.tagless.mtl.laws.UsingAlgSpec`
 Expected: all PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add raise-aspect-macros/src/test/scala-3/com/dwolla/tagless/mtl/laws/UsingAlgSpec.scala
@@ -2236,7 +2236,7 @@ git commit -m "test(scala-3): migrate UsingAlgSpec's RecordingFk/hook usage onto
 **Interfaces:**
 - Consumes: `RecordingFk.apply`, `LawsInstances.Lazily`, `ExpectedWeaves.rendered` (Task 10), `GenericPlainAlg`, `SyncIOTestSyntax.RunOrFailSyncIOOps`.
 
-- [ ] **Step 1: `CrossVersionAgreementSpec.scala`**
+- [x] **Step 1: `CrossVersionAgreementSpec.scala`**
 
 Current (whole file):
 ```scala
@@ -2265,11 +2265,11 @@ class CrossVersionAgreementSpec extends munit.CatsEffectSuite {
 }
 ```
 
-- [ ] **Step 2: `DerivedConservativeExtensionSpec.scala`**
+- [x] **Step 2: `DerivedConservativeExtensionSpec.scala`**
 
 Apply the identical transformation Task 9 (`ConservativeExtensionSuite.scala`) applied — `ourRendered` becomes `Lazily`-returning, both `RecordingFk`-touching tests get the `for`/`runOrFail` treatment, `impl: PlainAlg[Result] = EitherPlainAlg` (or equivalent local fixture) becomes `impl: PlainAlg[Lazily] = new GenericPlainAlg[Lazily]`, the third test (`"L9 the derived mapK agrees with upstream's FunctorK.mapK for any pull"`, which asserts the pull is never consulted via `fail(...)`) stays untouched since it constructs no `RecordingFk` and mutates nothing.
 
-- [ ] **Step 3: Run the tests**
+- [x] **Step 3: Run the tests**
 
 ```
 sbt raiseAspectMacrosJVM/testOnly com.dwolla.tagless.mtl.laws.CrossVersionAgreementSpec
@@ -2277,7 +2277,7 @@ sbt raiseAspectMacrosJVM/testOnly com.dwolla.tagless.mtl.laws.DerivedConservativ
 ```
 Expected: all PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add raise-aspect-macros/src/test/scala-3/com/dwolla/tagless/mtl/laws/CrossVersionAgreementSpec.scala raise-aspect-macros/src/test/scala-3/com/dwolla/tagless/mtl/laws/DerivedConservativeExtensionSpec.scala
@@ -2297,23 +2297,23 @@ git commit -m "test(scala-3): migrate CrossVersionAgreementSpec and DerivedConse
 
 **Interfaces:** identical to Tasks 11-13 and 15 — same target types, same `RecordingFk`/`Ref` shapes.
 
-- [ ] **Step 1: Port Task 11's transformation to the scala-2 `MethodLocalInstanceSpec.scala`**
+- [x] **Step 1: Port Task 11's transformation to the scala-2 `MethodLocalInstanceSpec.scala`**
 
 Same six sub-steps (add `WidgetLazily`, generalize the seven fixtures, rewrite `recordingArrow`, migrate its three call sites, migrate all 11 `RecordingFk` sites — the scala-2 file has one fewer than scala-3's 12, per the research catalog's line list: 240, 254, 297, 319, 336, 348, 359, 374, 385), only with Scala 2 syntax: `def widgets[F[_]](implicit F: Applicative[F]): WidgetAlg[F] = new WidgetAlg[F] { ... }` (braces, not `:`/indentation), `implicit` parameters spelled out (no `using`), no `@experimental` needed (this file doesn't use `Derive`'s experimental macro path the way the scala-3 `ConservativeExtensionSpec` variant does — confirm by checking whether the existing scala-2 file has an `@experimental` annotation; per the research catalog it does not).
 
-- [ ] **Step 2: Port Task 12's transformation to the scala-2 `EdgeCaseDerivationSpec.scala`**
+- [x] **Step 2: Port Task 12's transformation to the scala-2 `EdgeCaseDerivationSpec.scala`**
 
 Same line-range table, same `EdgeAlg` generalization, Scala 2 syntax.
 
-- [ ] **Step 3: Port Task 13's transformation to the scala-2 `DifferentialOracleSpec.scala`**
+- [x] **Step 3: Port Task 13's transformation to the scala-2 `DifferentialOracleSpec.scala`**
 
 Same `observed` rewrite and `outcomes.toList.traverse_` restructuring. Note the research catalog flagged this file's `import com.dwolla.tagless.mtl.laws.LawsInstances.*` (line 5) as using Scala-3-style `*`-wildcard-import syntax inside a `scala-2` source directory — while touching this file's imports for the `Ref`/`SyncIO` additions, change that import to the classic `_`-wildcard (`import com.dwolla.tagless.mtl.laws.LawsInstances._`) to match every sibling file in this directory, unless the build's Scala 2.13 settings already accept `*` imports (check `scalacOptions`/Scala version in `build.sbt` — 2.13.9+ with no special flag needed accepts it, but consistency with siblings is the more important reason to fix it while you're in the file).
 
-- [ ] **Step 4: Port Task 15's transformation to the scala-2 `CrossVersionAgreementSpec.scala` and `DerivedConservativeExtensionSpec.scala`**
+- [x] **Step 4: Port Task 15's transformation to the scala-2 `CrossVersionAgreementSpec.scala` and `DerivedConservativeExtensionSpec.scala`**
 
 Same shapes.
 
-- [ ] **Step 5: Run the tests under Scala 2.13 and 2.12**
+- [x] **Step 5: Run the tests under Scala 2.13 and 2.12**
 
 ```
 sbt ++2.13.18 raiseAspectMacrosJVM/test
@@ -2321,7 +2321,7 @@ sbt ++2.12.21 raiseAspectMacrosJVM/test
 ```
 Expected: all PASS on both versions.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add raise-aspect-macros/src/test/scala-2/com/dwolla/tagless/mtl/laws/
@@ -2339,7 +2339,7 @@ git commit -m "test(scala-2): mirror the scala-3 RecordingFk/Ref migration acros
 - Produces: this file's `F`/`G` move from `Either[BarError, *]`/`EitherT[Eval, BarError, *]` to `EitherT[SyncIO, BarError, *]` uniformly — there is no "pure law" test in this file to preserve a zero-capability witness for, so the whole file's effect type changes, not just the mutating tests.
 - Consumes: nothing from `raise-aspect-core`/`raise-aspect-laws` (`natchez-tagless-mtl` does not depend on their test sources — see Task 1's note on cross-module test dependencies); define a local `RunOrFailSyncIOOps`-equivalent inline in this file, or promote `SyncIOTestSyntax` into `core`'s test sources if `natchezTaglessMtl.dependsOn(core % "compile->compile;test->test", ...)` already gives access to `core`'s test classpath (check `build.sbt`; if so, put `SyncIOTestSyntax` there instead of duplicating it — confirm before choosing).
 
-- [ ] **Step 1: Swap `F` to `EitherT[SyncIO, BarError, *]` and change the base class**
+- [x] **Step 1: Swap `F` to `EitherT[SyncIO, BarError, *]` and change the base class**
 
 ```scala
 class TraceableRaiseAspectSpec extends FunSuite {
@@ -2352,7 +2352,7 @@ class TraceableRaiseAspectSpec extends munit.CatsEffectSuite {
 ```
 Add `import cats.data.EitherT`, `import cats.effect.{Ref, SyncIO}`, `import cats.syntax.all._`. Every existing `Bar[F]`/`DerivesBar[F]` construction (these are presumably `object Bar`/`object DerivesBar` with a generic `apply[F[_]: ...]` factory, or fixed like `EitherTestAlg` — read `Bar`'s definition in this module's test/main sources before this step to confirm whether it's already `F`-polymorphic; if it's fixed to `Either[BarError, *]` like `EitherTestAlg`, generalize it the same way as Task 1 Step 4) needs to resolve at the new `F`.
 
-- [ ] **Step 2: Rewrite `Recorder`**
+- [x] **Step 2: Rewrite `Recorder`**
 
 Current (lines 46-56):
 ```scala
@@ -2386,7 +2386,7 @@ Replace with a `Ref`-backed class built via a factory (mirroring `RecordingFk`'s
   }
 ```
 
-- [ ] **Step 3: Migrate the two `Recorder`-reading tests**
+- [x] **Step 3: Migrate the two `Recorder`-reading tests**
 
 Current (lines 58-69):
 ```scala
@@ -2432,7 +2432,7 @@ Replace with:
 
 Apply the identical transformation to `"the derived instance agrees with a hand-written one on intercept"` (lines 129-150), replacing `new Recorder` with `Recorder()` sequenced via `<-`, and `derivedRec.seen`/`handRec.seen` reads via `<-`.
 
-- [ ] **Step 4: Migrate the local-`ListBuffer` hook test**
+- [x] **Step 4: Migrate the local-`ListBuffer` hook test**
 
 Current (lines 71-90):
 ```scala
@@ -2483,16 +2483,16 @@ Replace with:
   }
 ```
 
-- [ ] **Step 5: Leave the remaining six tests' behavior untouched, but re-check their types**
+- [x] **Step 5: Leave the remaining six tests' behavior untouched, but re-check their types**
 
 `"mapK forwards to the underlying instance"` (uses a local `type G[A] = EitherT[Eval, BarError, A]` at line 93 — this can stay `Eval`-based since it's a *third*, separate, non-`F` witness used only for a carrier-change test, not for the module's main `F`; leave it exactly as-is unless it turns out to also depend on `F`'s old `Either` shape — check for compile errors here after Step 1 and fix only if the compiler flags something), `"the narrow instance is accepted wherever the wide one is"`, `"the derives clause produces an instance, and it is the narrow type"`, `"a wide RaiseAspect does not satisfy a demand for the narrow type"`, `"a companion's narrow derived instance silently outranks a wide one beside it..."`, `"...and fromRaiseAspect is how you get one anyway"` — these use `F` only as an ordinary type parameter (no direct `Either`-pattern-matching), so they most likely compile unchanged against the new `F`; verify with a full test run in Step 6 and fix only genuine compile errors, not speculative ones.
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 `sbt natchezTaglessMtlJVM/testOnly com.dwolla.tracing.mtl.TraceableRaiseAspectSpec`
 Expected: all PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add natchez-tagless-mtl/src/test/scala-3/com/dwolla/tracing/mtl/TraceableRaiseAspectSpec.scala
@@ -2508,16 +2508,16 @@ git commit -m "test: migrate TraceableRaiseAspectSpec off ListBuffer, F onto Eit
 
 **Interfaces:** identical to Task 17, with `Foo`/`FooError`/`ToAnyValue`/`AnyValueRaiseAspect` in place of `Bar`/`BarError`/`TraceableValue`/`TraceableRaiseAspect`.
 
-- [ ] **Step 1: Apply Task 17's transformation verbatim, substituting names**
+- [x] **Step 1: Apply Task 17's transformation verbatim, substituting names**
 
 `F[A] = Either[FooError, A]` → `F[A] = EitherT[SyncIO, FooError, A]`; `Recorder` (lines 38-48) → `Ref`-backed factory exactly as Task 17 Step 2; the two `Recorder`-reading tests (`"intercept forwards to the underlying instance, weave for weave"` lines 50-61, `"the derived instance agrees with a hand-written one on intercept"` lines 121-143) → Task 17 Step 3's shape; the local-`ListBuffer` hook test (`"intercept forwards the hook, so a raise is still observed exactly once"` lines 63-82) → Task 17 Step 4's shape (`ev.toAnyValue(e)` in place of `ev.toTraceValue(e)`, `FooError.Negative` in place of `BarError.Negative`); the remaining five tests (`"mapK forwards to the underlying instance"` with its local `type G[A] = EitherT[Eval, FooError, A]`, `"the narrow instance is accepted wherever the wide one is"`, `"the derives clause produces an instance, and it is the narrow type"`, `"...and fromRaiseAspect is how you get one anyway"`, `"a wide RaiseAspect does not satisfy a demand for the narrow type"`) → leave untouched, verify by compiling.
 
-- [ ] **Step 2: Run the tests**
+- [x] **Step 2: Run the tests**
 
 `sbt otel4sTaglessMtlJVM/testOnly com.dwolla.tracing.otel4s.mtl.DerivesFooRaiseSpec`
 Expected: all PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add otel4s-tagless-mtl/src/test/scala-3/com/dwolla/tracing/otel4s/mtl/DerivesFooRaiseSpec.scala
@@ -2530,12 +2530,12 @@ git commit -m "test: migrate DerivesFooRaiseSpec off ListBuffer, F onto EitherT[
 
 **Files:** none (verification only).
 
-- [ ] **Step 1: Full JVM test run, default Scala version**
+- [x] **Step 1: Full JVM test run, default Scala version**
 
 `sbt test`
 Expected: PASS, zero new warnings versus the pre-plan baseline (compare against `git stash`'d output if anything looks suspicious).
 
-- [ ] **Step 2: Cross-build JVM**
+- [x] **Step 2: Cross-build JVM**
 
 ```
 sbt ++2.12.21 test
@@ -2543,20 +2543,20 @@ sbt ++3.3.8 test
 ```
 Expected: PASS on both.
 
-- [ ] **Step 3: JS build (raise-aspect-core/laws/macros are `crossProject(JVMPlatform, JSPlatform)`)**
+- [x] **Step 3: JS build (raise-aspect-core/laws/macros are `crossProject(JVMPlatform, JSPlatform)`)**
 
 `sbt raiseAspectCoreJS/test raiseAspectLawsJS/test raiseAspectMacrosJS/test`
 Expected: PASS. `SyncIO`/`Ref` cross-build to JS without changes; if `cats-effect-testkit`'s `syncIoBooleanToProp`/`eqSyncIOA` are unavailable on the JS artifact for any resolved version, fall back to a hand-written `Eq.by(_.unsafeRunSync())` instance local to `LawsInstances.scala`/`RaiseAspectSuite.scala` instead of importing `cats.effect.testkit.TestInstances._` — check `cats-effect-testkit`'s published JS artifacts before assuming this fallback is needed.
 
-- [ ] **Step 4: MiMa / binary compatibility**
+- [x] **Step 4: MiMa / binary compatibility**
 
 These are all `Test`-scoped changes in non-published (or test-only) sources — confirm none of `RecordingFk`, `TestFixtures`, `CarrierArrows`, `LawsInstances`, `ExpectedWeaves` are part of a published artifact's `main` sources (they're all under `src/test`, so MiMa does not apply), then run the canonical check command (`sbt +test` plus whatever `scripts/check`/`sbt ci` alias this repo defines — check `build.sbt`/`project/` for the canonical check task name before assuming `sbt test` is sufficient) to confirm no other regression.
 
-- [ ] **Step 5: Final review pass**
+- [x] **Step 5: Final review pass**
 
 Re-read every file this plan touched (`git diff main...HEAD --stat`) and confirm: zero `ListBuffer`/`AtomicInteger`/`mutable.Buffer`/`var` remain (`grep -rn 'ListBuffer\|AtomicInteger\|AtomicLong\|AtomicBoolean\|AtomicReference\|mutable\.' --include='*.scala' raise-aspect-core raise-aspect-laws raise-aspect-macros natchez-tagless-mtl otel4s-tagless-mtl` returns nothing outside the sanctioned two exceptions this plan documented, and even those two contain no mutable *collections/primitives*, only a single `.unsafeRunSync()` call each), and zero `.unsafeRunSync()`/`.unsafeRunAsync()` calls exist outside `CarrierArrows.resultToLazily` and the `Eq[SyncIO[_]]`/`syncIoBooleanToProp` machinery from `cats-effect-testkit`.
 
-- [ ] **Step 6: Commit any final cleanup**
+- [x] **Step 6: Commit any final cleanup**
 
 ```bash
 git add -A
