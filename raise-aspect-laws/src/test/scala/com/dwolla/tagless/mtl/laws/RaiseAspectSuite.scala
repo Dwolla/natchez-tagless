@@ -45,12 +45,11 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
     RaiseAspectTests[TestAlg, Render, Render, Render].raiseAspect[Result, Result, Result]
   )
 
-  // ...and L1/L2 again over a genuinely non-trivial arrow. Before M12 that was
-  // `eraseWeave`, between the woven carrier and `Result`; fusion deletes both
-  // ends of it. `CarrierArrows.resultToLazily` is a real change of effect —
-  // `Either[TestError, *]` to `EitherT[SyncIO, TestError, *]` — with a real pull
-  // in the opposite direction. Testing mapK only at the identity arrow would
-  // be a coverage loss disguised as a deletion.
+  // L1/L2 again over a genuinely non-trivial arrow: `CarrierArrows.resultToLazily`
+  // is a real change of effect — `Either[TestError, *]` to
+  // `EitherT[SyncIO, TestError, *]` — with a real pull in the opposite
+  // direction. Testing mapK only at the identity arrow would be a coverage
+  // loss disguised as a deletion.
   checkAll(
     "RaiseFunctorK[TestAlg] over a genuine carrier change",
     laws.discipline.RaiseFunctorKTests[TestAlg, Render].raiseFunctorK[Result, Lazily, Lazily]

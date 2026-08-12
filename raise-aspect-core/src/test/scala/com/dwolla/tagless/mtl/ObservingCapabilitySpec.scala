@@ -16,15 +16,11 @@ import SyncIOTestSyntax._
 import TestError._
 
 /** `RaiseAspect.observing` is the entire capability-side surface of the fused
-  * derivation, and it takes over the hook behaviour that
-  * `WeaveArrows.raiseLift(onRaise)` had. Everything `WeaveArrowsOnRaiseSpec`
-  * proved about the hook is proved here instead — Task 2 deletes that file
-  * only after this one passes.
+  * derivation; this suite exercises the hook behavior it provides.
   *
-  * The first test is the one the old design could not have written: the
-  * decorated capability reports the caller's ''own'' `Functor[F]`, so there is
-  * no synthesized functor for a generic `R.functor.map(fa)(f)` to corrupt.
-  * See `22-milestone-M12-fused-derivation.md` for what that corruption was.
+  * The first test below proves the decorated capability reports the caller's
+  * ''own'' `Functor[F]`, so there is no synthesized functor for a generic
+  * `R.functor.map(fa)(f)` to corrupt.
   */
 class ObservingCapabilitySpec extends CatsEffectSuite with ScalaCheckSuite with TestInstances {
   private type F[A] = Either[TestError, A]
@@ -111,10 +107,9 @@ class ObservingCapabilitySpec extends CatsEffectSuite with ScalaCheckSuite with 
       def raise[E2 <: TestError, A](e: E2): Lazily[A] = EitherT.leftT[SyncIO, A](e: TestError)
     }
 
-  /** Rescued from `WeaveArrowsOnRaiseSpec`, which M12 deletes along with the
-    * `raiseLift(onRaise)` overload it was written against. The decorator tests
-    * above exercise `observing` in isolation; this one instead proves the
-    * property through a full `intercept` round trip, over a whole `Int`
+  /** The decorator tests above exercise `observing` in isolation; this one
+    * instead proves the property through a full `intercept` round trip, over
+    * a whole `Int`
     * domain rather than one fixed input. `WeaveInterpreterSpec`'s
     * `"a RaiseAspect-only algebra resolves to the RaiseAspect instance and runs
     * the hook"` test makes the same success-path-is-silent point on fixed
@@ -148,12 +143,11 @@ class ObservingCapabilitySpec extends CatsEffectSuite with ScalaCheckSuite with 
 
   // ------------------------------------------------------- Serializable
 
-  /** `cats.mtl.Raise` extends `Serializable`, and `WeaveArrowsOnRaiseSpec`
-    * pinned that property for `WeaveArrows.raiseLift(onRaise)`'s result before
-    * M12 deleted both the method and the spec. `observing` is now the only
-    * place that builds a decorated `Raise`, so the assertion moves here.
-    * Following `OnRaiseSpec`'s hand-rolled round trip (no cats-laws dependency
-    * in this module) rather than letting the property go untested.
+  /** `cats.mtl.Raise` extends `Serializable`, and `observing` is the only
+    * place in this module that builds a decorated `Raise`, so this pins that
+    * property here. Following `OnRaiseSpec`'s hand-rolled round trip (no
+    * cats-laws dependency in this module) rather than letting the property go
+    * untested.
     */
   test("the observing result is Serializable") {
     // Only meaningful on the JVM: java.io.ObjectOutputStream/ObjectInputStream

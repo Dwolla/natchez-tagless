@@ -8,8 +8,8 @@ import cats.{Apply, ~>}
 import com.dwolla.tagless.mtl.{OnRaise, RaiseArrow, RaiseAspect}
 import natchez.TraceableValue
 
-/** Task 3's fixture: an algebra with both an `Aspect` and a `RaiseAspect` instance in
-  * scope, deliberately divergent so that using the wrong one is immediately
+/** An algebra with both an `Aspect` and a `RaiseAspect` instance in scope,
+  * deliberately divergent so that using the wrong one is immediately
   * observable — the `RaiseAspect` instance throws if it is ever invoked, rather than
   * silently producing plausible-looking wrong output.
   */

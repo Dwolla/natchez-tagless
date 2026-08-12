@@ -15,8 +15,9 @@ import scala.annotation.experimental
 import LawsInstances._
 import TestError._
 
-/** Task 7 on Scala 3 — the same shapes M3 covers, plus an abstract `val`
-  * returning `F[A]`, which derives correctly here and does ''not'' on Scala 2.
+/** The Scala 3 half — the same shapes the Scala 2 spec covers, plus an
+  * abstract `val` returning `F[A]`, which derives correctly here and does
+  * ''not'' on Scala 2.
   * Upstream's Scala 3 `transformTo` handles `transformVal` and
   * `overridableMembers` includes `fieldMembers`; the Scala 2 machinery filters
   * accessors, so the member is never implemented there.

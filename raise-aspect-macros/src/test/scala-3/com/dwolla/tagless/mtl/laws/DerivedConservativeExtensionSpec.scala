@@ -16,7 +16,7 @@ import LawsInstances._
 import SyncIOTestSyntax._
 
 /** Law L9 on Scala 3 — our derivation is a conservative extension of upstream's on
-  * a capability-free algebra. Additive, like the Scala 2 spec, because M2's
+  * a capability-free algebra. Additive, like the Scala 2 spec, because
   * `ConservativeExtensionSuite` hardcodes the hand-written reference as "ours".
   */
 @experimental

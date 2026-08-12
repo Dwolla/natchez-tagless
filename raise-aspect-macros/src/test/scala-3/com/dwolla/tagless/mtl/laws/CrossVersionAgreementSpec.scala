@@ -8,7 +8,7 @@ import scala.annotation.experimental
 import LawsInstances._
 import SyncIOTestSyntax._
 
-/** Task 5, Scala 3 half — the derived instance reproduces the shared expected
+/** The Scala 3 half — the derived instance reproduces the shared expected
   * renderings. The Scala 2 spec of the same name asserts the same list, so the two
   * derivations are directly comparable in CI.
   */

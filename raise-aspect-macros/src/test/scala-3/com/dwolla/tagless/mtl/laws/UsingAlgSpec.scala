@@ -14,7 +14,7 @@ import LawsInstances._
 import TestError._
 import SyncIOTestSyntax._
 
-/** Task 3 — `using` clauses.
+/** `using` clauses.
   *
   * `UsingAlg` mirrors `TestAlg` exactly, written with `using` rather than
   * `implicit`, so its derived renderings must equal the same shared expected
@@ -145,11 +145,10 @@ class UsingAlgSpec extends CatsEffectSuite:
 
   test("a raise through R1 and a raise through R2 each reach the hook rendered through their own Err instance") {
     // `e` takes two capability clauses with different error types on one
-    // method. Before M12 the two capabilities were transported and this
-    // evidence was invisible from the test's side; `intercept` decorates each
-    // one in place, so a hook watching both sees which capability actually
-    // fired, rendered through *that* capability's own `Err[E]` — never
-    // `toString`, and never the other error type's instance.
+    // method. `intercept` decorates each one in place, so a hook watching
+    // both sees which capability actually fired, rendered through *that*
+    // capability's own `Err[E]` — never `toString`, and never the other
+    // error type's instance.
     (for {
       log <- Ref.of[Lazily, Vector[String]](Vector.empty)
       hook = new OnRaise[Lazily, Render] {

@@ -13,21 +13,21 @@ import com.dwolla.tagless.mtl.SyncIOTestSyntax.*
 
 import scala.annotation.experimental
 
-/** M7 — instances the derivation cannot see, because the method supplies them
+/** Instances the derivation cannot see, because the method supplies them
   * itself.
   *
   * `Widget`, `WidgetError`, `Thing` and `SubThing` deliberately have no `Render`
   * instance anywhere: every instance these algebras use arrives through a
-  * method's own `using` clause. Before M7 that was fatal, because both axes
-  * summoned `Dom`/`Cod`/`Err` at the derivation site, where those parameters do
-  * not exist.
+  * method's own `using` clause, never through `Dom`/`Cod`/`Err` summoned at
+  * the derivation site, where these parameters don't exist for these
+  * algebras.
   *
   * Every success case here asserts at ''runtime'' that the woven advice carries
   * the instance the call supplied — the same method is called twice with two
   * different instances and must render differently both times. Compiling is not
   * enough: an implementation that binds some other conforming instance would
-  * still compile. That is not hypothetical; the `summonInline` technique this
-  * milestone rejected did exactly that.
+  * still compile. That is not hypothetical: a `summonInline`-based
+  * implementation tried during development had exactly that flaw.
   */
 final case class Widget(id: Int)
 final case class WidgetError(reason: String)
@@ -50,14 +50,11 @@ trait WidgetMakeAlg[F[_]]:
 trait WidgetRiskyAlg[F[_]]:
   def risky(i: Int)(using RE: Render[WidgetError], R: Raise[F, WidgetError]): F[String]
 
-/** All three method-local instance kinds on one algebra, matching the overview
-  * appendix's motivating example. This is the shape the milestone's acceptance
-  * criterion targets.
-  */
+/** All three method-local instance kinds on one algebra. */
 trait WidgetAlg[F[_]] extends WidgetShowAlg[F], WidgetMakeAlg[F], WidgetRiskyAlg[F]
 
-/** Scope M7 did not promise. `Render[A]` can ''never'' resolve at the derivation
-  * site, because `A` is abstract there; only the method's own clause has it.
+/** `Render[A]` can ''never'' resolve at the derivation site, because `A` is
+  * abstract there; only the method's own clause has it.
   */
 trait WidgetPolyAlg[F[_]]:
   def poly[A](a: A)(using R: Render[A]): F[A]
@@ -285,13 +282,13 @@ class MethodLocalInstanceSpec extends CatsEffectSuite:
   }
 
   test("the intercept hook renders a raise through the method-local Err instance") {
-    // Before M12 the hook could only be observed indirectly, through `mapK`
-    // and a hand-rolled recording `RaisePull` (the test above): the pre-fusion
-    // `weave` had no `onRaise` parameter at all. `intercept` wires the hook in
-    // directly — `RaiseAspect.observing($pn, $onRaise)($applyF, $errInstance)`
-    // — so this asserts the stronger claim: the *method-local* `Err[WidgetError]`
-    // the call was handed is exactly what reaches the hook, not a derivation-site
-    // instance and not `toString`.
+    // `intercept` wires the hook in directly —
+    // `RaiseAspect.observing($pn, $onRaise)($applyF, $errInstance)` — so this
+    // asserts a stronger claim than the test above (which observes the hook
+    // only indirectly, through `mapK` and a hand-rolled recording
+    // `RaisePull`): the *method-local* `Err[WidgetError]` the call was handed
+    // is exactly what reaches the hook, not a derivation-site instance and
+    // not `toString`.
     (for {
       rendered <- Ref.of[WidgetLazily, Vector[String]](Vector.empty)
       hook = new OnRaise[WidgetLazily, Render]:

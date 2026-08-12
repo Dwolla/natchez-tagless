@@ -157,35 +157,17 @@ class TracerWeaveCapturingInputsAndOutputs[F[_]: FlatMap: Tracer]
       // `flatTap` so the underlying target is read exactly once.
       .use { span =>
         fa.codomain.target.flatTap { out =>
-          // The ascription is redundant *here* and kept for symmetry:
-          // `ToAnyValue#toAnyValue` is declared `: AnyValue`, so the inferred
-          // type is already `AnyValue` and `Attribute(name, returnValue)`
-          // resolves KeySelect with or without it.
-          //
-          // The site where the same pattern is load-bearing is
-          // `WeaveAttributesOps.asAttributes`, whose `AnyValue.map(...)` really
-          // does return the precise subtype `AnyValue.MapValue`. KeySelect is
-          // invariant, so dropping the widening *there* does not compile, and
-          // the @implicitNotFound message names only the eight flat types and
-          // never mentions AnyValue — which makes the fix look like a missing
-          // KeySelect instance when it is a missing widening. Do not add a
-          // KeySelect instance.
-          val returnValue: AnyValue = fa.codomain.instance.toAnyValue(out)
+          val returnValue = fa.codomain.instance.toAnyValue(out)
 
-          // An empty return value (Unit, or any type that happens to encode to
-          // AnyValue.empty) omits the attribute entirely rather than recording
-          // EmptyValue. ToAnyValue is unchanged — this check is local to the
-          // interpreter, exactly as asAttributes' zero-parameter check is.
+          // Omit the attribute for an empty return value, matching
+          // asAttributes' zero-parameter convention.
           val attributes: Attributes =
             if (returnValue == AnyValue.empty) Attributes.empty
             else Attributes(Attribute(s"$name.returnValue", returnValue))
 
           // `.backend` deliberately: Span#addAttributes is a macro on Scala 2
-          // and inline on Scala 3, and Span.Backend#addAttributes is the sealed
-          // method underneath it. Attributes is already an
-          // immutable.Iterable[Attribute[_]], so it passes straight through,
-          // and Attributes.empty is a no-op iterable when there is nothing to
-          // add.
+          // and inline on Scala 3, and Span.Backend#addAttributes is the
+          // sealed method underneath it.
           span.backend.addAttributes(attributes)
         }
       }

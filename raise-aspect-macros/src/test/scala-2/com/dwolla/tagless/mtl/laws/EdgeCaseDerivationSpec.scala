@@ -13,10 +13,10 @@ import com.dwolla.tagless.mtl.SyncIOTestSyntax._
 import LawsInstances._
 import TestError._
 
-/** Task 7 — shapes M1's fixtures do not cover: members inherited from a parent
+/** Shapes the existing fixtures don't cover: members inherited from a parent
   * trait, a nullary def returning `F[A]`, and overloads.
   *
-  * New fixtures in a new file; M1's and M2's sources are untouched.
+  * New fixtures in a new file; the existing fixture sources are untouched.
   */
 trait ParentAlg[F[_]] {
   def inherited(i: Int)(implicit R: Raise[F, ErrA]): F[String]

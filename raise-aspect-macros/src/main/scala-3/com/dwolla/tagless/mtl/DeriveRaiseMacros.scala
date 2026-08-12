@@ -26,8 +26,7 @@
  * fused `intercept` generator, rewritten from `MacroAspect`) and `deriveMapK`
  * (rewritten from `MacroFunctorK`) transport `cats.mtl.Raise` capability
  * parameters instead of rejecting methods whose signatures mention the effect
- * type. Upstream's `addToGivenScope` block is deliberately omitted; see the
- * future-work note in docs/plans/raise-aspect/01-overview-design-and-laws.md §5.
+ * type. Upstream's `addToGivenScope` block is deliberately omitted.
  */
 
 package com.dwolla.tagless.mtl

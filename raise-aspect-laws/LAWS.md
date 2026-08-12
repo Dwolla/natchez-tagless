@@ -1,7 +1,7 @@
 # raise-aspect-laws — law index
 
-The executable specification for `RaiseAspect`. Laws are numbered as in
-`docs/plans/raise-aspect/01-overview-design-and-laws.md` §4.
+The executable specification for `RaiseAspect`. Laws are numbered L1–L10,
+matching the table below.
 
 **This module is frozen.** Later milestones may add new test files, but must not
 weaken, delete, or modify the laws below. A derived instance that fails one of

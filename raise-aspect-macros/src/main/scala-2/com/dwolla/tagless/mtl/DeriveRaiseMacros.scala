@@ -23,8 +23,7 @@
  * from upstream's `DeriveMacros`, reduced to what the `RaiseAspect` derivation
  * needs. `raiseIntercept` (the fused `intercept` generator) and `raiseMapK`
  * transport `cats.mtl.Raise` capability parameters instead of rejecting every
- * method whose signature mentions the effect type. See docs/plans/raise-aspect/
- * for the expansion specification.
+ * method whose signature mentions the effect type.
  */
 
 package com.dwolla.tagless.mtl

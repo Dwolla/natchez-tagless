@@ -13,12 +13,13 @@ import scala.annotation.experimental
 import LawsInstances._
 import SyncIOTestSyntax.*
 
-/** Task 4/5 — the Scala 3 differential oracle.
+/** The Scala 3 differential oracle.
   *
-  * The M2 laws prove the derived instance is ''correct''; this proves it is
-  * ''identical'' to M1's hand-written reference, method by method. Since the Scala 2
-  * oracle asserts the same thing against the same reference, the two derivations
-  * agree transitively — and `CrossVersionAgreementSpec` pins it directly.
+  * The law suite proves the derived instance is ''correct''; this proves it
+  * is ''identical'' to the hand-written reference, method by method. Since
+  * the Scala 2 oracle asserts the same thing against the same reference, the
+  * two derivations agree transitively — and `CrossVersionAgreementSpec` pins
+  * it directly.
   */
 @experimental
 class DifferentialOracleSpec extends CatsEffectSuite:
@@ -92,10 +93,10 @@ class DifferentialOracleSpec extends CatsEffectSuite:
         _ = assertEquals(dEvents.toList, rEvents.toList)
         // The latch on the comparison above, not a test of the hook. With a hook
         // that writes nothing — `OnRaise.noop`, or a `record` call reduced to a
-        // constant — the two logs still match and the oracle silently returns to
-        // its pre-M12 blindness to a dropped `RaiseAspect.observing`. `a(-2)`,
-        // `a(-1)` and several `d` samples raise for every `eOutcome`, so a log
-        // with no `raise:` line means the fixture stopped observing raises.
+        // constant — the two logs still match even if the oracle went blind to
+        // a dropped `RaiseAspect.observing`. `a(-2)`, `a(-1)` and several `d`
+        // samples raise for every `eOutcome`, so a log with no `raise:` line
+        // means the fixture stopped observing raises.
         _ = assert(
           rEvents.exists(_.startsWith("raise:")),
           s"no raise reached the hook for eOutcome $outcome — the events comparison above is vacuous"
@@ -118,12 +119,10 @@ class DifferentialOracleSpec extends CatsEffectSuite:
     }
   }
 
-  /** The successor to the pre-M12 "mapK under the erasure arrow" comparison.
-    * `eraseWeave` went from the woven carrier to `Result` and both endpoints
-    * are gone, but the row it filled — the two `mapK`s compared over an arrow
-    * that is not the identity — has to stay filled. `RaiseArrow.id`'s `pull`
-    * is the identity too, so at that arrow the comparison cannot see a `pull`
-    * that was composed wrongly.
+  /** Covers what the identity-arrow comparison above cannot: `RaiseArrow.id`'s
+    * `pull` is the identity too, so at that arrow the comparison can't see a
+    * `pull` that was composed wrongly. This one uses a genuine carrier-change
+    * arrow instead.
     */
   test("the derived mapK agrees with the reference under a genuine carrier change") {
     val eqAlg = eqTestAlg[Lazily]

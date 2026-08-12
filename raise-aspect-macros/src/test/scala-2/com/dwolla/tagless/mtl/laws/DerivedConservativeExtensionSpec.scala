@@ -16,7 +16,7 @@ import SyncIOTestSyntax._
 /** Law L9 for the ''derived'' instance — our derivation is a conservative
   * extension of upstream's on a capability-free algebra.
   *
-  * M2's `ConservativeExtensionSuite` hardcodes the hand-written
+  * `ConservativeExtensionSuite` hardcodes the hand-written
   * `PlainAlgReference` as "ours" and only exposes `upstream` as a seam, so it
   * cannot be reused here. The laws module is frozen, so rather than widen that
   * seam this spec restates the three comparisons against the derived instance.

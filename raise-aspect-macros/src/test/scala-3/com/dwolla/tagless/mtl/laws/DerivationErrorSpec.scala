@@ -6,8 +6,8 @@ import munit.FunSuite
 
 import scala.annotation.experimental
 
-/** Task 3 — the Scala 3 diagnostics suite, mirroring M3's plus the Scala 3-only
-  * context-function rejection.
+/** The Scala 3 diagnostics suite, mirroring the Scala 2 suite's cases, plus
+  * the Scala 3-only context-function rejection.
   */
 object BadAlgebras:
 

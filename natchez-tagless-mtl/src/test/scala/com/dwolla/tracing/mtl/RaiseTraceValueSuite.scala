@@ -14,8 +14,8 @@ import BarError._
   * same scenario, which `InMemory`'s command history can't verify this half of.
   *
   * Uses `Trace.Implicits.noop` rather than `InMemory`: the span history is not the
-  * point here, and per the milestone's Submarine caveat, tracing through a real span
-  * changes nothing about whether the domain error survives.
+  * point here, and tracing through a real span changes nothing about whether
+  * the domain error survives cats-mtl's `Submarine` encoding.
   */
 abstract class RaiseTraceValueSuite extends CatsEffectSuite {
   implicit def barRaiseAspect: RaiseAspect[Bar, TraceableValue, TraceableValue, TraceableValue]

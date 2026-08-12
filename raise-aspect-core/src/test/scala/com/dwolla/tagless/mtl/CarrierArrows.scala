@@ -24,8 +24,6 @@ import cats.~>
   * arrow, which is the only way that instantiation says anything — it is there
   * to show coherence does not secretly depend on having `Err[E]` in hand, and
   * at `RaiseArrow.id` both sides of the law are literally the same expression.
-  * `eraseWeave` was parametric in `Err` for the same reason before M12 deleted
-  * it.
   */
 object CarrierArrows {
   type Result[A] = Either[TestError, A]

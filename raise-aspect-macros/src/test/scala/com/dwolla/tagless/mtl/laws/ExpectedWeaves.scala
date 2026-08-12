@@ -5,7 +5,7 @@ import cats.mtl.Raise
 
 import LawsInstances._
 
-/** Task 5 — the cross-compiler agreement data.
+/** The cross-compiler agreement data.
   *
   * These are the `RenderedWeave`s the derivation must produce for a fixed set of
   * `TestAlg` calls. A Scala 2 spec and a Scala 3 spec each assert their derived
@@ -43,9 +43,9 @@ object ExpectedWeaves {
 
   /** The same calls, rendered from what the interpreter saw.
     *
-    * `expected` is unchanged from M2: fusion changes who holds the weave, not
-    * what a woven call produces. Only the way a test gets hold of the weaves
-    * moved, from inspecting an `Alg[Weave[…]]` to reading a recording `fk`.
+    * `expected` describes what a woven call produces; this method gets hold
+    * of the same weaves by reading a recording `fk`, not by inspecting an
+    * `Alg[Weave[…]]` directly.
     */
   def rendered(
       instrumented: TestAlg[Lazily],
