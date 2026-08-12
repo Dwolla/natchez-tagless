@@ -2562,3 +2562,263 @@ Re-read every file this plan touched (`git diff main...HEAD --stat`) and confirm
 git add -A
 git commit -m "test: final cleanup pass after Ref-based test fixture migration"
 ```
+
+---
+
+## Task 20: `otel4s-tagless` — `FooFixture.scala`, `TracerTransparencySpec.scala`, `WeaveAttributesOpsSpec.scala`
+
+**Context:** the final whole-branch review found three more `var`-using files in a module this plan hadn't scoped (`otel4s-tagless`, distinct from the already-migrated `otel4s-tagless-mtl`). Unlike every other file in this plan, `FooCallCounts` (in `FooFixture.scala`) is shared across an `Id`-based suite (`TracerTransparencySpec.scala`, plus one call site in `ToAnyValueResolutionSpec.scala`) that never reads the counts it threads through, and an `IO`-based suite (`SpanContentSpec.scala`, JVM-only) that does. `Id` has no `Sync` instance, so `FooCallCounts` cannot become `Ref`-backed while still supporting `Id` — the same wall this plan hit repeatedly with `Result`/`Either`. Resolution: split `Foo.counting` (needs real counting, moves to `Sync`-backed `Ref`) from a new `Foo.plain` (no counting, works for any `Applicative[F]` including `Id`) — the two `Id`-based, counting-agnostic call sites move to `Foo.plain[Id]`, and only `SpanContentSpec` (already `IO`-based) keeps `Foo.counting`, now genuinely `Ref`-backed.
+
+**Files:**
+- Modify: `otel4s-tagless/src/test/scala/com/dwolla/tracing/otel4s/FooFixture.scala:1-109`
+- Modify: `otel4s-tagless/src/test/scala/com/dwolla/tracing/otel4s/TracerTransparencySpec.scala:1-94`
+- Modify: `otel4s-tagless/src/test/scala/com/dwolla/tracing/otel4s/WeaveAttributesOpsSpec.scala:1-69`
+- Modify: `otel4s-tagless/src/test/scala/com/dwolla/tracing/otel4s/ToAnyValueResolutionSpec.scala:53` (one call site)
+- Modify: `otel4s-tagless/src/test/scala-jvm/com/dwolla/tracing/otel4s/SpanContentSpec.scala` (6 test bodies + `underlyingFoo`)
+
+**Interfaces:**
+- Produces: `FooCallCounts[F[_]](greetRuns: Ref[F, Int], pingRuns: Ref[F, Int])` with `def greet: F[Int]`, `def ping: F[Int]`, `private[otel4s] def recordGreet(): F[Unit]`, `private[otel4s] def recordPing(): F[Unit]`, and a factory `FooCallCounts.of[F[_]: Sync]: F[FooCallCounts[F]]`.
+- Produces: `Foo.plain[F[_]: Applicative]: Foo[F]` (no counting — `greet`/`ping` just `.pure[F]` their deterministic result).
+- Changes: `Foo.counting[F[_]: FlatMap](counts: FooCallCounts[F]): Foo[F]` — drops the `suspend: (() => Unit) => F[Unit]` parameter entirely, since `counts.recordGreet()`/`counts.recordPing()` are now already properly-deferred `F[Unit]` actions (via `Ref#update`) needing only `FlatMap[F]` to sequence, not a caller-supplied deferral strategy.
+
+- [x] **Step 1: Rewrite `FooFixture.scala`**
+
+Current (lines 40-49, the `var`-based `FooCallCounts`):
+```scala
+final class FooCallCounts {
+  private var greetRuns = 0
+  private var pingRuns = 0
+
+  def greet: Int = greetRuns
+  def ping: Int = pingRuns
+
+  private[otel4s] def recordGreet(): Unit = greetRuns += 1
+  private[otel4s] def recordPing(): Unit = pingRuns += 1
+}
+```
+Replace with:
+```scala
+final class FooCallCounts[F[_]](greetRuns: Ref[F, Int], pingRuns: Ref[F, Int]) {
+  def greet: F[Int] = greetRuns.get
+  def ping: F[Int] = pingRuns.get
+
+  private[otel4s] def recordGreet(): F[Unit] = greetRuns.update(_ + 1)
+  private[otel4s] def recordPing(): F[Unit] = pingRuns.update(_ + 1)
+}
+
+object FooCallCounts {
+  def of[F[_]: Sync]: F[FooCallCounts[F]] =
+    (Ref.of[F, Int](0), Ref.of[F, Int](0)).mapN(new FooCallCounts[F](_, _))
+}
+```
+(Add `import cats.effect.{Ref, Sync}` and confirm `cats.syntax.all._`/`cats.Functor` are already imported for `.mapN`.)
+
+Current (lines 51-71, `object Foo`'s `counting` factory):
+```scala
+object Foo {
+  def counting[F[_]: Functor](counts: FooCallCounts)(suspend: (() => Unit) => F[Unit]): Foo[F] =
+    new Foo[F] {
+      override def greet(name: String, times: Int): F[String] =
+        suspend(() => counts.recordGreet()).as(s"hello $name" * times)
+
+      override def ping(): F[Unit] =
+        suspend(() => counts.recordPing())
+    }
+```
+Replace with (drop `suspend`; add `plain` alongside `counting`):
+```scala
+object Foo {
+  /** A `Foo[F]` with no recording apparatus at all — for call sites that only
+    * need a `Foo[F]` value and never inspect call counts (every `Id`-based
+    * site in this module: `Id` has no `Sync`, so it cannot host
+    * `FooCallCounts`'s `Ref`s, and none of these sites read counts anyway).
+    */
+  def plain[F[_]: Applicative]: Foo[F] =
+    new Foo[F] {
+      override def greet(name: String, times: Int): F[String] = (s"hello $name" * times).pure[F]
+      override def ping(): F[Unit] = ().pure[F]
+    }
+
+  /** A `Foo[F]` that counts each of its own runs into `counts`. `counts.recordGreet()`/
+    * `recordPing()` are already properly-deferred `F[Unit]` actions (via `Ref#update`),
+    * so sequencing them ahead of the return value only needs `FlatMap[F]` — there is no
+    * longer a `suspend` parameter to say how a plain side effect enters `F`, because there
+    * is no plain side effect: recording is already an `F`-native action.
+    */
+  def counting[F[_]: FlatMap](counts: FooCallCounts[F]): Foo[F] =
+    new Foo[F] {
+      override def greet(name: String, times: Int): F[String] =
+        counts.recordGreet().as(s"hello $name" * times)
+
+      override def ping(): F[Unit] =
+        counts.recordPing()
+    }
+```
+Keep `implicit val fooAspect` (lines 81-108) unchanged — it doesn't touch `FooCallCounts`.
+
+The class-level doc comment (lines 19-39, `FooCallCounts`'s own scaladoc) explains why counts can only be asserted over `IO`, never `Id` — that reasoning is now baked into the code itself (`Id`-based sites use `Foo.plain`, never touch `FooCallCounts` at all), so rewrite the comment to state the new split plainly rather than describing a `suspend`-parameter mechanism that no longer exists — keep the *why* (parametricity forbids inventing an `A`; only the count catches a double-`flatMap` interpreter; `Id` forces before the `Weave` exists so it can't host that assertion) and drop only the now-inapplicable `suspend`/deferral mechanics.
+
+- [x] **Step 2: Update `TracerTransparencySpec.scala`**
+
+Change the base class:
+```scala
+class TracerTransparencySpec extends FunSuite {
+```
+to:
+```scala
+class TracerTransparencySpec extends munit.CatsEffectSuite {
+```
+
+Replace `underlyingFoo` (lines 45-46):
+```scala
+  private def underlyingFoo(counts: FooCallCounts): Foo[Id] =
+    Foo.counting[Id](counts)(f => f())
+```
+with:
+```scala
+  private def underlyingFoo: Foo[Id] = Foo.plain[Id]
+```
+and update its three call sites (lines 55, 63, 71 — `underlyingFoo(new FooCallCounts)` → `underlyingFoo`); the doc comment at line 44 ("`Id` cannot defer anything, so the count records the call itself") no longer applies and should be deleted along with the parameter.
+
+Rewrite the `var forced` test (lines 83-93):
+```scala
+  test("with a noop Tracer the parameter encoding is never performed") {
+    var forced = 0
+    val weave = Aspect.Weave[Id, ToAnyValue, ToAnyValue, String](
+      "Foo",
+      List(List(Aspect.Advice.byName[ToAnyValue, String]("lazyParam", { forced += 1; "x" }))),
+      Aspect.Advice[Id, ToAnyValue, String]("greet", "hi")
+    )
+
+    assertEquals(TracerWeaveCapturingInputs[Id, ToAnyValue].apply(weave), "hi")
+    assertEquals(forced, 0)
+  }
+```
+to:
+```scala
+  test("with a noop Tracer the parameter encoding is never performed") {
+    for {
+      forced <- Ref.of[SyncIO, Int](0)
+      weave = Aspect.Weave[Id, ToAnyValue, ToAnyValue, String](
+        "Foo",
+        List(List(Aspect.Advice.byName[ToAnyValue, String]("lazyParam", { forced.update(_ + 1).unsafeRunSync(); "x" }))),
+        Aspect.Advice[Id, ToAnyValue, String]("greet", "hi")
+      )
+      result = TracerWeaveCapturingInputs[Id, ToAnyValue].apply(weave)
+      _ = assertEquals(result, "hi")
+      f <- forced.get
+      _ = assertEquals(f, 0)
+    } yield ()
+  }
+```
+Note: `Aspect.Advice.byName`'s thunk is a plain `() => A` (or by-name parameter) with no `F` context of its own — there is no way to sequence a `Ref[SyncIO, _].update` into it other than running it synchronously right there, since the thunk itself is forced by the (synchronous, `Id`-based) interpreter under test, not by anything this test's own `for`-comprehension controls. This is the same category of necessary exception as `CarrierArrows.resultToLazily`'s transport plumbing — the thunk is fixture/test-data construction, not the test's own assertion logic, and there is no alternative that avoids it while still using a `Ref` here. Add `import cats.effect.{Ref, SyncIO}` and confirm the file's `assertEquals`/`assert` calls elsewhere in this test are otherwise unaffected. Leave every other test in the file untouched beyond the `underlyingFoo` signature change above (none of the other three mutate anything).
+
+- [x] **Step 3: Update `WeaveAttributesOpsSpec.scala`**
+
+Change the base class:
+```scala
+class WeaveAttributesOpsSpec extends FunSuite {
+```
+to:
+```scala
+class WeaveAttributesOpsSpec extends munit.CatsEffectSuite {
+```
+
+Rewrite the one mutating test (lines 59-68):
+```scala
+  test("a by-name parameter is forced exactly once, when asAttributes is called") {
+    var forced = 0
+    val weave = weaveOf(List(List(
+      Aspect.Advice.byName[ToAnyValue, String]("lazyParam", { forced += 1; "x" })
+    )))
+
+    assertEquals(forced, 0)
+    assertEquals(weave.asAttributes, expected("lazyParam" -> AnyValue.string("x")))
+    assertEquals(forced, 1)
+  }
+```
+to:
+```scala
+  test("a by-name parameter is forced exactly once, when asAttributes is called") {
+    for {
+      forced <- Ref.of[SyncIO, Int](0)
+      weave = weaveOf(List(List(
+        Aspect.Advice.byName[ToAnyValue, String]("lazyParam", { forced.update(_ + 1).unsafeRunSync(); "x" })
+      )))
+      f0 <- forced.get
+      _ = assertEquals(f0, 0)
+      _ = assertEquals(weave.asAttributes, expected("lazyParam" -> AnyValue.string("x")))
+      f1 <- forced.get
+      _ = assertEquals(f1, 1)
+    } yield ()
+  }
+```
+Same necessary-exception reasoning as Step 2's `Aspect.Advice.byName` thunk. Add `import cats.effect.{Ref, SyncIO}`. The other four tests in this file mutate nothing and stay untouched.
+
+- [x] **Step 4: Update `ToAnyValueResolutionSpec.scala`**
+
+Change line 53:
+```scala
+    val underlying = Foo.counting[Id](new FooCallCounts)(f => f())
+```
+to:
+```scala
+    val underlying = Foo.plain[Id]
+```
+No base-class change needed — this file's only use of `Foo`/`FooCallCounts` is this one line, and the rest of the file (compile-time implicit-priority assertions) mutates nothing, so it stays `FunSuite`.
+
+- [x] **Step 5: Update `SpanContentSpec.scala`**
+
+Change `underlyingFoo` (lines 70-76):
+```scala
+  protected def underlyingFoo(counts: FooCallCounts): Foo[IO] =
+    Foo.counting[IO](counts)(f => IO(f()))
+```
+to:
+```scala
+  protected def underlyingFoo(counts: FooCallCounts[IO]): Foo[IO] =
+    Foo.counting[IO](counts)
+```
+
+Every one of the six tests currently does `val counts = new FooCallCounts` (eager, synchronous construction) at the top of the test body, uses it inside a `resultAndSpansFrom`/`spansFrom` callback, and reads `counts.greet`/`counts.ping` (now `F[Int]`, not a plain `Int`) inside the trailing `.map { case (...) => ... }`. Restructure each test into one `for`-comprehension over `IO`, binding `counts <- FooCallCounts.of[IO]` first and each count-read with `<-` at the point it's needed. Worked example — current:
+```scala
+  test("each method call opens one span named algebraName.methodName") {
+    val counts = new FooCallCounts
+
+    resultAndSpansFrom { implicit tracer =>
+      underlyingFoo(counts).instrumentAndTrace.greet("world", 2)
+    }.map { case (greeting, spans) =>
+      assertEquals(greeting, "hello worldhello world")
+      assertEquals(counts.greet, 1)
+      assertEquals(spans.map(_.getName), List("Foo.greet"))
+    }
+  }
+```
+becomes:
+```scala
+  test("each method call opens one span named algebraName.methodName") {
+    for {
+      counts <- FooCallCounts.of[IO]
+      result <- resultAndSpansFrom { implicit tracer =>
+        underlyingFoo(counts).instrumentAndTrace.greet("world", 2)
+      }
+      (greeting, spans) = result
+      _ = assertEquals(greeting, "hello worldhello world")
+      g <- counts.greet
+      _ = assertEquals(g, 1)
+      _ = assertEquals(spans.map(_.getName), List("Foo.greet"))
+    } yield ()
+  }
+```
+Apply the identical restructuring to the other five tests using `counts`/`underlyingFoo` (`"TracerInstrumentation records no attributes of its own"` — this one never reads `counts.greet`/`.ping` at all despite constructing one; keep `counts <- FooCallCounts.of[IO]` for symmetry since `underlyingFoo` still requires it, but no `g <-`/assertion is needed; `"a zero-parameter, Unit-returning method is spanned like any other"`, `"TracerWeaveCapturingInputs records every parameter as one structured attribute"`, `"TracerWeaveCapturingInputs records no parameters attribute for a method with no parameters"`, `"TracerWeaveCapturingInputsAndOutputs records the parameters and the return value"`, `"TracerWeaveCapturingInputsAndOutputs records no attributes at all for ping()"`). The doc comment on `SpanContentSpec.resultAndSpansFrom` (lines 29-41) and the inline comment on the `FlatMap[F]` double-invocation risk (lines 178-181) reference `FooCallCounts`'s *reasoning*, not its mechanics — preserve both. The `"WeaveKnot nests..."` test and `Nested`/its `Aspect` instance touch none of this — leave untouched.
+
+- [x] **Step 6: Verify**
+
+`sbt otel4sTaglessJVM/test` (covers `FooFixture`/`TracerTransparencySpec`/`WeaveAttributesOpsSpec`/`ToAnyValueResolutionSpec`/`SpanContentSpec` together, JVM-only since `SpanContentSpec` is `scala-jvm`), then `sbt otel4sTaglessJS/test` for the cross-platform files. Deliberate-break check on at least one migrated `SpanContentSpec` test (this module's classes did not appear anywhere in this plan before, so there's no established base-class precedent to lean on here — verify fresh) and on both `Ref[SyncIO, _]`-based by-name-forcing tests.
+
+- [x] **Step 7: Commit**
+
+```bash
+git add otel4s-tagless/src/test/scala/com/dwolla/tracing/otel4s/FooFixture.scala otel4s-tagless/src/test/scala/com/dwolla/tracing/otel4s/TracerTransparencySpec.scala otel4s-tagless/src/test/scala/com/dwolla/tracing/otel4s/WeaveAttributesOpsSpec.scala otel4s-tagless/src/test/scala/com/dwolla/tracing/otel4s/ToAnyValueResolutionSpec.scala otel4s-tagless/src/test/scala-jvm/com/dwolla/tracing/otel4s/SpanContentSpec.scala
+git commit -m "test: migrate FooCallCounts and its consumers off var onto Ref, splitting Foo.plain from Foo.counting"
+```
