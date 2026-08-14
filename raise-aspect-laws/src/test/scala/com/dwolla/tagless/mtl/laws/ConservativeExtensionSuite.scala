@@ -1,15 +1,14 @@
 package com.dwolla.tagless.mtl
 package laws
 
+import cats.*
 import cats.arrow.FunctionK
-import cats.data.EitherT
-import cats.effect.SyncIO
-import cats.mtl.Raise
-import cats.syntax.all._
+import cats.effect.*
+import cats.mtl.*
+import cats.syntax.all.*
 import cats.tagless.aop.Aspect
-
-import LawsInstances._
-import SyncIOTestSyntax._
+import com.dwolla.tagless.mtl.laws.LawsInstances.*
+import munit.{Location, TestOptions}
 
 /** Law L9 — conservative extension.
   *
@@ -31,7 +30,7 @@ abstract class ConservativeExtensionSuite extends munit.CatsEffectSuite {
   private val ours: RaiseAspect[PlainAlg, Render, Render, Render] =
     PlainAlgReference.referenceRaiseAspect[Render, Render, Render]
 
-  private val impl: PlainAlg[Lazily] = new GenericPlainAlg[Lazily]
+  private def impl[F[_]](implicit F: ApplicativeError[F, TestError]): PlainAlg[F] = new GenericPlainAlg[F]
 
   /** Upstream `Aspect` still returns an `Alg[Weave[…]]`; our fused derivation
     * hands each weave to `fk` instead. The comparison therefore runs through a
@@ -39,55 +38,71 @@ abstract class ConservativeExtensionSuite extends munit.CatsEffectSuite {
     * a cast to line up the existentially-quantified result types the recorder
     * necessarily holds.
     */
-  private def ourRendered(inputs: List[Int]): Lazily[List[RenderedWeave]] =
+  private def ourRendered[F[_]: Sync](inputs: List[Int])
+                                     (implicit H: Handle[F, TestError]): F[List[RenderedWeave]] =
     for {
-      recorder <- RecordingFk[Lazily, Render, Render]
-      instrumented = ours.intercept(impl)(recorder.fk, OnRaise.noop[Lazily, Render])
-      _ <- inputs.traverse_(i => EitherT.liftF[SyncIO, TestError, Unit](instrumented.p(i).value.void))
+      recorder <- RecordingFk[F, Render, Render]
+      instrumented = ours.intercept(impl[F])(recorder.fk, OnRaise.noop[F, Render])
+      _ <- inputs.traverse_(i => instrumented.p(i).void)
       weaves <- recorder.weaves
     } yield weaves.map(r => WeaveRenderer.render(r.weave)).toList
 
-  test("L9 our woven structure matches upstream's, rendered") {
-    val theirWoven = upstream.weave(impl)
-    val inputs = exhaustiveInt.allValues.toList
+  implicit def applicativeErrorGivenHandle[F[_], E](implicit H: Handle[F, E]): ApplicativeError[F, E] =
+    new ApplicativeError[F, E] {
+      override def raiseError[A](e: E): F[A] = H.raise(e)
+      override def handleErrorWith[A](fa: F[A])(f: E => F[A]): F[A] = H.handleWith(fa)(f)
+      override def pure[A](x: A): F[A] = H.applicative.pure(x)
+      override def ap[A, B](ff: F[A => B])(fa: F[A]): F[B] = H.applicative.ap(ff)(fa)
+    }
 
-    (for {
-      ours <- ourRendered(inputs)
-    } yield assertEquals(ours, inputs.map(i => WeaveRenderer.render(theirWoven.p(i))))).runOrFail
+  def testWithHandle[G[_] : cats.ApplicativeThrow, E](options: TestOptions)
+                                                     (f: cats.mtl.Handle[G, E] => G[Unit])
+                                                     (implicit loc: Location): Unit =
+    test(options) {
+      Handle.allowF[G, E](f).rescue { testError =>
+        new AssertionError(s"test raised unexpectedly: $testError").raiseError[G, Unit]
+      }
+    }
+
+  testWithHandle[SyncIO, TestError]("L9 our woven structure matches upstream's, rendered") { implicit H =>
+    val theirWoven = upstream.weave(impl)
+    val inputs = exhaustiveInt.allValues
+
+    for {
+      ours <- ourRendered[SyncIO](inputs)
+    } yield assertEquals(ours, inputs.map(i => WeaveRenderer.render(theirWoven.p(i))))
   }
 
-  test("L9 our intercepted results match upstream's woven codomain targets") {
-    (for {
-      recorder <- RecordingFk[Lazily, Render, Render]
-      instrumented = ours.intercept(impl)(recorder.fk, OnRaise.noop[Lazily, Render])
+  testWithHandle[SyncIO, TestError]("L9 our intercepted results match upstream's woven codomain targets") { implicit H =>
+    for {
+      recorder <- RecordingFk[SyncIO, Render, Render]
+      instrumented = ours.intercept(impl)(recorder.fk, OnRaise.noop[SyncIO, Render])
       theirWoven = upstream.weave(impl)
-      _ <- exhaustiveInt.allValues.toList.traverse_ { i =>
+      _ <- exhaustiveInt.allValues.traverse_ { i =>
         for {
-          ours <- EitherT.liftF[SyncIO, TestError, Either[TestError, String]](instrumented.p(i).value)
-          theirs <- EitherT.liftF[SyncIO, TestError, Either[TestError, String]](theirWoven.p(i).codomain.target.value)
+          ours <- instrumented.p(i)
+          theirs <- theirWoven.p(i).codomain.target
         } yield assertEquals(ours, theirs)
       }
-    } yield ()).runOrFail
+    } yield ()
   }
 
-  test("L9 our mapK agrees with upstream's FunctorK.mapK for any pull") {
+  testWithHandle[SyncIO, TestError]("L9 our mapK agrees with upstream's FunctorK.mapK for any pull") { implicit H =>
     // PlainAlg has no capability parameters, so the pull must never be
     // consulted. This one blows up if it ever is.
-    val unusablePull = new RaisePull[Lazily, Lazily, Render] {
-      def apply[E](rg: Raise[Lazily, E])(implicit ev: Render[E]): Raise[Lazily, E] =
+    val unusablePull = new RaisePull[SyncIO, SyncIO, Render] {
+      def apply[E](rg: Raise[SyncIO, E])(implicit ev: Render[E]): Raise[SyncIO, E] =
         fail("mapK must not consult the pull for a capability-free algebra")
     }
 
-    val ourMapped = ours.mapK(impl)(RaiseArrow(FunctionK.id[Lazily], unusablePull))
-    val theirMapped = upstream.mapK(impl)(FunctionK.id[Lazily])
+    val ourMapped = ours.mapK(impl)(RaiseArrow(FunctionK.id[SyncIO], unusablePull))
+    val theirMapped = upstream.mapK(impl)(FunctionK.id[SyncIO])
 
-    (for {
-      _ <- exhaustiveInt.allValues.toList.traverse_ { i =>
-        for {
-          ours <- EitherT.liftF[SyncIO, TestError, Either[TestError, String]](ourMapped.p(i).value)
-          theirs <- EitherT.liftF[SyncIO, TestError, Either[TestError, String]](theirMapped.p(i).value)
-        } yield assertEquals(ours, theirs)
-      }
-    } yield ()).runOrFail
+    exhaustiveInt.allValues.traverse_ { i =>
+      for {
+        ours <- ourMapped.p(i)
+        theirs <- theirMapped.p(i)
+      } yield assertEquals(ours, theirs)
+    }
   }
 }

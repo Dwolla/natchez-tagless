@@ -1,17 +1,21 @@
 package com.dwolla.tagless.mtl
 
-import cats.data.EitherT
 import cats.effect.{Ref, SyncIO}
-import cats.mtl.Raise
-import cats.syntax.all._
-import munit.CatsEffectSuite
-
-import CarrierArrows.Lazily
-import SyncIOTestSyntax._
-import TestError._
+import cats.mtl.Handle
+import cats.mtl.syntax.all.*
+import cats.syntax.all.*
+import com.dwolla.tagless.mtl.TestError.*
+import munit.{CatsEffectSuite, Location, TestOptions}
 
 class TestAlgReferenceSpec extends CatsEffectSuite {
-  private val raiseF: Raise[Lazily, TestError] = Raise[Lazily, TestError]
+  def testWithHandle[F[_] : cats.ApplicativeThrow, E](options: TestOptions)
+                                                     (f: cats.mtl.Handle[F, E] => F[Unit])
+                                                     (implicit loc: Location): Unit =
+    test(options) {
+      Handle.allowF[F, E](f).rescue { testError =>
+        new AssertionError(s"test raised unexpectedly: $testError").raiseError[F, Unit]
+      }
+    }
 
   private val ref: RaiseAspect[TestAlg, Render, Render, Render] =
     TestAlgReference.referenceRaiseAspect[Render, Render, Render]
@@ -25,27 +29,27 @@ class TestAlgReferenceSpec extends CatsEffectSuite {
     * through `Err[E]` separates them: `errA:` can only come from `R1`'s
     * decoration and `errB:` only from `R2`'s.
     */
-  test("intercept decorates both of e's capabilities, each with its own Err evidence") {
-    def raisedThrough(eOutcome: Int, rendered: Ref[Lazily, Vector[String]]): Lazily[Unit] = {
-      val hook: OnRaise[Lazily, Render] = new OnRaise[Lazily, Render] {
-        def apply[E](e: E)(implicit ev: Render[E]): Lazily[Unit] = rendered.update(_ :+ ev.render(e))
+  testWithHandle[SyncIO, TestError]("intercept decorates both of e's capabilities, each with its own Err evidence") { implicit H =>
+    def raisedThrough(eOutcome: Int, rendered: Ref[SyncIO, Vector[String]]): SyncIO[Unit] = {
+      val hook: OnRaise[SyncIO, Render] = new OnRaise[SyncIO, Render] {
+        def apply[E](e: E)(implicit ev: Render[E]): SyncIO[Unit] = rendered.update(_ :+ ev.render(e))
       }
 
       for {
-        recorder <- RecordingFk[Lazily, Render, Render]
-        out <- ref.intercept(new GenericTestAlg[Lazily](eOutcome))(recorder.fk, hook).e(raiseF, raiseF)
+        recorder <- RecordingFk[SyncIO, Render, Render]
+        out <- ref.intercept(new GenericTestAlg[SyncIO](eOutcome))(recorder.fk, hook).e
       } yield out
     }
 
-    (for {
-      rendered <- Ref.of[Lazily, Vector[String]](Vector.empty)
-      r1 <- EitherT.liftF[SyncIO, TestError, Either[TestError, Unit]](raisedThrough(-1, rendered).value)
-      r2 <- EitherT.liftF[SyncIO, TestError, Either[TestError, Unit]](raisedThrough(1, rendered).value)
-      r3 <- EitherT.liftF[SyncIO, TestError, Either[TestError, Unit]](raisedThrough(0, rendered).value)
+    for {
+      rendered <- Ref.of[SyncIO, Vector[String]](Vector.empty)
+      r1 <- raisedThrough(-1, rendered).attemptHandle
+      r2 <- raisedThrough(1, rendered).attemptHandle
+      r3 <- raisedThrough(0, rendered).attemptHandle
       _ = assertEquals(r1, NegativeInput(-1).asLeft[Unit].leftWiden[TestError])
       _ = assertEquals(r2, EmptyInput("e").asLeft[Unit].leftWiden[TestError])
       _ = assertEquals(r3, ().asRight[TestError])
       seen <- rendered.get
-    } yield assertEquals(seen.toList, List("errA:NegativeInput(-1)", "errB:EmptyInput(e)"))).runOrFail
+    } yield assertEquals(seen.toList, List("errA:NegativeInput(-1)", "errB:EmptyInput(e)"))
   }
 }

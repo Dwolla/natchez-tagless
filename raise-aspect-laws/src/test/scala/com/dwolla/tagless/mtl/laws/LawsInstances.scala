@@ -1,12 +1,12 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.Eq
-import cats.data.EitherT
-import cats.effect.SyncIO
+import cats.*
+import cats.effect.*
 import cats.effect.testkit.TestInstances
 import cats.laws.discipline.ExhaustiveCheck
 import cats.mtl.Raise
+import cats.syntax.all.*
 import org.scalacheck.{Arbitrary, Gen}
 
 /** Shared `Eq`, `ExhaustiveCheck` and rendering instances for the law suites.
@@ -19,7 +19,6 @@ import org.scalacheck.{Arbitrary, Gen}
 object LawsInstances extends TestInstances {
 
   type Result[A] = Either[TestError, A]
-  type Lazily[A] = EitherT[SyncIO, TestError, A]
 
   /** Small exhaustive domains. Both include values that make the fixture raise
     * — negatives for `a`/`d`, the empty string for `b` — so L3′ and L4 exercise
@@ -55,7 +54,7 @@ object LawsInstances extends TestInstances {
 
   /** The non-identity `RaiseArrow` L1/L2 are exercised over.
     */
-  implicit val arbResultToLazily: Arbitrary[RaiseArrow[Result, Lazily, Render]] =
+  implicit def arbResultToLazily(implicit H: cats.mtl.Handle[SyncIO, TestError]): Arbitrary[RaiseArrow[Result, SyncIO, Render]] =
     Arbitrary(Gen.const(CarrierArrows.resultToLazily[Render]))
 
   /** Intercept the algebra under test with a recording interpreter. The pair
@@ -63,12 +62,12 @@ object LawsInstances extends TestInstances {
     * had been woven and immediately erased, and the recorder holds the
     * structure that used to be inspectable on the returned value.
     */
-  def instrumented(
+  def instrumented[F[_]: Sync](
       instance: RaiseAspect[TestAlg, Render, Render, Render],
       eOutcome: Int
-  ): Lazily[(TestAlg[Lazily], RecordingFk[Lazily, Render, Render])] =
-    RecordingFk[Lazily, Render, Render].map { recorder =>
-      (instance.intercept(new GenericTestAlg[Lazily](eOutcome))(recorder.fk, OnRaise.noop[Lazily, Render]), recorder)
+  ): F[(TestAlg[F], RecordingFk[F, Render, Render])] =
+    RecordingFk[F, Render, Render].map { recorder =>
+      (instance.intercept(new GenericTestAlg[F](eOutcome))(recorder.fk, OnRaise.noop[F, Render]), recorder)
     }
 
   /** Intercept the algebra under test with a recording interpreter ''and'' a
@@ -84,23 +83,23 @@ object LawsInstances extends TestInstances {
     * each capability got: `errA:` and `errB:` are distinguishable from each
     * other and from `toString`.
     */
-  def observed(
+  def observed[F[_]: Sync](
       instance: RaiseAspect[TestAlg, Render, Render, Render],
       eOutcome: Int
-  ): Lazily[(TestAlg[Lazily], RecordingFk[Lazily, Render, Render])] =
-    RecordingFk[Lazily, Render, Render].map { recorder =>
-      val hook: OnRaise[Lazily, Render] = new OnRaise[Lazily, Render] {
-        def apply[E](e: E)(implicit ev: Render[E]): Lazily[Unit] = recorder.record(s"raise:${ev.render(e)}")
+  ): F[(TestAlg[F], RecordingFk[F, Render, Render])] =
+    RecordingFk[F, Render, Render].map { recorder =>
+      val hook: OnRaise[F, Render] = new OnRaise[F, Render] {
+        def apply[E](e: E)(implicit ev: Render[E]): F[Unit] = recorder.record(s"raise:${ev.render(e)}")
       }
 
-      (instance.intercept(new GenericTestAlg[Lazily](eOutcome))(recorder.fk, hook), recorder)
+      (instance.intercept(new GenericTestAlg[F](eOutcome))(recorder.fk, hook), recorder)
     }
 
   /** What the interpreter saw, rendered — the fused analogue of mapping
     * `WeaveRenderer.render` over a list of returned weaves, and stricter,
     * because the list is in arrival order.
     */
-  def renderedWeaves(recorder: RecordingFk[Lazily, Render, Render]): Lazily[List[RenderedWeave]] =
+  def renderedWeaves[F[_]: Functor](recorder: RecordingFk[F, Render, Render]): F[List[RenderedWeave]] =
     recorder.weaves.map(_.map(r => WeaveRenderer.render(r.weave)).toList)
 
   /** `Eq` for the fixture algebra by sampling: two algebras are equal when

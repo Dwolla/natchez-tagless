@@ -1,10 +1,9 @@
 package com.dwolla.tagless.mtl
 
-import cats.Functor
-import cats.data.EitherT
-import cats.effect.SyncIO
-import cats.mtl.Raise
-import cats.~>
+import cats.*
+import cats.effect.*
+import cats.mtl.{Handle, Raise}
+import cats.syntax.all.*
 
 /** A genuine carrier change, for the tests and laws that need a `RaiseArrow`
   * which is not the identity.
@@ -27,19 +26,19 @@ import cats.~>
   */
 object CarrierArrows {
   type Result[A] = Either[TestError, A]
-  type Lazily[A] = EitherT[SyncIO, TestError, A]
 
-  def resultToLazily[Err[_]]: RaiseArrow[Result, Lazily, Err] =
+  def resultToLazily[Err[_]](implicit H: Handle[SyncIO, TestError]): RaiseArrow[Result, SyncIO, Err] =
     RaiseArrow(
-      new (Result ~> Lazily) {
-        def apply[A](fa: Result[A]): Lazily[A] = EitherT(SyncIO.pure(fa))
+      new (Result ~> SyncIO) {
+        def apply[A](fa: Result[A]): SyncIO[A] = fa.fold(H.raise, H.applicative.pure)
       },
-      new RaisePull[Lazily, Result, Err] {
-        def apply[E](rg: Raise[Lazily, E])(implicit ev: Err[E]): Raise[Result, E] =
+      new RaisePull[SyncIO, Result, Err] {
+        def apply[E](rg: Raise[SyncIO, E])(implicit ev: Err[E]): Raise[Result, E] =
           new Raise[Result, E] {
             val functor: Functor[Result] = Functor[Result]
 
-            def raise[E2 <: E, A](e: E2): Result[A] = rg.raise[E2, A](e).value.unsafeRunSync()
+            def raise[E2 <: E, A](e: E2): Result[A] =
+              rg.raise[E2, A](e).map(_.asRight).unsafeRunSync() // TODO is this sound? should `e` be part of a `TestError` somehow and the result be a Left?
           }
       }
     )
