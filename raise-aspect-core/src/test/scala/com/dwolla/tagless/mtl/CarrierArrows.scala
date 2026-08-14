@@ -3,7 +3,7 @@ package com.dwolla.tagless.mtl
 import cats.*
 import cats.effect.*
 import cats.mtl.{Handle, Raise}
-import cats.syntax.all.*
+import cats.mtl.syntax.all.*
 
 /** A genuine carrier change, for the tests and laws that need a `RaiseArrow`
   * which is not the identity.
@@ -38,7 +38,7 @@ object CarrierArrows {
             val functor: Functor[Result] = Functor[Result]
 
             def raise[E2 <: E, A](e: E2): Result[A] =
-              rg.raise[E2, A](e).map(_.asRight).unsafeRunSync() // TODO is this sound? should `e` be part of a `TestError` somehow and the result be a Left?
+              rg.raise[E2, A](e).attemptHandle.unsafeRunSync()
           }
       }
     )

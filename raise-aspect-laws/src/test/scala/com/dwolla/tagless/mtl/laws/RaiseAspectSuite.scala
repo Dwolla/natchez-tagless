@@ -76,12 +76,12 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
         H,
         e
       )
-      (law.lhs, law.rhs).mapN { (l, r) => assertEquals(l, r); true }
+      (law.lhs.attemptHandle, law.rhs.attemptHandle).mapN { (l, r) => assertEquals(l, r); true }
     }
   }
 
   property("L4 arrow coherence for the identity arrow") {
-    forAllErrors { e => implicit H: Handle[SyncIO, TestError] =>
+    forAllErrors { e => _: Handle[SyncIO, TestError] =>
       val law = RaiseArrowLaws.arrowCoherence[Result, Result, Render, TestError, Int](
         RaiseArrow.id[Result, Render],
         raiseResult,
@@ -100,7 +100,7 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
         H,
         e
       )
-      (law.lhs, law.rhs).mapN { (l, r) => assertEquals(l, r); true }
+      (law.lhs.attemptHandle, law.rhs.attemptHandle).mapN { (l, r) => assertEquals(l, r); true }
     }
   }
 
@@ -129,7 +129,7 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
         H,
         e
       )
-      (law.lhs, law.rhs).mapN { (l, r) => assertEquals(l, r); true }
+      (law.lhs.attemptHandle, law.rhs.attemptHandle).mapN { (l, r) => assertEquals(l, r); true }
     }
   }
 
@@ -194,8 +194,8 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
       (w, _) = pair
       _ <- exhaustiveInt.allValues.traverse_ { i =>
         for {
-          wa <- w.a(i)
-          ia <- impl.a(i)
+          wa <- w.a(i).attemptHandle
+          ia <- impl.a(i).attemptHandle
           _ = assertEquals(wa, ia)
           wc <- w.c(i)
           ic <- impl.c(i)
@@ -231,8 +231,8 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
       plain = countingAlg(plainCounter)
       _ <- exhaustiveInt.allValues.traverse_ { i =>
           for {
-            throughIntercepted <- inst.a(i)
-            throughPlain <- plain.a(i)
+            throughIntercepted <- inst.a(i).attemptHandle
+            throughPlain <- plain.a(i).attemptHandle
           } yield assertEquals(throughIntercepted, throughPlain, s"intercepted and plain results differ for input $i")
         }
       ic <- interceptedCounter.get
@@ -289,7 +289,7 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
           H,
           e
         )
-        (law.lhs, law.rhs).mapN { (l, r) => assertEquals(l, r); true }
+        (law.lhs.attemptHandle, law.rhs.attemptHandle).mapN { (l, r) => assertEquals(l, r); true }
       }.rescue { testError =>
         new AssertionError(s"test raised unexpectedly: $testError").raiseError[SyncIO, Boolean]
       }

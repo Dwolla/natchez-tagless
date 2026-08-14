@@ -2,16 +2,13 @@ package com.dwolla.tagless.mtl
 package laws
 
 import cats.Applicative
-import cats.data.EitherT
 import cats.effect.SyncIO
-import cats.mtl.Raise
-import cats.syntax.all._
-import munit.CatsEffectSuite
-
-import com.dwolla.tagless.mtl.SyncIOTestSyntax._
-
-import LawsInstances._
-import TestError._
+import cats.mtl.syntax.all.*
+import cats.mtl.{Handle, Raise}
+import cats.syntax.all.*
+import com.dwolla.tagless.mtl.TestError.*
+import com.dwolla.tagless.mtl.laws.LawsInstances.*
+import munit.{CatsEffectSuite, Location, TestOptions}
 
 /** Shapes the existing fixtures don't cover: members inherited from a parent
   * trait, a nullary def returning `F[A]`, and overloads.
@@ -45,57 +42,60 @@ class EdgeCaseDerivationSpec extends CatsEffectSuite {
   private val derived: RaiseAspect[EdgeAlg, Render, Render, Render] =
     DeriveRaise.aspect[EdgeAlg, Render, Render, Render]
 
-  private val impl = EdgeAlg.instance[Lazily]
+  private val impl = EdgeAlg.instance[SyncIO]
 
-  private val raiseLazily: Raise[Lazily, TestError] = Raise[Lazily, TestError]
+  def testWithHandle[G[_] : cats.ApplicativeThrow, E](options: TestOptions)
+                                                     (f: cats.mtl.Handle[G, E] => G[Unit])
+                                                     (implicit loc: Location): Unit =
+    test(options) {
+      Handle.allowF[G, E](f).rescue { testError =>
+        new AssertionError(s"test raised unexpectedly: $testError").raiseError[G, Unit]
+      }
+    }
 
-  test("a capability method inherited from a parent trait is woven") {
-    (for {
-      recorder <- RecordingFk[Lazily, Render, Render]
-      instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Lazily, Render])
-      out <- instrumented.inherited(2)(raiseLazily)
+  testWithHandle[SyncIO, TestError]("a capability method inherited from a parent trait is woven") { implicit H =>
+    for {
+      recorder <- RecordingFk[SyncIO, Render, Render]
+      instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[SyncIO, Render])
+      out <- instrumented.inherited(2)
       w1 <- recorder.weaves
       rendered = WeaveRenderer.render(w1.last.weave)
       _ = assertEquals(rendered.algebraName, "EdgeAlg")
       _ = assertEquals(rendered.methodName, "inherited")
       _ = assertEquals(rendered.domain, List(List("i" -> "2")))
-      implOut <- impl.inherited(2)(raiseLazily)
+      implOut <- impl.inherited(2)
       _ = assertEquals(out, implOut)
-    } yield ()).runOrFail
+    } yield ()
   }
 
-  test("the inherited capability's raise survives intercept unchanged") {
-    (for {
-      recorder <- RecordingFk[Lazily, Render, Render]
-      instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Lazily, Render])
-      out <- EitherT.liftF[SyncIO, TestError, Result[String]](
-        instrumented.inherited(-4)(raiseLazily).value
-      )
+  testWithHandle[SyncIO, TestError]("the inherited capability's raise survives intercept unchanged") { implicit H =>
+    for {
+      recorder <- RecordingFk[SyncIO, Render, Render]
+      instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[SyncIO, Render])
+      out <- instrumented.inherited(-4).attemptHandle
       _ = assertEquals(out, NegativeInput(-4).asLeft[String].leftWiden[TestError])
-      implOut <- EitherT.liftF[SyncIO, TestError, Result[String]](
-        impl.inherited(-4)(raiseLazily).value
-      )
+      implOut <- impl.inherited(-4).attemptHandle
       _ = assertEquals(out, implOut)
-    } yield ()).runOrFail
+    } yield ()
   }
 
-  test("a nullary def returning F[A] is woven with an empty domain") {
-    (for {
-      recorder <- RecordingFk[Lazily, Render, Render]
-      instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Lazily, Render])
+  testWithHandle[SyncIO, TestError]("a nullary def returning F[A] is woven with an empty domain") { implicit H =>
+    for {
+      recorder <- RecordingFk[SyncIO, Render, Render]
+      instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[SyncIO, Render])
       out <- instrumented.nullary
       w1 <- recorder.weaves
       rendered = WeaveRenderer.render(w1.last.weave)
       _ = assertEquals(rendered.methodName, "nullary")
       _ = assertEquals(rendered.domain, List.empty[List[(String, String)]])
       _ = assertEquals(out, 42)
-    } yield ()).runOrFail
+    } yield ()
   }
 
-  test("overloads are woven independently, each keeping its own parameter type") {
-    (for {
-      recorder <- RecordingFk[Lazily, Render, Render]
-      instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Lazily, Render])
+  testWithHandle[SyncIO, TestError]("overloads are woven independently, each keeping its own parameter type") { implicit H =>
+    for {
+      recorder <- RecordingFk[SyncIO, Render, Render]
+      instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[SyncIO, Render])
       outInt <- instrumented.overloaded(7)
       w1 <- recorder.weaves
       renderedInt = WeaveRenderer.render(w1.last.weave)
@@ -106,17 +106,17 @@ class EdgeCaseDerivationSpec extends CatsEffectSuite {
       _ = assertEquals(renderedString.domain, List(List("s" -> "z")))
       _ = assertEquals(outInt, "int:7")
       _ = assertEquals(outString, "string:z")
-    } yield ()).runOrFail
+    } yield ()
   }
 
-  test("a capability-free method on the same algebra is woven unchanged") {
-    (for {
-      recorder <- RecordingFk[Lazily, Render, Render]
-      instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[Lazily, Render])
+  testWithHandle[SyncIO, TestError]("a capability-free method on the same algebra is woven unchanged") { implicit H =>
+    for {
+      recorder <- RecordingFk[SyncIO, Render, Render]
+      instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[SyncIO, Render])
       out <- instrumented.own(5)
       w1 <- recorder.weaves
       _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("i" -> "5")))
       _ = assertEquals(out, 15)
-    } yield ()).runOrFail
+    } yield ()
   }
 }

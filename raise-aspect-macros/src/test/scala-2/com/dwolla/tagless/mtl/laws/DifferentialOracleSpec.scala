@@ -2,14 +2,12 @@ package com.dwolla.tagless.mtl
 package laws
 
 import cats.arrow.FunctionK
-import cats.data.EitherT
-import cats.effect.SyncIO
-import cats.mtl.Raise
-import cats.syntax.all._
-import munit.CatsEffectSuite
-
-import LawsInstances._
-import SyncIOTestSyntax._
+import cats.effect.*
+import cats.mtl.*
+import cats.mtl.syntax.all.*
+import cats.syntax.all.*
+import com.dwolla.tagless.mtl.laws.LawsInstances.*
+import munit.{CatsEffectSuite, Location, TestOptions}
 
 /** The differential oracle.
   *
@@ -20,6 +18,15 @@ import SyncIOTestSyntax._
   */
 class DifferentialOracleSpec extends CatsEffectSuite {
 
+  def testWithHandle[G[_] : cats.ApplicativeThrow, E](options: TestOptions)
+                                                     (f: cats.mtl.Handle[G, E] => G[Unit])
+                                                     (implicit loc: Location): Unit =
+    test(options) {
+      Handle.allowF[G, E](f).rescue { testError =>
+        new AssertionError(s"test raised unexpectedly: $testError").raiseError[G, Unit]
+      }
+    }
+
   private val derived: RaiseAspect[TestAlg, Render, Render, Render] =
     DeriveRaise.aspect[TestAlg, Render, Render, Render]
 
@@ -28,54 +35,51 @@ class DifferentialOracleSpec extends CatsEffectSuite {
 
   private val outcomes = List(-1, 0, 1)
 
-  private val raiseLazily: Raise[Lazily, TestError] = Raise[Lazily, TestError]
-
   /** `observed`, not `instrumented`: the recorder's hook fires into the same
     * log as the weave arrivals, so the comparison below covers whether each
     * capability was decorated at all and with which `Err` evidence. Under
     * `OnRaise.noop` a derivation that dropped `RaiseAspect.observing` entirely
     * is indistinguishable from a correct one.
     */
-  private def observed(
+  private def observed[F[_] : Sync](
       instance: RaiseAspect[TestAlg, Render, Render, Render],
       outcome: Int
-  ): Lazily[(TestAlg[Lazily], RecordingFk[Lazily, Render, Render])] =
+  ): F[(TestAlg[F], RecordingFk[F, Render, Render])] =
     LawsInstances.observed(instance, outcome)
 
-  test("the derived instance is structurally identical to the reference, for every method and sample") {
-    outcomes.toList.traverse_ { outcome =>
+  testWithHandle[SyncIO, TestError]("the derived instance is structurally identical to the reference, for every method and sample") { implicit H =>
+    outcomes.traverse_ { outcome =>
       for {
-        dPair <- observed(derived, outcome)
+        dPair <- observed[SyncIO](derived, outcome)
         (d, dRec) = dPair
-        rPair <- observed(reference, outcome)
+        rPair <- observed[SyncIO](reference, outcome)
         (r, rRec) = rPair
-        _ <- EitherT.liftF[SyncIO, TestError, Unit](
-          exhaustiveInt.allValues.toList.traverse_ { i =>
+        _ <-
+          exhaustiveInt.allValues.traverse_ { i =>
             for {
-              da <- d.a(i)(raiseLazily).value
-              ra <- r.a(i)(raiseLazily).value
+              da <- d.a(i).attemptHandle
+              ra <- r.a(i).attemptHandle
               _ = assertEquals(da, ra)
-              dc <- d.c(i).value
-              rc <- r.c(i).value
+              dc <- d.c(i).attemptHandle
+              rc <- r.c(i).attemptHandle
               _ = assertEquals(dc, rc)
-              de <- d.e(raiseLazily, raiseLazily).value
-              re <- r.e(raiseLazily, raiseLazily).value
+              de <- d.e.attemptHandle
+              re <- r.e.attemptHandle
               _ = assertEquals(de, re)
-              _ <- exhaustiveInt.allValues.toList.traverse_ { j =>
+              _ <- exhaustiveInt.allValues.traverse_ { j =>
                 for {
-                  dd <- d.d(i)(j)(raiseLazily).value
-                  rd <- r.d(i)(j)(raiseLazily).value
+                  dd <- d.d(i)(j).attemptHandle
+                  rd <- r.d(i)(j).attemptHandle
                 } yield assertEquals(dd, rd)
               }
               _ <- exhaustiveString.allValues.traverse_ { s =>
                 for {
-                  db <- d.b(s, i)(raiseLazily).value
-                  rb <- r.b(s, i)(raiseLazily).value
+                  db <- d.b(s, i).attemptHandle
+                  rb <- r.b(s, i).attemptHandle
                 } yield assertEquals(db, rb)
               }
             } yield ()
           }
-        )
         dRendered <- LawsInstances.renderedWeaves(dRec)
         rRendered <- LawsInstances.renderedWeaves(rRec)
         // Weave arrivals and hook firings in one log: the derived instance and
@@ -98,7 +102,7 @@ class DifferentialOracleSpec extends CatsEffectSuite {
           s"no raise reached the hook for eOutcome $outcome — the events comparison above is vacuous"
         )
       } yield ()
-    }.runOrFail
+    }
   }
 
   test("the derived mapK agrees with the reference under the identity arrow") {
@@ -117,15 +121,18 @@ class DifferentialOracleSpec extends CatsEffectSuite {
     * `pull` that was composed wrongly. This one uses a genuine carrier-change
     * arrow instead.
     */
-  test("the derived mapK agrees with the reference under a genuine carrier change") {
-    val eqAlg = eqTestAlg[Lazily]
+  testWithHandle[SyncIO, TestError]("the derived mapK agrees with the reference under a genuine carrier change") { implicit H =>
+    val eqAlg = eqTestAlg[SyncIO]
     val arrow = CarrierArrows.resultToLazily[Render]
-    outcomes.foreach { outcome =>
-      val impl = new EitherTestAlg(outcome)
-      assert(
-        eqAlg.eqv(derived.mapK(impl)(arrow), reference.mapK(impl)(arrow)),
-        s"mapK under the carrier-change arrow differs for eOutcome $outcome"
-      )
+
+    SyncIO {
+      outcomes.foreach { outcome =>
+        val impl = new EitherTestAlg(outcome)
+        assert(
+          eqAlg.eqv(derived.mapK(impl)(arrow), reference.mapK(impl)(arrow)),
+          s"mapK under the carrier-change arrow differs for eOutcome $outcome"
+        )
+      }
     }
   }
 

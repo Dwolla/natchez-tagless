@@ -5,6 +5,7 @@ import cats.*
 import cats.arrow.FunctionK
 import cats.effect.*
 import cats.mtl.*
+import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import cats.tagless.aop.Aspect
 import com.dwolla.tagless.mtl.laws.LawsInstances.*
@@ -43,7 +44,7 @@ abstract class ConservativeExtensionSuite extends munit.CatsEffectSuite {
     for {
       recorder <- RecordingFk[F, Render, Render]
       instrumented = ours.intercept(impl[F])(recorder.fk, OnRaise.noop[F, Render])
-      _ <- inputs.traverse_(i => instrumented.p(i).void)
+      _ <- inputs.traverse_(i => instrumented.p(i).void.attemptHandle)
       weaves <- recorder.weaves
     } yield weaves.map(r => WeaveRenderer.render(r.weave)).toList
 
@@ -80,8 +81,8 @@ abstract class ConservativeExtensionSuite extends munit.CatsEffectSuite {
       theirWoven = upstream.weave(impl)
       _ <- exhaustiveInt.allValues.traverse_ { i =>
         for {
-          ours <- instrumented.p(i)
-          theirs <- theirWoven.p(i).codomain.target
+          ours <- instrumented.p(i).attemptHandle
+          theirs <- theirWoven.p(i).codomain.target.attemptHandle
         } yield assertEquals(ours, theirs)
       }
     } yield ()
@@ -100,8 +101,8 @@ abstract class ConservativeExtensionSuite extends munit.CatsEffectSuite {
 
     exhaustiveInt.allValues.traverse_ { i =>
       for {
-        ours <- ourMapped.p(i)
-        theirs <- theirMapped.p(i)
+        ours <- ourMapped.p(i).attemptHandle
+        theirs <- theirMapped.p(i).attemptHandle
       } yield assertEquals(ours, theirs)
     }
   }

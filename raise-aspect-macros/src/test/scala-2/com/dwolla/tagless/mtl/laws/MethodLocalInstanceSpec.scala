@@ -1,15 +1,13 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.{Applicative, Functor}
 import cats.arrow.FunctionK
-import cats.data.EitherT
 import cats.effect.{Ref, SyncIO}
-import cats.mtl.Raise
-import cats.syntax.all._
-import munit.CatsEffectSuite
-
-import com.dwolla.tagless.mtl.SyncIOTestSyntax._
+import cats.mtl.syntax.all.*
+import cats.mtl.{Handle, Raise}
+import cats.syntax.all.*
+import cats.{Applicative, Functor}
+import munit.{CatsEffectSuite, Location, TestOptions}
 
 /** Instances the derivation cannot see, because the method supplies them
   * itself.
@@ -142,7 +140,6 @@ trait PrecedenceAlg[F[_]] {
 
 object MethodLocal {
   type WidgetResult[A] = Either[WidgetError, A]
-  type WidgetLazily[A] = EitherT[SyncIO, WidgetError, A]
   type AliasedRender = Render[Widget]
 
   /** Two visibly different instances of each type class, so a test can prove the
@@ -210,7 +207,7 @@ object MethodLocal {
 
 class MethodLocalInstanceSpec extends CatsEffectSuite {
   import LawsInstances.renderableRender
-  import MethodLocal._
+  import MethodLocal.*
 
   private val showAspect: RaiseAspect[WidgetShowAlg, Render, Render, Render] =
     DeriveRaise.aspect[WidgetShowAlg, Render, Render, Render]
@@ -233,12 +230,19 @@ class MethodLocalInstanceSpec extends CatsEffectSuite {
   private val riskyFunctorK: RaiseFunctorK[WidgetRiskyAlg, Render] =
     DeriveRaise.functorK[WidgetRiskyAlg, Render]
 
-  private val raiseWidgetLazily: Raise[WidgetLazily, WidgetError] = Raise[WidgetLazily, WidgetError]
+  def testWithHandle[G[_] : cats.ApplicativeThrow, E](options: TestOptions)
+                                                     (f: cats.mtl.Handle[G, E] => G[Unit])
+                                                     (implicit loc: Location): Unit =
+    test(options) {
+      Handle.allowF[G, E](f).rescue { testError =>
+        new AssertionError(s"test raised unexpectedly: $testError").raiseError[G, Unit]
+      }
+    }
 
   test("the Dom advice carries the Render the method itself was handed") {
-    (for {
-      recorder <- RecordingFk[WidgetLazily, Render, Render]
-      instrumented = showAspect.intercept(widgets[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+    for {
+      recorder <- RecordingFk[SyncIO, Render, Render]
+      instrumented = showAspect.intercept(widgets[SyncIO])(recorder.fk, OnRaise.noop[SyncIO, Render])
       _ <- instrumented.show(Widget(1))(loud)
       w1 <- recorder.weaves
       rendered1 = WeaveRenderer.render(w1.last.weave)
@@ -247,50 +251,43 @@ class MethodLocalInstanceSpec extends CatsEffectSuite {
       _ = assertEquals(rendered1.domain, List(List("w" -> "loud:1")))
       _ <- instrumented.show(Widget(1))(quiet)
       w2 <- recorder.weaves
-      _ = assertEquals(WeaveRenderer.render(w2.last.weave).domain, List(List("w" -> "quiet:1")))
-    } yield ()).runOrFail
+    } yield {
+      assertEquals(WeaveRenderer.render(w2.last.weave).domain, List(List("w" -> "quiet:1")))
+    }
   }
 
-  test("the Cod advice carries the Render the method itself was handed") {
-    (for {
-      recorder <- RecordingFk[WidgetLazily, Render, Render]
-      instrumented = makeAspect.intercept(widgets[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+  testWithHandle[SyncIO, WidgetError]("the Cod advice carries the Render the method itself was handed") { implicit H =>
+    for {
+      recorder <- RecordingFk[SyncIO, Render, Render]
+      instrumented = makeAspect.intercept(widgets[SyncIO])(recorder.fk, OnRaise.noop[SyncIO, Render])
       _ <- instrumented.make(2)(loud)
       w1 <- recorder.weaves
       loudly = w1.last.weave
       _ = assertEquals(loudly.codomain.name, "make")
-      loudTarget <- EitherT.liftF[SyncIO, WidgetError, WidgetResult[String]](
-        loudly.codomain.target.map(loudly.codomain.instance.render).value
-      )
-      _ = assertEquals(loudTarget, Right("loud:2"): WidgetResult[String])
+      loudTarget <- loudly.codomain.target.map(loudly.codomain.instance.render).attemptHandle
+      _ = assertEquals(loudTarget, Right("loud:2"))
       _ <- instrumented.make(2)(quiet)
       w2 <- recorder.weaves
       quietly = w2.last.weave
-      quietTarget <- EitherT.liftF[SyncIO, WidgetError, WidgetResult[String]](
-        quietly.codomain.target.map(quietly.codomain.instance.render).value
-      )
-      _ = assertEquals(quietTarget, Right("quiet:2"): WidgetResult[String])
-    } yield ()).runOrFail
+      quietTarget <- quietly.codomain.target.map(quietly.codomain.instance.render).attemptHandle
+      _ = assertEquals(quietTarget, Right("quiet:2"))
+    } yield ()
   }
 
-  test("the Err evidence transported with the capability is the one the method was handed") {
-    (for {
-      recorded <- Ref.of[WidgetLazily, Vector[String]](Vector.empty)
-      mapped = riskyAspect.mapK(widgets[WidgetLazily])(recordingArrow(recorded))
-      r1 <- EitherT.liftF[SyncIO, WidgetError, WidgetResult[String]](
-        mapped.risky(-1)(loudError, raiseWidgetLazily).value
-      )
-      _ = assertEquals(r1, Left(WidgetError("negative:-1")): WidgetResult[String])
-      r2 <- EitherT.liftF[SyncIO, WidgetError, WidgetResult[String]](
-        mapped.risky(-2)(quietError, raiseWidgetLazily).value
-      )
-      _ = assertEquals(r2, Left(WidgetError("negative:-2")): WidgetResult[String])
+  testWithHandle[SyncIO, WidgetError]("the Err evidence transported with the capability is the one the method was handed") { implicit H =>
+    for {
+      recorded <- Ref.of[SyncIO, Vector[String]](Vector.empty)
+      mapped = riskyAspect.mapK(widgets[SyncIO])(recordingArrow(recorded))
+      r1 <- mapped.risky(-1)(loudError, H).attemptHandle
+      _ = assertEquals(r1, Left(WidgetError("negative:-1")))
+      r2 <- mapped.risky(-2)(quietError, H).attemptHandle
+      _ = assertEquals(r2, Left(WidgetError("negative:-2")))
       seen <- recorded.get
       _ = assertEquals(seen.toList, List("loudError:negative:-1", "quietError:negative:-2"))
-    } yield ()).runOrFail
+    } yield ()
   }
 
-  test("the intercept hook renders a raise through the method-local Err instance") {
+  testWithHandle[SyncIO, WidgetError]("the intercept hook renders a raise through the method-local Err instance") { implicit H =>
     // `intercept` wires the hook in directly —
     // `RaiseAspect.observing($pn, $onRaise)($applyF, $errInstance)` — so this
     // asserts a stronger claim than the test above (which observes the hook
@@ -298,104 +295,90 @@ class MethodLocalInstanceSpec extends CatsEffectSuite {
     // `RaisePull`): the *method-local* `Err[WidgetError]` the call was handed
     // is exactly what reaches the hook, not a derivation-site instance and
     // not `toString`.
-    (for {
-      rendered <- Ref.of[WidgetLazily, Vector[String]](Vector.empty)
-      hook = new OnRaise[WidgetLazily, Render] {
-        def apply[E](e: E)(implicit ev: Render[E]): WidgetLazily[Unit] = rendered.update(_ :+ ev.render(e))
+    for {
+      rendered <- Ref.of[SyncIO, Vector[String]](Vector.empty)
+      hook = new OnRaise[SyncIO, Render] {
+        def apply[E](e: E)(implicit ev: Render[E]): SyncIO[Unit] = rendered.update(_ :+ ev.render(e))
       }
-      recorder <- RecordingFk[WidgetLazily, Render, Render]
-      instrumented = riskyAspect.intercept(widgets[WidgetLazily])(recorder.fk, hook)
-      _ <- EitherT.liftF[SyncIO, WidgetError, Unit](
-        instrumented.risky(-7)(loudError, raiseWidgetLazily).value.void
-      )
+      recorder <- RecordingFk[SyncIO, Render, Render]
+      instrumented = riskyAspect.intercept(widgets[SyncIO])(recorder.fk, hook)
+      _ <- instrumented.risky(-7)(loudError, H).attemptHandle.void
       seen1 <- rendered.get
       _ = assertEquals(seen1.toList, List("loudError:negative:-7"))
-      _ <- EitherT.liftF[SyncIO, WidgetError, Unit](
-        instrumented.risky(-8)(quietError, raiseWidgetLazily).value.void
-      )
+      _ <- instrumented.risky(-8)(quietError, H).attemptHandle.void
       seen2 <- rendered.get
       _ = assertEquals(seen2.toList, List("loudError:negative:-7", "quietError:negative:-8"))
-    } yield ()).runOrFail
+    } yield ()
   }
 
-  test("the functorK path resolves Err from the method's own implicit clause too") {
-    (for {
-      recorded <- Ref.of[WidgetLazily, Vector[String]](Vector.empty)
-      mapped = riskyFunctorK.mapK(widgets[WidgetLazily])(recordingArrow(recorded))
-      r1 <- EitherT.liftF[SyncIO, WidgetError, WidgetResult[String]](
-        mapped.risky(3)(loudError, raiseWidgetLazily).value
-      )
-      _ = assertEquals(r1, Right("ok:3"): WidgetResult[String])
+  testWithHandle[SyncIO, WidgetError]("the functorK path resolves Err from the method's own implicit clause too") { implicit H =>
+    for {
+      recorded <- Ref.of[SyncIO, Vector[String]](Vector.empty)
+      mapped = riskyFunctorK.mapK(widgets[SyncIO])(recordingArrow(recorded))
+      r1 <- mapped.risky(3)(loudError, H).attemptHandle
+      _ = assertEquals(r1, Right("ok:3"))
       seen1 <- recorded.get
       _ = assertEquals(seen1.toList, Nil)
-      _ <- EitherT.liftF[SyncIO, WidgetError, Unit](
-        mapped.risky(-3)(loudError, raiseWidgetLazily).value.void
-      )
+      _ <- mapped.risky(-3)(loudError, H).attemptHandle.void
       seen2 <- recorded.get
       _ = assertEquals(seen2.toList, List("loudError:negative:-3"))
-    } yield ()).runOrFail
+    } yield ()
   }
 
-  test("all three instance kinds resolve on one algebra") {
-    (for {
-      recorder <- RecordingFk[WidgetLazily, Render, Render]
-      instrumented = widgetAspect.intercept(widgets[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+  testWithHandle[SyncIO, WidgetError]("all three instance kinds resolve on one algebra") { implicit H =>
+    for {
+      recorder <- RecordingFk[SyncIO, Render, Render]
+      instrumented = widgetAspect.intercept(widgets[SyncIO])(recorder.fk, OnRaise.noop[SyncIO, Render])
       _ <- instrumented.show(Widget(4))(loud)
       w1 <- recorder.weaves
       _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("w" -> "loud:4")))
       _ <- instrumented.make(5)(quiet)
       w2 <- recorder.weaves
       made = w2.last.weave
-      madeTarget <- EitherT.liftF[SyncIO, WidgetError, WidgetResult[String]](
-        made.codomain.target.map(made.codomain.instance.render).value
-      )
-      _ = assertEquals(madeTarget, Right("quiet:5"): WidgetResult[String])
-      recorded <- Ref.of[WidgetLazily, Vector[String]](Vector.empty)
-      mapped = widgetAspect.mapK(widgets[WidgetLazily])(recordingArrow(recorded))
-      _ <- EitherT.liftF[SyncIO, WidgetError, Unit](
-        mapped.risky(-6)(loudError, raiseWidgetLazily).value.void
-      )
+      madeTarget <- made.codomain.target.map(made.codomain.instance.render).attemptHandle
+      _ = assertEquals(madeTarget, Right("quiet:5"))
+      recorded <- Ref.of[SyncIO, Vector[String]](Vector.empty)
+      mapped = widgetAspect.mapK(widgets[SyncIO])(recordingArrow(recorded))
+      _ <- mapped.risky(-6)(loudError, H).attemptHandle.void
       seen <- recorded.get
       _ = assertEquals(seen.toList, List("loudError:negative:-6"))
-    } yield ()).runOrFail
+    } yield ()
   }
 
-  test("a polymorphic method resolves both Dom and Cod from its own implicit parameter") {
-    (for {
-      recorder <- RecordingFk[WidgetLazily, Render, Render]
-      instrumented = polyAspect.intercept(poly[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+  testWithHandle[SyncIO, WidgetError]("a polymorphic method resolves both Dom and Cod from its own implicit parameter") { implicit H =>
+    for {
+      recorder <- RecordingFk[SyncIO, Render, Render]
+      instrumented = polyAspect.intercept(poly[SyncIO])(recorder.fk, OnRaise.noop[SyncIO, Render])
       _ <- instrumented.poly(Widget(7))(loud)
       w1 <- recorder.weaves
       _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("a" -> "loud:7")))
       _ <- instrumented.poly(Widget(8))(quiet)
       w2 <- recorder.weaves
       out = w2.last.weave
-      outTarget <- EitherT.liftF[SyncIO, WidgetError, WidgetResult[String]](
-        out.codomain.target.map(out.codomain.instance.render).value
-      )
-      _ = assertEquals(outTarget, Right("quiet:8"): WidgetResult[String])
-    } yield ()).runOrFail
+      outTarget <- out.codomain.target.map(out.codomain.instance.render).attemptHandle
+      _ = assertEquals(outTarget, Right("quiet:8"))
+    } yield ()
   }
 
   test("a context-bound method resolves from its synthetic evidence parameter") {
-    (for {
-      recorder <- RecordingFk[WidgetLazily, Render, Render]
-      instrumented = boundedAspect.intercept(bounded[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+    for {
+      recorder <- RecordingFk[SyncIO, Render, Render]
+      instrumented = boundedAspect.intercept(bounded[SyncIO])(recorder.fk, OnRaise.noop[SyncIO, Render])
       _ <- instrumented.bounded(Widget(9))(loud)
       w1 <- recorder.weaves
       _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("a" -> "loud:9")))
       _ <- instrumented.bounded(Widget(9))(quiet)
       w2 <- recorder.weaves
       _ = assertEquals(WeaveRenderer.render(w2.last.weave).domain, List(List("a" -> "quiet:9")))
-    } yield ()).runOrFail
+    } yield ()
   }
 
   test("a subtype, an alias, and one conforming instance among several all resolve") {
     val widgetRender: WidgetRender = (w: Widget) => s"widgetRender:${w.id}"
 
-    (for {
-      recorder <- RecordingFk[WidgetLazily, Render, Render]
-      instrumented = variationsAspect.intercept(variations[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+    for {
+      recorder <- RecordingFk[SyncIO, Render, Render]
+      instrumented = variationsAspect.intercept(variations[SyncIO])(recorder.fk, OnRaise.noop[SyncIO, Render])
       _ <- instrumented.sub(Widget(10))(widgetRender)
       w1 <- recorder.weaves
       _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("w" -> "widgetRender:10")))
@@ -405,34 +388,34 @@ class MethodLocalInstanceSpec extends CatsEffectSuite {
       _ <- instrumented.several(Widget(12))(quietError, quiet)
       w3 <- recorder.weaves
       _ = assertEquals(WeaveRenderer.render(w3.last.weave).domain, List(List("w" -> "quiet:12")))
-    } yield ()).runOrFail
+    } yield ()
   }
 
   test("a wider contravariant instance stands in for the narrower one the derivation needs") {
-    (for {
-      recorder <- RecordingFk[WidgetLazily, Contra, Render]
-      instrumented = contraAspect.intercept(contra[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+    for {
+      recorder <- RecordingFk[SyncIO, Contra, Render]
+      instrumented = contraAspect.intercept(contra[SyncIO])(recorder.fk, OnRaise.noop[SyncIO, Render])
       _ <- instrumented.sub(new SubThing("x"))(loudThing)
       w1 <- recorder.weaves
       _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("s" -> "loudThing:x")))
       _ <- instrumented.sub(new SubThing("x"))(quietThing)
       w2 <- recorder.weaves
       _ = assertEquals(WeaveRenderer.render(w2.last.weave).domain, List(List("s" -> "quietThing:x")))
-    } yield ()).runOrFail
+    } yield ()
   }
 
   test("resolution is derivation-site first: a method-local instance does not override one in scope") {
     val shouty: Render[Int] = (i: Int) => s"shouty:$i"
 
-    (for {
-      recorder <- RecordingFk[WidgetLazily, Render, Render]
-      instrumented = precedenceAspect.intercept(precedence[WidgetLazily])(recorder.fk, OnRaise.noop[WidgetLazily, Render])
+    for {
+      recorder <- RecordingFk[SyncIO, Render, Render]
+      instrumented = precedenceAspect.intercept(precedence[SyncIO])(recorder.fk, OnRaise.noop[SyncIO, Render])
       // `Render.renderInt` renders "7"; the method-local `shouty` would render
       // "shouty:7". The fallback only fires when derivation-site search fails.
       _ <- instrumented.pick(7)(shouty)
       w1 <- recorder.weaves
       _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("i" -> "7")))
-    } yield ()).runOrFail
+    } yield ()
   }
 
   // --- rejections ----------------------------------------------------------

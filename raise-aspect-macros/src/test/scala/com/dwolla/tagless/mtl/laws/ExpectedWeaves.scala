@@ -1,9 +1,10 @@
 package com.dwolla.tagless.mtl
 package laws
 
+import cats.*
 import cats.mtl.Raise
-
-import LawsInstances._
+import cats.syntax.all.*
+import com.dwolla.tagless.mtl.laws.LawsInstances.*
 
 /** The cross-compiler agreement data.
   *
@@ -47,16 +48,15 @@ object ExpectedWeaves {
     * of the same weaves by reading a recording `fk`, not by inspecting an
     * `Alg[Weave[…]]` directly.
     */
-  def rendered(
-      instrumented: TestAlg[Lazily],
-      recorder: RecordingFk[Lazily, Render, Render]
-  ): Lazily[List[RenderedWeave]] =
+  def rendered[F[_] : Monad](instrumented: TestAlg[F],
+                             recorder: RecordingFk[F, Render, Render],
+                            )(implicit R: Raise[F, TestError]): F[List[RenderedWeave]] =
     for {
-      _ <- instrumented.a(7)(Raise[Lazily, ErrA])
-      _ <- instrumented.b("ab", 2)(Raise[Lazily, ErrB])
+      _ <- instrumented.a(7)
+      _ <- instrumented.b("ab", 2)
       _ <- instrumented.c(3)
-      _ <- instrumented.d(4)(5)(Raise[Lazily, ErrA])
-      _ <- instrumented.e(Raise[Lazily, ErrA], Raise[Lazily, ErrB])
+      _ <- instrumented.d(4)(5)
+      _ <- instrumented.e
       weaves <- recorder.weaves
     } yield weaves.map(r => WeaveRenderer.render(r.weave)).toList
 }
