@@ -2,21 +2,24 @@ package com.dwolla.tagless.mtl
 package laws
 
 import cats.arrow.FunctionK
-import munit.FunSuite
+import cats.effect.{Sync, SyncIO}
+import cats.mtl.syntax.all.*
+import cats.syntax.all.*
+import com.dwolla.tagless.mtl.laws.LawsInstances.*
+import munit.CatsEffectSuite
 
 import scala.annotation.experimental
 
-import LawsInstances._
-
-/** Task 4/5 — the Scala 3 differential oracle.
+/** The Scala 3 differential oracle.
   *
-  * The M2 laws prove the derived instance is ''correct''; this proves it is
-  * ''identical'' to M1's hand-written reference, method by method. Since the Scala 2
-  * oracle asserts the same thing against the same reference, the two derivations
-  * agree transitively — and `CrossVersionAgreementSpec` pins it directly.
+  * The law suite proves the derived instance is ''correct''; this proves it
+  * is ''identical'' to the hand-written reference, method by method. Since
+  * the Scala 2 oracle asserts the same thing against the same reference, the
+  * two derivations agree transitively — and `CrossVersionAgreementSpec` pins
+  * it directly.
   */
 @experimental
-class DifferentialOracleSpec extends FunSuite:
+class DifferentialOracleSpec extends CatsEffectSuite with HandleTestSyntax:
 
   private val derived: RaiseAspect[TestAlg, Render, Render, Render] =
     DeriveRaise.aspect[TestAlg, Render, Render, Render]
@@ -32,43 +35,67 @@ class DifferentialOracleSpec extends FunSuite:
     * `OnRaise.noop` a derivation that dropped `RaiseAspect.observing` entirely
     * is indistinguishable from a correct one.
     */
-  private def observed(
+  private def observed[F[_] : Sync](
       instance: RaiseAspect[TestAlg, Render, Render, Render],
       outcome: Int
-  ): (TestAlg[Result], RecordingFk[Result, Render, Render]) =
+  ): F[(TestAlg[F], RecordingFk[F, Render, Render])] =
     LawsInstances.observed(instance, outcome)
 
-  test("the derived instance is structurally identical to the reference, for every method and sample") {
-    outcomes.foreach { outcome =>
-      val (d, dRec) = observed(derived, outcome)
-      val (r, rRec) = observed(reference, outcome)
-
-      exhaustiveInt.allValues.foreach { i =>
-        assertEquals(d.a(i)(raiseResult), r.a(i)(raiseResult))
-        assertEquals(d.c(i), r.c(i))
-        assertEquals(d.e(raiseResult, raiseResult), r.e(raiseResult, raiseResult))
-
-        exhaustiveInt.allValues.foreach(j => assertEquals(d.d(i)(j)(raiseResult), r.d(i)(j)(raiseResult)))
-        exhaustiveString.allValues.foreach(s => assertEquals(d.b(s, i)(raiseResult), r.b(s, i)(raiseResult)))
-      }
-
-      assertEquals(LawsInstances.renderedWeaves(dRec), LawsInstances.renderedWeaves(rRec))
-      // Weave arrivals and hook firings in one log: the derived instance and
-      // the reference must agree on *when* things happen, not only on what
-      // they produce. `Result` is eager and `Aspect.Advice`'s target is a
-      // strict parameter, so a raise is logged before the weave it belongs to
-      // reaches `fk` — a fact no value-level comparison can see.
-      assertEquals(dRec.events, rRec.events)
-      // The latch on the comparison above, not a test of the hook. With a hook
-      // that writes nothing — `OnRaise.noop`, or a `record` call reduced to a
-      // constant — the two logs still match and the oracle silently returns to
-      // its pre-M12 blindness to a dropped `RaiseAspect.observing`. `a(-2)`,
-      // `a(-1)` and several `d` samples raise for every `eOutcome`, so a log
-      // with no `raise:` line means the fixture stopped observing raises.
-      assert(
-        rRec.events.exists(_.startsWith("raise:")),
-        s"no raise reached the hook for eOutcome $outcome — the events comparison above is vacuous"
-      )
+  testWithHandle[SyncIO, TestError]("the derived instance is structurally identical to the reference, for every method and sample") { implicit H =>
+    outcomes.traverse_ { outcome =>
+      for {
+        dPair <- observed[SyncIO](derived, outcome)
+        (d, dRec) = dPair
+        rPair <- observed[SyncIO](reference, outcome)
+        (r, rRec) = rPair
+        _ <-
+          exhaustiveInt.allValues.traverse_ { i =>
+            for {
+              da <- d.a(i).attemptHandle
+              ra <- r.a(i).attemptHandle
+              _ = assertEquals(da, ra)
+              dc <- d.c(i).attemptHandle
+              rc <- r.c(i).attemptHandle
+              _ = assertEquals(dc, rc)
+              de <- d.e.attemptHandle
+              re <- r.e.attemptHandle
+              _ = assertEquals(de, re)
+              _ <- exhaustiveInt.allValues.traverse_ { j =>
+                for {
+                  dd <- d.d(i)(j).attemptHandle
+                  rd <- r.d(i)(j).attemptHandle
+                } yield assertEquals(dd, rd)
+              }
+              _ <- exhaustiveString.allValues.traverse_ { s =>
+                for {
+                  db <- d.b(s, i).attemptHandle
+                  rb <- r.b(s, i).attemptHandle
+                } yield assertEquals(db, rb)
+              }
+            } yield ()
+          }
+        dRendered <- LawsInstances.renderedWeaves(dRec)
+        rRendered <- LawsInstances.renderedWeaves(rRec)
+        // Weave arrivals and hook firings in one log: the derived instance and
+        // the reference must agree on *when* things happen, not only on what
+        // they produce. `Aspect.Advice`'s target is a strict parameter, so a
+        // raise is logged before the weave it belongs to reaches `fk` — a fact
+        // no value-level comparison can see.
+        _ = assertEquals(dRendered, rRendered)
+        dEvents <- dRec.events
+        rEvents <- rRec.events
+        _ = assertEquals(dEvents.toList, rEvents.toList)
+        // The latch on the comparison above, not a test of the hook. With a hook
+        // that writes nothing — `OnRaise.noop`, or a `record` call reduced to a
+        // constant — the two logs still match even if the oracle went blind to
+        // a dropped `RaiseAspect.observing`. `a(-2)`, `a(-1)` and several `d`
+        // samples raise for every `eOutcome`, so a log with no `raise:` line
+        // means the fixture stopped observing raises.
+        _ = assert(
+          rEvents.exists(_.startsWith("raise:")),
+          s"no raise reached the hook for eOutcome $outcome — the events comparison above is vacuous"
+        )
+      } yield ()
     }
   }
 
@@ -86,22 +113,23 @@ class DifferentialOracleSpec extends FunSuite:
     }
   }
 
-  /** The successor to the pre-M12 "mapK under the erasure arrow" comparison.
-    * `eraseWeave` went from the woven carrier to `Result` and both endpoints
-    * are gone, but the row it filled — the two `mapK`s compared over an arrow
-    * that is not the identity — has to stay filled. `RaiseArrow.id`'s `pull`
-    * is the identity too, so at that arrow the comparison cannot see a `pull`
-    * that was composed wrongly.
+  /** Covers what the identity-arrow comparison above cannot: `RaiseArrow.id`'s
+    * `pull` is the identity too, so at that arrow the comparison can't see a
+    * `pull` that was composed wrongly. This one uses a genuine carrier-change
+    * arrow instead.
     */
-  test("the derived mapK agrees with the reference under a genuine carrier change") {
-    val eqAlg = eqTestAlg[Lazily]
-    val arrow = CarrierArrows.resultToLazily[Render]
-    outcomes.foreach { outcome =>
-      val impl = new EitherTestAlg(outcome)
-      assert(
-        eqAlg.eqv(derived.mapK(impl)(arrow), reference.mapK(impl)(arrow)),
-        s"mapK under the carrier-change arrow differs for eOutcome $outcome"
-      )
+  testWithHandle[SyncIO, TestError]("the derived mapK agrees with the reference under a genuine carrier change") { implicit H =>
+    val eqAlg = eqTestAlg[SyncIO]
+    val arrow = CarrierArrows.resultToSyncIO[Render]
+
+    SyncIO {
+      outcomes.foreach { outcome =>
+        val impl = new EitherTestAlg(outcome)
+        assert(
+          eqAlg.eqv(derived.mapK(impl)(arrow), reference.mapK(impl)(arrow)),
+          s"mapK under the carrier-change arrow differs for eOutcome $outcome"
+        )
+      }
     }
   }
 

@@ -23,6 +23,7 @@ ThisBuild / mergifyStewardConfig ~= { _.map {
 ThisBuild / resolvers += Resolver.sonatypeCentralSnapshots
 
 val catsVersion = "2.13.0"
+val catsEffectVersion = "3.7.0"
 val catsMtlVersion = "1.7.0"
 val catsTaglessVersion = "0.16.5"
 val disciplineMunitVersion = "2.0.0"
@@ -127,6 +128,9 @@ lazy val raiseAspectCore = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-core" % catsVersion,
       "org.typelevel" %%% "cats-mtl" % catsMtlVersion,
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
+      "org.typelevel" %%% "cats-effect" % catsEffectVersion % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % catsEffectVersion % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
       "org.scalameta" %%% "munit" % munitVersion % Test,
       "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
     ),
@@ -152,6 +156,9 @@ lazy val raiseAspectLaws = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-laws" % catsVersion,
       "org.typelevel" %%% "discipline-munit" % disciplineMunitVersion,
+      "org.typelevel" %%% "cats-effect" % catsEffectVersion % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % catsEffectVersion % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
     ),
     // law L9 compares our derivation against upstream's on capability-free
     // algebras. On Scala 2 that lives in cats-tagless-macros; on Scala 3 it is
@@ -175,6 +182,10 @@ lazy val raiseAspectMacros = crossProject(JVMPlatform, JSPlatform)
         Seq("scala-compiler", "scala-reflect").map("org.scala-lang" % _ % scalaVersion.value % Provided)
       else Seq.empty
     },
+    libraryDependencies ++= Seq(
+      "org.typelevel" %%% "cats-effect" % catsEffectVersion % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+    ),
     // A macro bundle manipulates trees the compiler cannot see through, which
     // provokes spurious unused warnings. Upstream cats-tagless drops the same
     // options in its macros module.
@@ -244,6 +255,7 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
       "io.circe" %%% "circe-core" % "0.14.16",
       "org.scalameta" %%% "munit" % munitVersion % Test,
       "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
       "org.typelevel" %%% "cats-laws" % catsVersion % Test,
       "org.typelevel" %%% "discipline-munit" % disciplineMunitVersion % Test,
       "io.circe" %%% "circe-testing" % "0.14.16" % Test,
@@ -272,8 +284,11 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
   // 0.19.0 — so at otel4s 1.0.1 the only option is the JVM one. Cross-platform
   // coverage lives in TracerTransparencySpec, which needs no testkit.
   //
-  // `%%` is correct here and only here: .jvmSettings has no JS artifact to
-  // resolve. Everything in the shared settings block above uses `%%%`.
+  // `%%` is correct for both coordinates below: neither `otel4s-oteljava-*`
+  // artifact is published for JS, so `.jvmSettings` is the only place they can
+  // resolve. `munit-cats-effect`, used cross-platform (`TracerTransparencySpec`,
+  // `WeaveAttributesOpsSpec`), is declared `%%%` in the shared block above
+  // instead.
   //
   // Both the dependencies and the source directory are gated on
   // `isOtel4sScalaVersion` for the same reason the shared block is: otel4s
@@ -293,7 +308,6 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
           // exposes its types in its own signatures, but SpanContentSpec names
           // it directly, so it is declared directly.
           "org.typelevel" %% "otel4s-oteljava-common" % otel4sVersion % Test,
-          "org.typelevel" %% "munit-cats-effect" % "2.2.0" % Test,
         )
       else Seq.empty
     },

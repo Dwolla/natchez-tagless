@@ -1,32 +1,26 @@
 package com.dwolla.tagless.mtl
 
-import cats.data.EitherT
-import cats.mtl.Raise
-import cats.syntax.all._
-import cats.{Eval, Functor}
-import munit.ScalaCheckSuite
+import cats.Functor
+import cats.effect.testkit.TestInstances
+import cats.effect.{Ref, SyncIO}
+import cats.mtl.syntax.all.*
+import cats.mtl.{Handle, Raise}
+import cats.syntax.all.*
+import com.dwolla.tagless.mtl.TestError.*
+import munit.{CatsEffectSuite, ScalaCheckSuite}
 import org.scalacheck.Prop.forAll
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, ObjectInputStream, ObjectOutputStream}
-import java.util.concurrent.atomic.AtomicInteger
-import scala.collection.mutable.ListBuffer
-
-import TestError._
 
 /** `RaiseAspect.observing` is the entire capability-side surface of the fused
-  * derivation, and it takes over the hook behaviour that
-  * `WeaveArrows.raiseLift(onRaise)` had. Everything `WeaveArrowsOnRaiseSpec`
-  * proved about the hook is proved here instead — Task 2 deletes that file
-  * only after this one passes.
+  * derivation; this suite exercises the hook behavior it provides.
   *
-  * The first test is the one the old design could not have written: the
-  * decorated capability reports the caller's ''own'' `Functor[F]`, so there is
-  * no synthesized functor for a generic `R.functor.map(fa)(f)` to corrupt.
-  * See `22-milestone-M12-fused-derivation.md` for what that corruption was.
+  * The first test below proves the decorated capability reports the caller's
+  * ''own'' `Functor[F]`, so there is no synthesized functor for a generic
+  * `R.functor.map(fa)(f)` to corrupt.
   */
-class ObservingCapabilitySpec extends ScalaCheckSuite {
+class ObservingCapabilitySpec extends CatsEffectSuite with ScalaCheckSuite with TestInstances with HandleTestSyntax {
   private type F[A] = Either[TestError, A]
-  private type Lazily[A] = EitherT[Eval, TestError, A]
 
   test("the decorated capability reports the caller's own Functor, never a synthesized one") {
     val callerFunctor: Functor[F] = Functor[F]
@@ -51,102 +45,63 @@ class ObservingCapabilitySpec extends ScalaCheckSuite {
     )
   }
 
-  test("the hook renders the raised error through its Err evidence, exactly once") {
-    val rendered = ListBuffer.empty[String]
-
-    val hook: OnRaise[F, Render] = new OnRaise[F, Render] {
-      def apply[E](e: E)(implicit ev: Render[E]): F[Unit] = {
-        val _ = rendered += ev.render(e)
-        Right(())
+  testWithHandle[SyncIO, TestError]("the hook renders the raised error through its Err evidence, exactly once") { implicit H =>
+    for {
+      rendered <- Ref.of[SyncIO, Vector[String]](Vector.empty)
+      hook = new OnRaise[SyncIO, Render] {
+        def apply[E](e: E)(implicit ev: Render[E]): SyncIO[Unit] = rendered.update(_ :+ ev.render(e))
       }
-    }
-
-    val decorated = RaiseAspect.observing[F, ErrA, Render](Raise[F, ErrA], hook)
-    val out = decorated.raise[NegativeInput, Int](NegativeInput(-3))
-
-    assertEquals(out, NegativeInput(-3).asLeft[Int].leftWiden[TestError])
-    // `errA:` proves the Render instance ran; `toString` alone would give
-    // "NegativeInput(-3)".
-    assertEquals(rendered.toList, List("errA:NegativeInput(-3)"))
+      decorated = RaiseAspect.observing[SyncIO, ErrA, Render](Raise[SyncIO, ErrA], hook)
+      _ <- decorated.raise[NegativeInput, Unit](NegativeInput(-3)).handle { (out: TestError) =>
+        assertEquals(out, NegativeInput(-3))
+      }
+      seen <- rendered.get
+      // `errA:` proves the Render instance ran; `toString` alone would give
+      // "NegativeInput(-3)".
+      _ = assertEquals(seen.toList, List("errA:NegativeInput(-3)"))
+    } yield ()
   }
 
-  test("the hook's effect is sequenced before the raise, and neither runs until the value is forced") {
-    val counter = new AtomicInteger(0)
-    val log = ListBuffer.empty[String]
-
-    val hook: OnRaise[Lazily, Render] = new OnRaise[Lazily, Render] {
-      def apply[E](e: E)(implicit ev: Render[E]): Lazily[Unit] =
-        EitherT.liftF(Eval.always {
-          counter.incrementAndGet()
-          log += s"hook:${ev.render(e)}"
-          ()
-        })
-    }
-
-    val caller: Raise[Lazily, ErrA] = new Raise[Lazily, ErrA] {
-      val functor: Functor[Lazily] = Functor[Lazily]
-      def raise[E2 <: ErrA, A](e: E2): Lazily[A] =
-        EitherT(Eval.always {
-          val _ = log += "raise"
-          e.asLeft[A].leftWiden[TestError]
-        })
-    }
-
-    val decorated = RaiseAspect.observing[Lazily, ErrA, Render](caller, hook)
-    val raised = decorated.raise[NegativeInput, Int](NegativeInput(-1))
-
-    assertEquals(counter.get(), 0, "building the raised value must run no effects")
-    assertEquals(log.toList, List.empty[String])
-
-    assertEquals(raised.value.value, NegativeInput(-1).asLeft[Int].leftWiden[TestError])
-    assertEquals(counter.get(), 1, "the hook must run exactly once")
-    assertEquals(log.toList, List("hook:errA:NegativeInput(-1)", "raise"))
+  testWithHandle[SyncIO, TestError]("the hook's effect is sequenced before the raise, and neither runs until the value is forced") { implicit H =>
+    for {
+      counter <- Ref.of[SyncIO, Int](0)
+      log <- Ref.of[SyncIO, Vector[String]](Vector.empty)
+      hook = new OnRaise[SyncIO, Render] {
+        def apply[E](e: E)(implicit ev: Render[E]): SyncIO[Unit] =
+          counter.update(_ + 1) *> log.update(_ :+ s"hook:${ev.render(e)}")
+      }
+      caller = new Raise[SyncIO, ErrA] {
+        val functor: Functor[SyncIO] = Functor[SyncIO]
+        def raise[E2 <: ErrA, A](e: E2): SyncIO[A] =
+          log.update(_ :+ "raise") *> H.raise(e: TestError)
+      }
+      decorated = RaiseAspect.observing[SyncIO, ErrA, Render](caller, hook)
+      // `raised` is built but not yet forced -- nothing has run.
+      raised = decorated.raise[NegativeInput, Unit](NegativeInput(-1))
+      c0 <- counter.get
+      l0 <- log.get
+      _ = assertEquals(c0, 0, "building the raised value must run no effects")
+      _ = assertEquals(l0.toList, List.empty[String])
+      _ <- raised.handle { (result: TestError) =>
+        assertEquals(result, NegativeInput(-1))
+      }
+      c1 <- counter.get
+      _ = assertEquals(c1, 1, "the hook must run exactly once")
+      l1 <- log.get
+      _ = assertEquals(l1.toList, List("hook:errA:NegativeInput(-1)", "raise"))
+    } yield ()
   }
 
   // ------------------------------- the hook through a full interception
 
-  private def countingOnRaise(counter: AtomicInteger): OnRaise[Lazily, Render] =
-    new OnRaise[Lazily, Render] {
-      def apply[E](e: E)(implicit ev: Render[E]): Lazily[Unit] =
-        EitherT(Eval.always {
-          val _ = counter.incrementAndGet()
-          ().asRight[TestError]
-        })
+  private def countingOnRaise[G[_]](counter: Ref[G, Int]): OnRaise[G, Render] =
+    new OnRaise[G, Render] {
+      def apply[E](e: E)(implicit ev: Render[E]): G[Unit] = counter.update(_ + 1)
     }
 
-  private val ambientRaise: Raise[Lazily, TestError] =
-    new Raise[Lazily, TestError] {
-      val functor: Functor[Lazily] = Functor[Lazily]
-
-      def raise[E2 <: TestError, A](e: E2): Lazily[A] =
-        EitherT(Eval.always(e.asLeft[A].leftWiden[TestError]))
-    }
-
-  /** A `TestAlg[Lazily]` whose raising branches actually call through the
-    * `Raise` capability they are given, so a full interception round trip
-    * exercises the decorated capability rather than bypassing it.
-    */
-  private val countingLazilyAlg: TestAlg[Lazily] =
-    new TestAlg[Lazily] {
-      def a(i: Int)(implicit R: Raise[Lazily, ErrA]): Lazily[String] =
-        if (i < 0) R.raise(NegativeInput(i)) else EitherT(Eval.always(s"a:$i".asRight[TestError]))
-
-      def b(x: String, y: => Int)(implicit R: Raise[Lazily, ErrB]): Lazily[Int] =
-        if (x.isEmpty) R.raise(EmptyInput("x")) else EitherT(Eval.always((x.length + y).asRight[TestError]))
-
-      def c(i: Int): Lazily[Int] = EitherT(Eval.always((i * 2).asRight[TestError]))
-
-      def d(i: Int)(j: Int)(implicit R: Raise[Lazily, ErrA]): Lazily[Int] =
-        if (i + j < 0) R.raise(NegativeInput(i + j)) else EitherT(Eval.always((i + j).asRight[TestError]))
-
-      def e(implicit R1: Raise[Lazily, ErrA], R2: Raise[Lazily, ErrB]): Lazily[Unit] =
-        EitherT(Eval.always(().asRight[TestError]))
-    }
-
-  /** Rescued from `WeaveArrowsOnRaiseSpec`, which M12 deletes along with the
-    * `raiseLift(onRaise)` overload it was written against. The decorator tests
-    * above exercise `observing` in isolation; this one instead proves the
-    * property through a full `intercept` round trip, over a whole `Int`
+  /** The decorator tests above exercise `observing` in isolation; this one
+    * instead proves the property through a full `intercept` round trip, over
+    * a whole `Int`
     * domain rather than one fixed input. `WeaveInterpreterSpec`'s
     * `"a RaiseAspect-only algebra resolves to the RaiseAspect instance and runs
     * the hook"` test makes the same success-path-is-silent point on fixed
@@ -155,36 +110,40 @@ class ObservingCapabilitySpec extends ScalaCheckSuite {
     */
   property("the hook never runs on a success path, and runs exactly once per raise, through a full intercept round trip") {
     forAll { (i: Int) =>
-      val counter = new AtomicInteger(0)
-
-      val ref = TestAlgReference.referenceRaiseAspect[Render, Render, Render]
-      val recorder = new RecordingFk[Lazily, Render, Render]
-      val intercepted = ref.intercept(countingLazilyAlg)(recorder.fk, countingOnRaise(counter))
-
-      val result = intercepted.a(i)(ambientRaise).value.value
-
-      // The weave reaches the interpreter on both branches; only the hook is
-      // conditional.
-      assertEquals(recorder.events, List("weave:TestAlg.a"))
-
-      if (i < 0) {
-        assertEquals(counter.get(), 1, s"the hook must run exactly once when raising for i=$i")
-        assertEquals(result, NegativeInput(i).asLeft[String].leftWiden[TestError])
-      } else {
-        assertEquals(counter.get(), 0, s"the hook must not run on the success path for i=$i")
-        assertEquals(result, s"a:$i".asRight[TestError])
+      Handle.allowF[SyncIO, TestError] { implicit H =>
+        for {
+          counter <- Ref.of[SyncIO, Int](0)
+          ref = TestAlgReference.referenceRaiseAspect[Render, Render, Render]
+          recorder <- RecordingFk[SyncIO, Render, Render]
+          intercepted = ref.intercept(new GenericTestAlg[SyncIO](0))(recorder.fk, countingOnRaise(counter))
+          result <- intercepted.a(i).attemptHandle
+          events <- recorder.events
+          // The weave reaches the interpreter on both branches; only the hook is
+          // conditional.
+          _ = assertEquals(events.toList, List("weave:TestAlg.a"))
+          c <- counter.get
+          _ =
+            if (i < 0) {
+              assertEquals(c, 1, s"the hook must run exactly once when raising for i=$i")
+              assertEquals(result, NegativeInput(i).asLeft[String].leftWiden[TestError])
+            } else {
+              assertEquals(c, 0, s"the hook must not run on the success path for i=$i")
+              assertEquals(result, s"a:$i".asRight[TestError])
+            }
+        } yield true
+      }.rescue { e =>
+        fail(s"raised unexpectedly: $e")
       }
     }
   }
 
   // ------------------------------------------------------- Serializable
 
-  /** `cats.mtl.Raise` extends `Serializable`, and `WeaveArrowsOnRaiseSpec`
-    * pinned that property for `WeaveArrows.raiseLift(onRaise)`'s result before
-    * M12 deleted both the method and the spec. `observing` is now the only
-    * place that builds a decorated `Raise`, so the assertion moves here.
-    * Following `OnRaiseSpec`'s hand-rolled round trip (no cats-laws dependency
-    * in this module) rather than letting the property go untested.
+  /** `cats.mtl.Raise` extends `Serializable`, and `observing` is the only
+    * place in this module that builds a decorated `Raise`, so this pins that
+    * property here. Following `OnRaiseSpec`'s hand-rolled round trip (no
+    * cats-laws dependency in this module) rather than letting the property go
+    * untested.
     */
   test("the observing result is Serializable") {
     // Only meaningful on the JVM: java.io.ObjectOutputStream/ObjectInputStream

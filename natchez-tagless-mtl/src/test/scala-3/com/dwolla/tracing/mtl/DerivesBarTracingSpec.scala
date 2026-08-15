@@ -56,7 +56,7 @@ class DerivesBarTracingSpec extends InMemorySuite {
   )
 
   /** Mirrors `RaiseTraceIntegrationSuite#raisingProgram`, `DerivesBar` in place
-    * of `Bar` — the only difference the milestone permits.
+    * of `Bar` — the only intentional difference.
     */
   private def raisingProgram[F[_]: MonadCancelThrow](entryPoint: EntryPoint[F])(implicit
       L: Local[F, Span[F]]

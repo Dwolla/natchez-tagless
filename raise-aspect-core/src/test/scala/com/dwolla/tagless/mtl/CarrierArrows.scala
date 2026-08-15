@@ -1,16 +1,21 @@
 package com.dwolla.tagless.mtl
 
-import cats.Functor
-import cats.data.EitherT
-import cats.mtl.Raise
-import cats.{Eval, ~>}
+import cats.*
+import cats.effect.*
+import cats.mtl.{Handle, Raise}
+import cats.mtl.syntax.all.*
 
 /** A genuine carrier change, for the tests and laws that need a `RaiseArrow`
   * which is not the identity.
   *
-  * `Eval` is total, so the pull can transport a `Raise[Lazily, E]` back to
-  * `Raise[Result, E]` by running it — the canonical construction of a pull
-  * from a `G ~> F`.
+  * The pull transports a `Raise[SyncIO, E]` back to `Raise[Result, E]` by
+  * running the underlying `SyncIO` synchronously (`.unsafeRunSync()`) —
+  * that's what "transport a capability from a suspended `F` back to a strict
+  * one" means at the seam; there is no other way to produce a `Result[A]`
+  * (an already-resolved `Either`) from a `SyncIO[A]` (a suspended
+  * computation) without running it. This is fixture/law-checking plumbing,
+  * not a test assertion — the same category of forced evaluation as
+  * `Eq[SyncIO[A]]`.
   *
   * Polymorphic in `Err` because the pull genuinely does not consult the
   * evidence: transport here is uniform in `E`. That is what lets the law suite
@@ -18,24 +23,22 @@ import cats.{Eval, ~>}
   * arrow, which is the only way that instantiation says anything — it is there
   * to show coherence does not secretly depend on having `Err[E]` in hand, and
   * at `RaiseArrow.id` both sides of the law are literally the same expression.
-  * `eraseWeave` was parametric in `Err` for the same reason before M12 deleted
-  * it.
   */
 object CarrierArrows {
   type Result[A] = Either[TestError, A]
-  type Lazily[A] = EitherT[Eval, TestError, A]
 
-  def resultToLazily[Err[_]]: RaiseArrow[Result, Lazily, Err] =
+  def resultToSyncIO[Err[_]](implicit H: Handle[SyncIO, TestError]): RaiseArrow[Result, SyncIO, Err] =
     RaiseArrow(
-      new (Result ~> Lazily) {
-        def apply[A](fa: Result[A]): Lazily[A] = EitherT(Eval.now(fa))
+      new (Result ~> SyncIO) {
+        def apply[A](fa: Result[A]): SyncIO[A] = fa.fold(H.raise, H.applicative.pure)
       },
-      new RaisePull[Lazily, Result, Err] {
-        def apply[E](rg: Raise[Lazily, E])(implicit ev: Err[E]): Raise[Result, E] =
+      new RaisePull[SyncIO, Result, Err] {
+        def apply[E](rg: Raise[SyncIO, E])(implicit ev: Err[E]): Raise[Result, E] =
           new Raise[Result, E] {
             val functor: Functor[Result] = Functor[Result]
 
-            def raise[E2 <: E, A](e: E2): Result[A] = rg.raise[E2, A](e).value.value
+            def raise[E2 <: E, A](e: E2): Result[A] =
+              rg.raise[E2, A](e).attemptHandle.unsafeRunSync()
           }
       }
     )

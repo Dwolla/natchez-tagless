@@ -6,9 +6,9 @@ of this is needed to use the library — see each module's README and scaladoc
 for that. It exists for whoever next has to change this code and wants to
 know why it looks the way it does.
 
-The full per-milestone plans and implementation notes live in
-`docs/plans/raise-aspect/`; this file is a shorter index of the decisions
-that still matter, not a replacement for them.
+The full per-milestone plans and implementation notes this file once
+indexed have since been deleted from the repo; this is now the sole
+surviving record of the decisions that still matter.
 
 ## Design decisions
 
@@ -18,8 +18,7 @@ Earlier milestones modeled `RaiseAspect` the way `Aspect` is modeled:
 `weave` producing a woven algebra, then a separate `mapK` interpreting it.
 That required a `Functor` instance on the woven carrier
 (`Aspect.Weave[F, Dom, Cod, *]`), which cats-tagless can only synthesize, not
-derive honestly, for methods carrying `Raise` parameters — a real defect
-(see `docs/plans/raise-aspect/22-milestone-M12-fused-derivation.md`). M12
+derive honestly, for methods carrying `Raise` parameters — a real defect. M12
 fused the two operations into one `intercept` method: a `Weave` is now built
 and handed straight to the interpreter as data, so no method ever receives a
 `Raise[Aspect.Weave[F, Dom, Cod, *], E]` and nothing has to synthesize a
@@ -47,8 +46,7 @@ to declare an `Apply[F]` constraint, matching `RaiseAspect#intercept`'s own
 requirement. That turned out to be wrong: `WeaveInterpreter.fromRaiseAspect`
 resolves the `Apply[F]` `intercept` needs from the caller's own scope, so
 neither `traceWithInputs` nor `traceWithInputsAndOutputs` needs to declare it
-itself. The claim was retracted — see D9 in
-`docs/plans/raise-aspect/32-milestone-M17-otel4s-tagless-mtl.md`.
+itself. The claim was retracted.
 
 ## Migrating from `natchez-tagless` to the otel4s modules
 
@@ -94,8 +92,7 @@ without a compile error:
   under both libraries; a type with *neither* instance is the only remaining
   compile error. What survives as the silent divergence is the shape, not
   the priority: string under natchez, structured under otel4s, for exactly
-  the types that carry both instances. (This closes Q3 in
-  `docs/plans/raise-aspect/30-milestone-M16-otel4s-module.md`, which asked
+  the types that carry both instances. (This closes the open question of
   whether `ToAnyValue` should gain a JSON fallback at all.)
 - **Spans get marked errored that weren't before.** otel4s's `SpanBuilder`
   finalizes with `SpanFinalizer.Strategy.reportAbnormal` by default, so any

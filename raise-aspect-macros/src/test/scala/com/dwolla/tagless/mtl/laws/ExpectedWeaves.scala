@@ -1,11 +1,12 @@
 package com.dwolla.tagless.mtl
 package laws
 
+import cats.*
 import cats.mtl.Raise
+import cats.syntax.all.*
+import com.dwolla.tagless.mtl.laws.LawsInstances.*
 
-import LawsInstances._
-
-/** Task 5 — the cross-compiler agreement data.
+/** The cross-compiler agreement data.
   *
   * These are the `RenderedWeave`s the derivation must produce for a fixed set of
   * `TestAlg` calls. A Scala 2 spec and a Scala 3 spec each assert their derived
@@ -43,24 +44,19 @@ object ExpectedWeaves {
 
   /** The same calls, rendered from what the interpreter saw.
     *
-    * `expected` is unchanged from M2: fusion changes who holds the weave, not
-    * what a woven call produces. Only the way a test gets hold of the weaves
-    * moved, from inspecting an `Alg[Weave[…]]` to reading a recording `fk`.
+    * `expected` describes what a woven call produces; this method gets hold
+    * of the same weaves by reading a recording `fk`, not by inspecting an
+    * `Alg[Weave[…]]` directly.
     */
-  def rendered(
-      instrumented: TestAlg[Result],
-      recorder: RecordingFk[Result, Render, Render]
-  ): List[RenderedWeave] = {
-    // Bare calls rather than `val _ = ...`: 2.12 treats `_` as a real value
-    // name, so only one `val _` may appear per block (see `RecordingFk`).
-    // These are method calls performed for effect, not pure expressions in
-    // statement position, so they warn under neither axis.
-    instrumented.a(7)(Raise[Result, ErrA])
-    instrumented.b("ab", 2)(Raise[Result, ErrB])
-    instrumented.c(3)
-    instrumented.d(4)(5)(Raise[Result, ErrA])
-    instrumented.e(Raise[Result, ErrA], Raise[Result, ErrB])
-
-    recorder.weaves.map(r => WeaveRenderer.render(r.weave))
-  }
+  def rendered[F[_] : Monad](instrumented: TestAlg[F],
+                             recorder: RecordingFk[F, Render, Render],
+                            )(implicit R: Raise[F, TestError]): F[List[RenderedWeave]] =
+    for {
+      _ <- instrumented.a(7)
+      _ <- instrumented.b("ab", 2)
+      _ <- instrumented.c(3)
+      _ <- instrumented.d(4)(5)
+      _ <- instrumented.e
+      weaves <- recorder.weaves
+    } yield weaves.map(r => WeaveRenderer.render(r.weave)).toList
 }

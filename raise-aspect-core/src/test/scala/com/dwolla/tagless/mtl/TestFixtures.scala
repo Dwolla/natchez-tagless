@@ -1,6 +1,8 @@
 package com.dwolla.tagless.mtl
 
+import cats.{Applicative, ApplicativeError}
 import cats.mtl.Raise
+import cats.syntax.all._
 
 /** The error hierarchy for the test fixtures.
   *
@@ -99,4 +101,35 @@ final class EitherTestAlg(eOutcome: Int) extends TestAlg[Either[TestError, *]] {
 object EitherPlainAlg extends PlainAlg[Either[TestError, *]] {
   def p(i: Int): Either[TestError, String] =
     if (i < 0) Left(TestError.NegativeInput(i)) else Right(s"p:$i")
+}
+
+/** Same behavior as `EitherTestAlg`, generic in `F` so it can be instantiated
+  * at `Lazily` wherever a test needs genuine `Sync` capability (recording,
+  * counting) alongside `EitherTestAlg`'s exact shape. `EitherTestAlg` itself
+  * stays fixed to `Either` — this is additive, not a replacement.
+  */
+final class GenericTestAlg[F[_]](eOutcome: Int)(implicit F: Applicative[F]) extends TestAlg[F] {
+  import TestError._
+
+  def a(i: Int)(implicit R: Raise[F, ErrA]): F[String] =
+    if (i < 0) R.raise(NegativeInput(i)) else s"a:$i".pure[F]
+
+  def b(x: String, y: => Int)(implicit R: Raise[F, ErrB]): F[Int] =
+    if (x.isEmpty) R.raise(EmptyInput("x")) else (x.length + y).pure[F]
+
+  def c(i: Int): F[Int] = (i * 2).pure[F]
+
+  def d(i: Int)(j: Int)(implicit R: Raise[F, ErrA]): F[Int] =
+    if (i + j < 0) R.raise(NegativeInput(i + j)) else (i + j).pure[F]
+
+  def e(implicit R1: Raise[F, ErrA], R2: Raise[F, ErrB]): F[Unit] =
+    if (eOutcome < 0) R1.raise(NegativeInput(eOutcome))
+    else if (eOutcome > 0) R2.raise(EmptyInput("e"))
+    else ().pure[F]
+}
+
+/** Same behavior as `EitherPlainAlg`, generic in `F`. */
+final class GenericPlainAlg[F[_]](implicit F: ApplicativeError[F, TestError]) extends PlainAlg[F] {
+  def p(i: Int): F[String] =
+    if (i < 0) TestError.NegativeInput(i).raiseError[F, String] else s"p:$i".pure[F]
 }

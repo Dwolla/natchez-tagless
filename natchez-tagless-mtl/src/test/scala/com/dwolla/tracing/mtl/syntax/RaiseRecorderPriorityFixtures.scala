@@ -5,8 +5,8 @@ import cats.effect.IO
 import com.dwolla.tagless.mtl.OnRaise
 import natchez.TraceableValue
 
-/** Task 3's fixture: a poison `OnRaise[F, Err]` instance, deliberately divergent
-  * from [[NatchezDefaultOnRaise.natchezDefaultOnRaise]]'s default so that priority
+/** A poison `OnRaise[F, Err]` instance, deliberately divergent from
+  * [[NatchezDefaultOnRaise.natchezDefaultOnRaise]]'s default so that priority
   * resolving to the wrong instance is immediately observable — it throws if it is
   * ever invoked, rather than silently recording plausible-looking wrong span fields.
   */
@@ -17,7 +17,7 @@ object RaiseRecorderPriorityFixtures {
         throw new AssertionError("priority resolved to the Trace-derived default instead of the user-supplied OnRaise")
     }
 
-  /** Task 3(b)'s companion-placement counter-example. `OnRaise[IO, TraceableValue]`
+  /** A companion-placement counter-example. `OnRaise[IO, TraceableValue]`
     * never mentions `CompanionPoisonError`, so implicit search for that type — the
     * companions of `OnRaise`, `IO`, and `TraceableValue` only — never looks inside
     * this companion object, no matter what error value is later raised. The poison

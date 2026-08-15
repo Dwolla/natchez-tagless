@@ -4,7 +4,7 @@ package laws
 import cats.mtl.{Handle, Raise}
 import munit.FunSuite
 
-/** Task 4 — the diagnostics suite.
+/** The diagnostics suite.
   *
   * These algebras are legal Scala; it is only the ''derivation'' that must be
   * rejected, so they are declared normally and the derivation is attempted inside

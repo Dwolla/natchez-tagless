@@ -1,12 +1,12 @@
 package com.dwolla.tracing.otel4s
 
 import cats.{Eval, Id}
+import cats.effect.{Ref, SyncIO}
 import cats.tagless.aop.Aspect
 import com.dwolla.tracing.otel4s.syntax._
-import munit.FunSuite
 import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
 
-class WeaveAttributesOpsSpec extends FunSuite {
+class WeaveAttributesOpsSpec extends munit.CatsEffectSuite {
   private def weaveOf(domain: List[List[Aspect.Advice[Eval, ToAnyValue]]]): Aspect.Weave[Id, ToAnyValue, ToAnyValue, String] =
     Aspect.Weave[Id, ToAnyValue, ToAnyValue, String](
       "Foo",
@@ -57,13 +57,16 @@ class WeaveAttributesOpsSpec extends FunSuite {
   }
 
   test("a by-name parameter is forced exactly once, when asAttributes is called") {
-    var forced = 0
-    val weave = weaveOf(List(List(
-      Aspect.Advice.byName[ToAnyValue, String]("lazyParam", { forced += 1; "x" })
-    )))
-
-    assertEquals(forced, 0)
-    assertEquals(weave.asAttributes, expected("lazyParam" -> AnyValue.string("x")))
-    assertEquals(forced, 1)
+    for {
+      forced <- Ref.of[SyncIO, Int](0)
+      weave = weaveOf(List(List(
+        Aspect.Advice.byName[ToAnyValue, String]("lazyParam", { forced.update(_ + 1).unsafeRunSync(); "x" })
+      )))
+      f0 <- forced.get
+      _ = assertEquals(f0, 0)
+      _ = assertEquals(weave.asAttributes, expected("lazyParam" -> AnyValue.string("x")))
+      f1 <- forced.get
+      _ = assertEquals(f1, 1)
+    } yield ()
   }
 }

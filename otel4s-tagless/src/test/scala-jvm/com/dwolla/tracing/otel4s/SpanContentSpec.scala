@@ -67,13 +67,9 @@ class SpanContentSpec extends CatsEffectSuite {
   protected def attributesOf(span: SpanData): Attributes =
     span.getAttributes.toScala
 
-  /** A fresh counting algebra per test, so the counts start at zero.
-    *
-    * `IO(f())` rather than `IO.pure`: the count has to record how many times
-    * the effect ''ran'', not how many times it was built.
-    */
-  protected def underlyingFoo(counts: FooCallCounts): Foo[IO] =
-    Foo.counting[IO](counts)(f => IO(f()))
+  /** A fresh counting algebra per test, so the counts start at zero. */
+  protected def underlyingFoo(counts: FooCallCounts[IO]): Foo[IO] =
+    Foo.counting[IO](counts)
 
   /** The `WeaveKnot` wiring from `TracerWeaveCapturingInputsAndOutputs`'s
     * doctest, in the same shape: `self.value` is the ''traced'' algebra, so the
@@ -94,23 +90,27 @@ class SpanContentSpec extends CatsEffectSuite {
     )
 
   test("each method call opens one span named algebraName.methodName") {
-    val counts = new FooCallCounts
-
-    resultAndSpansFrom { implicit tracer =>
-      underlyingFoo(counts).instrumentAndTrace.greet("world", 2)
-    }.map { case (greeting, spans) =>
-      assertEquals(greeting, "hello worldhello world")
-      assertEquals(counts.greet, 1)
-      assertEquals(spans.map(_.getName), List("Foo.greet"))
-    }
+    for {
+      counts <- FooCallCounts.of[IO]
+      result <- resultAndSpansFrom { implicit tracer =>
+        underlyingFoo(counts).instrumentAndTrace.greet("world", 2)
+      }
+      (greeting, spans) = result
+      _ = assertEquals(greeting, "hello worldhello world")
+      g <- counts.greet
+      _ = assertEquals(g, 1)
+      _ = assertEquals(spans.map(_.getName), List("Foo.greet"))
+    } yield ()
   }
 
   test("TracerInstrumentation records no attributes of its own") {
-    val counts = new FooCallCounts
-
-    spansFrom { implicit tracer =>
-      underlyingFoo(counts).instrumentAndTrace.greet("world", 2)
-    }.map(spans => assertEquals(spans.map(attributesOf(_).size), List(0)))
+    for {
+      counts <- FooCallCounts.of[IO]
+      spans <- spansFrom { implicit tracer =>
+        underlyingFoo(counts).instrumentAndTrace.greet("world", 2)
+      }
+      _ = assertEquals(spans.map(attributesOf(_).size), List(0))
+    } yield ()
   }
 
   // ping() is the empty-parameter-list, Unit-returning edge. Under
@@ -118,30 +118,34 @@ class SpanContentSpec extends CatsEffectSuite {
   // attributes for any method — but it is the baseline the
   // TracerWeaveCapturingInputs case below has to match.
   test("a zero-parameter, Unit-returning method is spanned like any other") {
-    val counts = new FooCallCounts
-
-    resultAndSpansFrom { implicit tracer =>
-      underlyingFoo(counts).instrumentAndTrace.ping()
-    }.map { case (pong, spans) =>
-      assertEquals(pong, ())
-      assertEquals(counts.ping, 1)
-      assertEquals(spans.map(_.getName), List("Foo.ping"))
-      assertEquals(spans.map(attributesOf(_).size), List(0))
-    }
+    for {
+      counts <- FooCallCounts.of[IO]
+      result <- resultAndSpansFrom { implicit tracer =>
+        underlyingFoo(counts).instrumentAndTrace.ping()
+      }
+      (pong, spans) = result
+      _ = assertEquals(pong, ())
+      p <- counts.ping
+      _ = assertEquals(p, 1)
+      _ = assertEquals(spans.map(_.getName), List("Foo.ping"))
+      _ = assertEquals(spans.map(attributesOf(_).size), List(0))
+    } yield ()
   }
 
   test("TracerWeaveCapturingInputs records every parameter as one structured attribute") {
-    val counts = new FooCallCounts
-
-    resultAndSpansFrom { implicit tracer =>
-      underlyingFoo(counts).traceWithInputs[ToAnyValue].greet("world", 2)
-    }.map { case (greeting, spans) =>
-      assertEquals(greeting, "hello worldhello world")
-      assertEquals(counts.greet, 1)
-      assertEquals(spans.map(_.getName), List("Foo.greet"))
+    for {
+      counts <- FooCallCounts.of[IO]
+      result <- resultAndSpansFrom { implicit tracer =>
+        underlyingFoo(counts).traceWithInputs[ToAnyValue].greet("world", 2)
+      }
+      (greeting, spans) = result
+      _ = assertEquals(greeting, "hello worldhello world")
+      g <- counts.greet
+      _ = assertEquals(g, 1)
+      _ = assertEquals(spans.map(_.getName), List("Foo.greet"))
       // The decoded tree, not the rendered text: `times` is a LongValue, and
       // an AnyValue map does not preserve key order.
-      assertEquals(
+      _ = assertEquals(
         spans.map(attributesOf(_)),
         List(Attributes(Attribute[AnyValue](
           "Foo.greet.parameters",
@@ -151,36 +155,40 @@ class SpanContentSpec extends CatsEffectSuite {
           )),
         )))
       )
-    }
+    } yield ()
   }
 
   test("TracerWeaveCapturingInputs records no parameters attribute for a method with no parameters") {
-    val counts = new FooCallCounts
-
-    resultAndSpansFrom { implicit tracer =>
-      underlyingFoo(counts).traceWithInputs[ToAnyValue].ping()
-    }.map { case (pong, spans) =>
-      assertEquals(pong, ())
-      assertEquals(counts.ping, 1)
-      assertEquals(spans.map(_.getName), List("Foo.ping"))
-      assertEquals(spans.map(attributesOf(_).size), List(0))
-      assertEquals(spans.map(attributesOf), List(Attributes.empty))
-    }
+    for {
+      counts <- FooCallCounts.of[IO]
+      result <- resultAndSpansFrom { implicit tracer =>
+        underlyingFoo(counts).traceWithInputs[ToAnyValue].ping()
+      }
+      (pong, spans) = result
+      _ = assertEquals(pong, ())
+      p <- counts.ping
+      _ = assertEquals(p, 1)
+      _ = assertEquals(spans.map(_.getName), List("Foo.ping"))
+      _ = assertEquals(spans.map(attributesOf(_).size), List(0))
+      _ = assertEquals(spans.map(attributesOf), List(Attributes.empty))
+    } yield ()
   }
 
   test("TracerWeaveCapturingInputsAndOutputs records the parameters and the return value") {
-    val counts = new FooCallCounts
-
-    resultAndSpansFrom { implicit tracer =>
-      underlyingFoo(counts).traceWithInputsAndOutputs.greet("world", 2)
-    }.map { case (greeting, spans) =>
-      assertEquals(greeting, "hello worldhello world")
+    for {
+      counts <- FooCallCounts.of[IO]
+      result <- resultAndSpansFrom { implicit tracer =>
+        underlyingFoo(counts).traceWithInputsAndOutputs.greet("world", 2)
+      }
+      (greeting, spans) = result
+      _ = assertEquals(greeting, "hello worldhello world")
       // This interpreter is the first in the module that *could* run the
       // underlying effect twice — it has a FlatMap[F] and threads the value
       // through `flatTap` — so the count is load-bearing here in a way it is
       // not above. It has to be asserted in this suite: see FooCallCounts.
-      assertEquals(counts.greet, 1)
-      assertEquals(spans.map(_.getName), List("Foo.greet"))
+      g <- counts.greet
+      _ = assertEquals(g, 1)
+      _ = assertEquals(spans.map(_.getName), List("Foo.greet"))
       // The decoded tree, not the rendered text: `times` is a LongValue, and
       // an AnyValue map does not preserve key order.
       //
@@ -192,7 +200,7 @@ class SpanContentSpec extends CatsEffectSuite {
       // The parameters map has no simple equivalent, so it stays AnyValue.
       // The interpreter passes AnyValue in both cases; the narrowing is
       // downstream of it and is good news — backends index simple attributes.
-      assertEquals(
+      _ = assertEquals(
         spans.map(attributesOf(_)),
         List(Attributes(
           Attribute[AnyValue](
@@ -205,7 +213,7 @@ class SpanContentSpec extends CatsEffectSuite {
           Attribute("Foo.greet.returnValue", "hello worldhello world"),
         ))
       )
-    }
+    } yield ()
   }
 
   // D3, corrected 2026-08-02, applied to the *return value* this time: ping()
@@ -215,17 +223,19 @@ class SpanContentSpec extends CatsEffectSuite {
   // encodes `()` to AnyValue.empty; only the interpreter's decision about
   // whether to spend an attribute slot on that is.
   test("TracerWeaveCapturingInputsAndOutputs records no attributes at all for ping()") {
-    val counts = new FooCallCounts
-
-    resultAndSpansFrom { implicit tracer =>
-      underlyingFoo(counts).traceWithInputsAndOutputs.ping()
-    }.map { case (pong, spans) =>
-      assertEquals(pong, ())
-      assertEquals(counts.ping, 1)
-      assertEquals(spans.map(_.getName), List("Foo.ping"))
-      assertEquals(spans.map(attributesOf(_).size), List(0))
-      assertEquals(spans.map(attributesOf(_)), List(Attributes.empty))
-    }
+    for {
+      counts <- FooCallCounts.of[IO]
+      result <- resultAndSpansFrom { implicit tracer =>
+        underlyingFoo(counts).traceWithInputsAndOutputs.ping()
+      }
+      (pong, spans) = result
+      _ = assertEquals(pong, ())
+      p <- counts.ping
+      _ = assertEquals(p, 1)
+      _ = assertEquals(spans.map(_.getName), List("Foo.ping"))
+      _ = assertEquals(spans.map(attributesOf(_).size), List(0))
+      _ = assertEquals(spans.map(attributesOf(_)), List(Attributes.empty))
+    } yield ()
   }
 
   test("WeaveKnot nests each inner call inside the outer call's span") {

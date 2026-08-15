@@ -2,23 +2,29 @@ package com.dwolla.tagless.mtl
 package laws
 
 import cats.arrow.FunctionK
-import cats.mtl.Raise
-import cats.tagless.{Derive => CatsTaglessDerive}
+import cats.data.EitherT
+import cats.effect.*
+import cats.effect.syntax.all.*
+import cats.mtl.syntax.all.*
+import cats.mtl.*
+import cats.syntax.all.*
+import cats.tagless.Derive as CatsTaglessDerive
 import cats.tagless.aop.Aspect
-import munit.FunSuite
-
-import LawsInstances._
+import munit.CatsEffectSuite
+import LawsInstances.*
+import cats.{ApplicativeError, Monad}
+import com.dwolla.tagless.mtl.{HandleApplicativeErrorInstances, HandleTestSyntax}
 
 /** Law L9 for the ''derived'' instance — our derivation is a conservative
   * extension of upstream's on a capability-free algebra.
   *
-  * M2's `ConservativeExtensionSuite` hardcodes the hand-written
+  * `ConservativeExtensionSuite` hardcodes the hand-written
   * `PlainAlgReference` as "ours" and only exposes `upstream` as a seam, so it
   * cannot be reused here. The laws module is frozen, so rather than widen that
   * seam this spec restates the three comparisons against the derived instance.
   * (That missing seam is worth fixing whenever the freeze is next lifted.)
   */
-class DerivedConservativeExtensionSpec extends FunSuite {
+class DerivedConservativeExtensionSpec extends CatsEffectSuite with HandleTestSyntax with HandleApplicativeErrorInstances {
 
   private val ours: RaiseAspect[PlainAlg, Render, Render, Render] =
     DeriveRaise.aspect[PlainAlg, Render, Render, Render]
@@ -26,56 +32,78 @@ class DerivedConservativeExtensionSpec extends FunSuite {
   private val upstream: Aspect[PlainAlg, Render, Render] =
     CatsTaglessDerive.aspect[PlainAlg, Render, Render]
 
-  private val impl: PlainAlg[Result] = EitherPlainAlg
+  private def impl[F[_]](implicit H: Handle[F, TestError]): PlainAlg[F] = {
+    implicit val ae: ApplicativeError[F, TestError] = applicativeErrorGivenHandle[F, TestError]
+    new GenericPlainAlg[F]
+  }
 
   /** Upstream's `Aspect` still returns an `Alg[Weave[…]]`; our fused derivation
     * hands each weave to `fk` instead. The comparison runs through a recorder on
     * our side, and renders inside the helper so no test needs a cast to line up
     * the existentially-quantified result type the recorder holds.
     */
-  private def ourRendered(inputs: List[Int]): List[RenderedWeave] = {
-    val recorder = new RecordingFk[Result, Render, Render]
-    val instrumented = ours.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
-    inputs.foreach(i => { val _ = instrumented.p(i) })
-    recorder.weaves.map(r => WeaveRenderer.render(r.weave))
-  }
+  private def ourRendered[F[_] : Sync](inputs: List[Int])(implicit H: Handle[F, TestError]): F[List[RenderedWeave]] =
+    for {
+      recorder <- RecordingFk[F, Render, Render]
+      instrumented = ours.intercept(impl[F])(recorder.fk, OnRaise.noop[F, Render])
+      _ <- inputs.traverse_(i => instrumented.p(i).attemptHandle.void)
+      weaves <- recorder.weaves
+    } yield weaves.map(r => WeaveRenderer.render(r.weave)).toList
 
-  test("L9 the derived woven structure matches upstream's, rendered") {
+  testWithHandle[SyncIO, TestError]("L9 the derived woven structure matches upstream's, rendered") { implicit H =>
     val theirWoven = upstream.weave(impl)
-    val inputs = exhaustiveInt.allValues.toList
+    val inputs = exhaustiveInt.allValues
 
-    assertEquals(ourRendered(inputs), inputs.map(i => WeaveRenderer.render(theirWoven.p(i))))
+    for {
+      ours <- ourRendered[SyncIO](inputs)
+    } yield assertEquals(ours, inputs.map(i => WeaveRenderer.render(theirWoven.p(i))))
   }
 
-  test("L9 the derived woven codomain targets match upstream's") {
-    val recorder = new RecordingFk[Result, Render, Render]
-    val instrumented = ours.intercept(impl)(recorder.fk, OnRaise.noop[Result, Render])
-    val theirWoven = upstream.weave(impl)
-
-    exhaustiveInt.allValues.foreach(i => assertEquals(instrumented.p(i), theirWoven.p(i).codomain.target))
+  testWithHandle[SyncIO, TestError]("L9 the derived woven codomain targets match upstream's") { implicit H =>
+    for {
+      recorder <- RecordingFk[SyncIO, Render, Render]
+      instrumented = ours.intercept(impl)(recorder.fk, OnRaise.noop[SyncIO, Render])
+      theirWoven = upstream.weave(impl)
+      _ <- exhaustiveInt.allValues.traverse_ { i =>
+        for {
+          ours <- instrumented.p(i).attemptHandle
+          theirs <- theirWoven.p(i).codomain.target.attemptHandle
+        } yield assertEquals(ours, theirs)
+      }
+    } yield ()
   }
 
-  test("L9 the derived mapK agrees with upstream's FunctorK.mapK for any pull") {
+  testWithHandle[SyncIO, TestError]("L9 the derived mapK agrees with upstream's FunctorK.mapK for any pull") { implicit H =>
     // PlainAlg has no capability parameters, so the pull must never be consulted.
-    val unusablePull = new RaisePull[Result, Result, Render] {
-      def apply[E](rg: Raise[Result, E])(implicit ev: Render[E]): Raise[Result, E] =
+    val unusablePull = new RaisePull[SyncIO, SyncIO, Render] {
+      def apply[E](rg: Raise[SyncIO, E])(implicit ev: Render[E]): Raise[SyncIO, E] =
         fail("mapK must not consult the pull for a capability-free algebra")
     }
 
-    val ourMapped = ours.mapK(impl)(RaiseArrow(FunctionK.id[Result], unusablePull))
-    val theirMapped = upstream.mapK(impl)(FunctionK.id[Result])
+    val ourMapped = ours.mapK(impl)(RaiseArrow(FunctionK.id[SyncIO], unusablePull))
+    val theirMapped = upstream.mapK(impl)(FunctionK.id[SyncIO])
 
-    exhaustiveInt.allValues.foreach(i => assertEquals(ourMapped.p(i), theirMapped.p(i)))
+    for {
+      _ <- exhaustiveInt.allValues.traverse_ { i =>
+        for {
+          ours <- ourMapped.p(i).attemptHandle
+          theirs <- theirMapped.p(i).attemptHandle
+        } yield assertEquals(ours, theirs)
+      }
+    } yield ()
   }
 
-  test("L9 the derived instance also matches the hand-written PlainAlg reference") {
-    val inputs = exhaustiveInt.allValues.toList
-    val referenceRecorder = new RecordingFk[Result, Render, Render]
-    val referenceInstrumented = PlainAlgReference
-      .referenceRaiseAspect[Render, Render, Render]
-      .intercept(impl)(referenceRecorder.fk, OnRaise.noop[Result, Render])
-    inputs.foreach(i => { val _ = referenceInstrumented.p(i) })
+  testWithHandle[SyncIO, TestError]("L9 the derived instance also matches the hand-written PlainAlg reference") { implicit H =>
+    val inputs = exhaustiveInt.allValues
 
-    assertEquals(ourRendered(inputs), referenceRecorder.weaves.map(r => WeaveRenderer.render(r.weave)))
+    for {
+      referenceRecorder <- RecordingFk[SyncIO, Render, Render]
+      referenceInstrumented = PlainAlgReference
+        .referenceRaiseAspect[Render, Render, Render]
+        .intercept(impl)(referenceRecorder.fk, OnRaise.noop[SyncIO, Render])
+      _ <- inputs.traverse_(referenceInstrumented.p(_).attemptHandle.void)
+      ours <- ourRendered[SyncIO](inputs)
+      referenceWeaves <- referenceRecorder.weaves
+    } yield assertEquals(ours, referenceWeaves.map(r => WeaveRenderer.render(r.weave)).toList)
   }
 }
