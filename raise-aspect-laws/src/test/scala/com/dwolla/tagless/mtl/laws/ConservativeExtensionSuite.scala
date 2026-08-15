@@ -9,7 +9,7 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import cats.tagless.aop.Aspect
 import com.dwolla.tagless.mtl.laws.LawsInstances.*
-import munit.{Location, TestOptions}
+import com.dwolla.tagless.mtl.{HandleApplicativeErrorInstances, HandleTestSyntax}
 
 /** Law L9 — conservative extension.
   *
@@ -21,7 +21,7 @@ import munit.{Location, TestOptions}
   * on Scala 2 it comes from cats-tagless-macros, and on Scala 3 `Derive` is
   * annotated `@experimental`, so the call site must be too.
   */
-abstract class ConservativeExtensionSuite extends munit.CatsEffectSuite {
+abstract class ConservativeExtensionSuite extends munit.CatsEffectSuite with HandleTestSyntax with HandleApplicativeErrorInstances {
 
   /** `cats.tagless.Derive.aspect[PlainAlg, Render, Render]`, derived at a
     * version-appropriate call site.
@@ -31,7 +31,10 @@ abstract class ConservativeExtensionSuite extends munit.CatsEffectSuite {
   private val ours: RaiseAspect[PlainAlg, Render, Render, Render] =
     PlainAlgReference.referenceRaiseAspect[Render, Render, Render]
 
-  private def impl[F[_]](implicit F: ApplicativeError[F, TestError]): PlainAlg[F] = new GenericPlainAlg[F]
+  private def impl[F[_]](implicit H: Handle[F, TestError]): PlainAlg[F] = {
+    implicit val ae: ApplicativeError[F, TestError] = applicativeErrorGivenHandle[F, TestError]
+    new GenericPlainAlg[F]
+  }
 
   /** Upstream `Aspect` still returns an `Alg[Weave[…]]`; our fused derivation
     * hands each weave to `fk` instead. The comparison therefore runs through a
@@ -47,23 +50,6 @@ abstract class ConservativeExtensionSuite extends munit.CatsEffectSuite {
       _ <- inputs.traverse_(i => instrumented.p(i).void.attemptHandle)
       weaves <- recorder.weaves
     } yield weaves.map(r => WeaveRenderer.render(r.weave)).toList
-
-  implicit def applicativeErrorGivenHandle[F[_], E](implicit H: Handle[F, E]): ApplicativeError[F, E] =
-    new ApplicativeError[F, E] {
-      override def raiseError[A](e: E): F[A] = H.raise(e)
-      override def handleErrorWith[A](fa: F[A])(f: E => F[A]): F[A] = H.handleWith(fa)(f)
-      override def pure[A](x: A): F[A] = H.applicative.pure(x)
-      override def ap[A, B](ff: F[A => B])(fa: F[A]): F[B] = H.applicative.ap(ff)(fa)
-    }
-
-  def testWithHandle[G[_] : cats.ApplicativeThrow, E](options: TestOptions)
-                                                     (f: cats.mtl.Handle[G, E] => G[Unit])
-                                                     (implicit loc: Location): Unit =
-    test(options) {
-      Handle.allowF[G, E](f).rescue { testError =>
-        new AssertionError(s"test raised unexpectedly: $testError").raiseError[G, Unit]
-      }
-    }
 
   testWithHandle[SyncIO, TestError]("L9 our woven structure matches upstream's, rendered") { implicit H =>
     val theirWoven = upstream.weave(impl)

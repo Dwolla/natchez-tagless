@@ -10,9 +10,10 @@ import cats.mtl.*
 import cats.syntax.all.*
 import cats.tagless.Derive as CatsTaglessDerive
 import cats.tagless.aop.Aspect
-import munit.{CatsEffectSuite, Location, TestOptions}
+import munit.CatsEffectSuite
 import LawsInstances.*
 import cats.{ApplicativeError, Monad}
+import com.dwolla.tagless.mtl.{HandleApplicativeErrorInstances, HandleTestSyntax}
 
 /** Law L9 for the ''derived'' instance — our derivation is a conservative
   * extension of upstream's on a capability-free algebra.
@@ -23,7 +24,7 @@ import cats.{ApplicativeError, Monad}
   * seam this spec restates the three comparisons against the derived instance.
   * (That missing seam is worth fixing whenever the freeze is next lifted.)
   */
-class DerivedConservativeExtensionSpec extends CatsEffectSuite {
+class DerivedConservativeExtensionSpec extends CatsEffectSuite with HandleTestSyntax with HandleApplicativeErrorInstances {
 
   private val ours: RaiseAspect[PlainAlg, Render, Render, Render] =
     DeriveRaise.aspect[PlainAlg, Render, Render, Render]
@@ -31,24 +32,10 @@ class DerivedConservativeExtensionSpec extends CatsEffectSuite {
   private val upstream: Aspect[PlainAlg, Render, Render] =
     CatsTaglessDerive.aspect[PlainAlg, Render, Render]
 
-  private def impl[F[_]](implicit H: Handle[F, TestError]): PlainAlg[F] = new GenericPlainAlg[F]
-
-  def testWithHandle[F[_] : cats.ApplicativeThrow, E](options: TestOptions)
-                                                     (f: cats.mtl.Handle[F, E] => F[Unit])
-                                                     (implicit loc: Location): Unit =
-    test(options) {
-      Handle.allowF[F, E](f).rescue { testError =>
-        new AssertionError(s"test raised unexpectedly: $testError").raiseError[F, Unit]
-      }
-    }
-
-  implicit def applicativeErrorGivenHandle[F[_], E](implicit H: Handle[F, E]): ApplicativeError[F, E] =
-    new ApplicativeError[F, E] {
-      override def raiseError[A](e: E): F[A] = H.raise(e)
-      override def handleErrorWith[A](fa: F[A])(f: E => F[A]): F[A] = H.handleWith(fa)(f)
-      override def pure[A](x: A): F[A] = H.applicative.pure(x)
-      override def ap[A, B](ff: F[A => B])(fa: F[A]): F[B] = H.applicative.ap(ff)(fa)
-    }
+  private def impl[F[_]](implicit H: Handle[F, TestError]): PlainAlg[F] = {
+    implicit val ae: ApplicativeError[F, TestError] = applicativeErrorGivenHandle[F, TestError]
+    new GenericPlainAlg[F]
+  }
 
   /** Upstream's `Aspect` still returns an `Alg[Weave[…]]`; our fused derivation
     * hands each weave to `fk` instead. The comparison runs through a recorder on

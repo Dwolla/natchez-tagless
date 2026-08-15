@@ -4,11 +4,12 @@ package laws
 import cats.Applicative
 import cats.effect.SyncIO
 import cats.mtl.syntax.all.*
-import cats.mtl.{Handle, Raise}
+import cats.mtl.Raise
 import cats.syntax.all.*
 import com.dwolla.tagless.mtl.TestError.*
+import com.dwolla.tagless.mtl.HandleTestSyntax
 import com.dwolla.tagless.mtl.laws.LawsInstances.*
-import munit.{CatsEffectSuite, Location, TestOptions}
+import munit.CatsEffectSuite
 
 /** Shapes the existing fixtures don't cover: members inherited from a parent
   * trait, a nullary def returning `F[A]`, and overloads.
@@ -37,21 +38,12 @@ object EdgeAlg {
   }
 }
 
-class EdgeCaseDerivationSpec extends CatsEffectSuite {
+class EdgeCaseDerivationSpec extends CatsEffectSuite with HandleTestSyntax {
 
   private val derived: RaiseAspect[EdgeAlg, Render, Render, Render] =
     DeriveRaise.aspect[EdgeAlg, Render, Render, Render]
 
   private val impl = EdgeAlg.instance[SyncIO]
-
-  def testWithHandle[G[_] : cats.ApplicativeThrow, E](options: TestOptions)
-                                                     (f: cats.mtl.Handle[G, E] => G[Unit])
-                                                     (implicit loc: Location): Unit =
-    test(options) {
-      Handle.allowF[G, E](f).rescue { testError =>
-        new AssertionError(s"test raised unexpectedly: $testError").raiseError[G, Unit]
-      }
-    }
 
   testWithHandle[SyncIO, TestError]("a capability method inherited from a parent trait is woven") { implicit H =>
     for {

@@ -4,10 +4,11 @@ package laws
 import cats.arrow.FunctionK
 import cats.effect.{Ref, SyncIO}
 import cats.mtl.syntax.all.*
-import cats.mtl.{Handle, Raise}
+import cats.mtl.Raise
 import cats.syntax.all.*
 import cats.{Applicative, Functor}
-import munit.{CatsEffectSuite, Location, TestOptions}
+import com.dwolla.tagless.mtl.HandleTestSyntax
+import munit.CatsEffectSuite
 
 /** Instances the derivation cannot see, because the method supplies them
   * itself.
@@ -205,7 +206,7 @@ object MethodLocal {
     )
 }
 
-class MethodLocalInstanceSpec extends CatsEffectSuite {
+class MethodLocalInstanceSpec extends CatsEffectSuite with HandleTestSyntax {
   import LawsInstances.renderableRender
   import MethodLocal.*
 
@@ -229,15 +230,6 @@ class MethodLocalInstanceSpec extends CatsEffectSuite {
     DeriveRaise.aspect[PrecedenceAlg, Render, Render, Render]
   private val riskyFunctorK: RaiseFunctorK[WidgetRiskyAlg, Render] =
     DeriveRaise.functorK[WidgetRiskyAlg, Render]
-
-  def testWithHandle[G[_] : cats.ApplicativeThrow, E](options: TestOptions)
-                                                     (f: cats.mtl.Handle[G, E] => G[Unit])
-                                                     (implicit loc: Location): Unit =
-    test(options) {
-      Handle.allowF[G, E](f).rescue { testError =>
-        new AssertionError(s"test raised unexpectedly: $testError").raiseError[G, Unit]
-      }
-    }
 
   test("the Dom advice carries the Render the method itself was handed") {
     for {

@@ -7,7 +7,7 @@ import cats.mtl.syntax.all.*
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import com.dwolla.tagless.mtl.TestError.*
-import munit.{CatsEffectSuite, Location, ScalaCheckSuite, TestOptions}
+import munit.{CatsEffectSuite, ScalaCheckSuite}
 import org.scalacheck.Prop.forAll
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, ObjectInputStream, ObjectOutputStream}
@@ -19,17 +19,8 @@ import java.io.{ByteArrayInputStream, ByteArrayOutputStream, ObjectInputStream, 
   * ''own'' `Functor[F]`, so there is no synthesized functor for a generic
   * `R.functor.map(fa)(f)` to corrupt.
   */
-class ObservingCapabilitySpec extends CatsEffectSuite with ScalaCheckSuite with TestInstances {
+class ObservingCapabilitySpec extends CatsEffectSuite with ScalaCheckSuite with TestInstances with HandleTestSyntax {
   private type F[A] = Either[TestError, A]
-
-  def testWithHandle[G[_] : cats.ApplicativeThrow, E](options: TestOptions)
-                                                     (f: cats.mtl.Handle[G, E] => G[Unit])
-                                                     (implicit loc: Location): Unit =
-    test(options) {
-      Handle.allowF[G, E](f).rescue { testError =>
-        new AssertionError(s"test raised unexpectedly: $testError").raiseError[G, Unit]
-      }
-    }
 
   test("the decorated capability reports the caller's own Functor, never a synthesized one") {
     val callerFunctor: Functor[F] = Functor[F]

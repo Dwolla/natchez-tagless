@@ -8,11 +8,11 @@ import cats.mtl.syntax.all.*
 /** A genuine carrier change, for the tests and laws that need a `RaiseArrow`
   * which is not the identity.
   *
-  * The pull transports a `Raise[Lazily, E]` back to `Raise[Result, E]` by
+  * The pull transports a `Raise[SyncIO, E]` back to `Raise[Result, E]` by
   * running the underlying `SyncIO` synchronously (`.unsafeRunSync()`) —
   * that's what "transport a capability from a suspended `F` back to a strict
   * one" means at the seam; there is no other way to produce a `Result[A]`
-  * (an already-resolved `Either`) from a `Lazily[A]` (a suspended
+  * (an already-resolved `Either`) from a `SyncIO[A]` (a suspended
   * computation) without running it. This is fixture/law-checking plumbing,
   * not a test assertion — the same category of forced evaluation as
   * `Eq[SyncIO[A]]`.
@@ -27,7 +27,7 @@ import cats.mtl.syntax.all.*
 object CarrierArrows {
   type Result[A] = Either[TestError, A]
 
-  def resultToLazily[Err[_]](implicit H: Handle[SyncIO, TestError]): RaiseArrow[Result, SyncIO, Err] =
+  def resultToSyncIO[Err[_]](implicit H: Handle[SyncIO, TestError]): RaiseArrow[Result, SyncIO, Err] =
     RaiseArrow(
       new (Result ~> SyncIO) {
         def apply[A](fa: Result[A]): SyncIO[A] = fa.fold(H.raise, H.applicative.pure)

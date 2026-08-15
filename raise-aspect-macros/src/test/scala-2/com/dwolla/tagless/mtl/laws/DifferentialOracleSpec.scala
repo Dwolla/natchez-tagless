@@ -7,7 +7,8 @@ import cats.mtl.*
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import com.dwolla.tagless.mtl.laws.LawsInstances.*
-import munit.{CatsEffectSuite, Location, TestOptions}
+import com.dwolla.tagless.mtl.HandleTestSyntax
+import munit.CatsEffectSuite
 
 /** The differential oracle.
   *
@@ -16,16 +17,7 @@ import munit.{CatsEffectSuite, Location, TestOptions}
   * it is ''identical'', method by method and argument by argument, which is
   * stricter: L1–L3 compare behavior and are blind to metadata drift.
   */
-class DifferentialOracleSpec extends CatsEffectSuite {
-
-  def testWithHandle[G[_] : cats.ApplicativeThrow, E](options: TestOptions)
-                                                     (f: cats.mtl.Handle[G, E] => G[Unit])
-                                                     (implicit loc: Location): Unit =
-    test(options) {
-      Handle.allowF[G, E](f).rescue { testError =>
-        new AssertionError(s"test raised unexpectedly: $testError").raiseError[G, Unit]
-      }
-    }
+class DifferentialOracleSpec extends CatsEffectSuite with HandleTestSyntax {
 
   private val derived: RaiseAspect[TestAlg, Render, Render, Render] =
     DeriveRaise.aspect[TestAlg, Render, Render, Render]
@@ -123,7 +115,7 @@ class DifferentialOracleSpec extends CatsEffectSuite {
     */
   testWithHandle[SyncIO, TestError]("the derived mapK agrees with the reference under a genuine carrier change") { implicit H =>
     val eqAlg = eqTestAlg[SyncIO]
-    val arrow = CarrierArrows.resultToLazily[Render]
+    val arrow = CarrierArrows.resultToSyncIO[Render]
 
     SyncIO {
       outcomes.foreach { outcome =>

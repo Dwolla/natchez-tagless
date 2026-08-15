@@ -2,29 +2,18 @@ package com.dwolla.tagless.mtl
 
 import cats.*
 import cats.effect.{Ref, SyncIO}
-import cats.mtl.Handle
 import cats.mtl.syntax.all.*
-import cats.syntax.all.*
 import cats.tagless.aop.Aspect
 import com.dwolla.tagless.mtl.TestError.*
-import munit.{CatsEffectSuite, Location, TestOptions}
+import munit.CatsEffectSuite
 
-class WeaveInterpreterSpec extends CatsEffectSuite {
+class WeaveInterpreterSpec extends CatsEffectSuite with HandleTestSyntax {
   private type F[A] = Either[TestError, A]
   private type W[A] = Aspect.Weave[F, Render, Render, A]
 
   // The library's own forgetful arrow, rather than a hand-rolled one — the
   // interpreter a caller supplies in production is this shape.
   private val erase: W ~> F = WeaveArrows.codomainTarget[F, Render, Render]
-
-  def testWithHandle[G[_] : cats.ApplicativeThrow, E](options: TestOptions)
-                                                     (f: cats.mtl.Handle[G, E] => G[Unit])
-                                                     (implicit loc: Location): Unit =
-    test(options) {
-      Handle.allowF[G, E](f).rescue { testError =>
-        new AssertionError(s"test raised unexpectedly: $testError").raiseError[G, Unit]
-      }
-    }
 
   test("an Aspect instance outranks a RaiseAspect instance for the same algebra") {
     import WeaveInterpreterFixtures.*

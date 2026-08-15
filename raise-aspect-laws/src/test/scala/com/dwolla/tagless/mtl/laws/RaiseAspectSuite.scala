@@ -12,12 +12,12 @@ import cats.tagless.Trivial
 import com.dwolla.tagless.mtl.TestError.*
 import com.dwolla.tagless.mtl.laws.LawsInstances.*
 import com.dwolla.tagless.mtl.laws.discipline.RaiseAspectTests
-import munit.{CatsEffectSuite, DisciplineSuite, Location, TestOptions}
+import munit.{CatsEffectSuite, DisciplineSuite}
 import org.scalacheck.{Arbitrary, Gen}
 
 /** The complete law test suite for a `RaiseAspect[TestAlg, Render, Render, Render]`.
   */
-abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite with TestInstances {
+abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite with TestInstances with HandleTestSyntax {
 
   /** The instance under test. Override this and nothing else. */
   def instance: RaiseAspect[TestAlg, Render, Render, Render]
@@ -30,17 +30,8 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
   private implicit val arbIdArrow: Arbitrary[RaiseArrow[Result, Result, Render]] =
     Arbitrary(Gen.const(RaiseArrow.id[Result, Render]))
 
-  private implicit val arbIdArrowLazily: Arbitrary[RaiseArrow[SyncIO, SyncIO, Render]] =
+  private implicit val arbIdArrowSyncIO: Arbitrary[RaiseArrow[SyncIO, SyncIO, Render]] =
     Arbitrary(Gen.const(RaiseArrow.id[SyncIO, Render]))
-
-  def testWithHandle[F[_] : cats.ApplicativeThrow, E](options: TestOptions)
-                                                     (f: cats.mtl.Handle[F, E] => F[Unit])
-                                                     (implicit loc: Location): Unit =
-    test(options) {
-      Handle.allowF[F, E](f).rescue { testError =>
-        new AssertionError(s"test raised unexpectedly: $testError").raiseError[F, Unit]
-      }
-    }
 
   // ------------------------------------------------ L1, L2, L3′ (discipline)
 
@@ -51,11 +42,15 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
     RaiseAspectTests[TestAlg, Render, Render, Render].raiseAspect[Result, Result, Result]
   )
 
-  // L1/L2 again over a genuinely non-trivial arrow: `CarrierArrows.resultToLazily`
-  // is a real change of effect — `Either[TestError, *]` to
-  // `EitherT[SyncIO, TestError, *]` — with a real pull in the opposite
-  // direction. Testing mapK only at the identity arrow would be a coverage
-  // loss disguised as a deletion.
+  // L1/L2 again over a genuinely non-trivial arrow: `CarrierArrows.resultToSyncIO`
+  // is a real change of effect — `Either[TestError, *]` to `SyncIO` — with a
+  // real pull in the opposite direction. Testing mapK only at the identity
+  // arrow would be a coverage loss disguised as a deletion.
+  //
+  // `checkAll` registers its properties as a side effect at the point it's
+  // called, so the `Handle.allowF` scope that provides the implicit
+  // `Handle[SyncIO, TestError]` for the arrow/`Arbitrary` resolution must run
+  // *now*, at class construction — `unsafeRunSync()` forces that.
   Handle.allowF[SyncIO, TestError] { implicit H => SyncIO {
     checkAll(
       "RaiseFunctorK[TestAlg] over a genuine carrier change",
@@ -65,14 +60,14 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
     SyncIO {
       fail(s"unexpected TestError $testError")
     }
-  }
+  }.unsafeRunSync()
 
   // ----------------------------------------------------------------- L4, L7
 
   property("L4 arrow coherence for the carrier-change arrow") {
     forAllErrors { e => implicit H: Handle[SyncIO, TestError] =>
       val law = RaiseArrowLaws.arrowCoherence[Result, SyncIO, Render, TestError, Int](
-        CarrierArrows.resultToLazily[Render],
+        CarrierArrows.resultToSyncIO[Render],
         H,
         e
       )
@@ -81,7 +76,7 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
   }
 
   property("L4 arrow coherence for the identity arrow") {
-    forAllErrors { e => _: Handle[SyncIO, TestError] =>
+    forAllErrors { e => (_: Handle[SyncIO, TestError]) =>
       val law = RaiseArrowLaws.arrowCoherence[Result, Result, Render, TestError, Int](
         RaiseArrow.id[Result, Render],
         raiseResult,
@@ -96,7 +91,7 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
   property("L4 arrow coherence for the carrier-change arrow andThen id") {
     forAllErrors { e => implicit H: Handle[SyncIO, TestError] =>
       val law = RaiseArrowLaws.arrowCoherence[Result, SyncIO, Render, TestError, Int](
-        CarrierArrows.resultToLazily[Render].andThen(RaiseArrow.id[SyncIO, Render]),
+        CarrierArrows.resultToSyncIO[Render].andThen(RaiseArrow.id[SyncIO, Render]),
         H,
         e
       )
@@ -125,7 +120,7 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
   property("L4 arrow coherence for the carrier-change arrow, at Err = Trivial") {
     forAllErrors { e => implicit H: Handle[SyncIO, TestError] =>
       val law = RaiseArrowLaws.arrowCoherence[Result, SyncIO, Trivial, TestError, Int](
-        CarrierArrows.resultToLazily[Trivial],
+        CarrierArrows.resultToSyncIO[Trivial],
         H,
         e
       )
@@ -248,7 +243,7 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
 
   // ------------------------------------------------------------- helpers
 
-  /** A fixture whose effects are observable only when the returned `Lazily` is run. */
+  /** A fixture whose effects are observable only when the returned `F` is run. */
   private def countingAlg[F[_] : Sync](counter: Ref[F, Int]): TestAlg[F] =
     new TestAlg[F] {
       private def count[A](a: => A): F[A] = counter.update(_ + 1) *> Sync[F].delay(a)
@@ -279,20 +274,3 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
     }
   }
 }
-
-/*
-
-    forAllErrors { e =>
-      Handle.allowF[SyncIO, TestError] { implicit H =>
-        val law = RaiseArrowLaws.arrowCoherence[Result, SyncIO, Trivial, TestError, Int](
-          CarrierArrows.resultToLazily[Trivial],
-          H,
-          e
-        )
-        (law.lhs.attemptHandle, law.rhs.attemptHandle).mapN { (l, r) => assertEquals(l, r); true }
-      }.rescue { testError =>
-        new AssertionError(s"test raised unexpectedly: $testError").raiseError[SyncIO, Boolean]
-      }
-    }
-  }
- */

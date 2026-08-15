@@ -14,7 +14,7 @@ import org.scalacheck.{Arbitrary, Gen}
   * Mixes in `TestInstances` (rather than importing from it) because it's a
   * bare trait with no companion object — this is the same pattern
   * `ObservingCapabilitySpec` uses to bring `eqSyncIOA[A: Eq]: Eq[SyncIO[A]]`
-  * into scope for `Eq[Lazily[A]]`.
+  * into scope.
   */
 object LawsInstances extends TestInstances {
 
@@ -54,8 +54,8 @@ object LawsInstances extends TestInstances {
 
   /** The non-identity `RaiseArrow` L1/L2 are exercised over.
     */
-  implicit def arbResultToLazily(implicit H: cats.mtl.Handle[SyncIO, TestError]): Arbitrary[RaiseArrow[Result, SyncIO, Render]] =
-    Arbitrary(Gen.const(CarrierArrows.resultToLazily[Render]))
+  implicit def arbResultToSyncIO(implicit H: cats.mtl.Handle[SyncIO, TestError]): Arbitrary[RaiseArrow[Result, SyncIO, Render]] =
+    Arbitrary(Gen.const(CarrierArrows.resultToSyncIO[Render]))
 
   /** Intercept the algebra under test with a recording interpreter. The pair
     * is the fused replacement for `weave` — the algebra behaves as though it

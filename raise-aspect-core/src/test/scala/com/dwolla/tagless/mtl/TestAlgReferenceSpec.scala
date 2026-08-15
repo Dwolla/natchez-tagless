@@ -1,22 +1,12 @@
 package com.dwolla.tagless.mtl
 
 import cats.effect.{Ref, SyncIO}
-import cats.mtl.Handle
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import com.dwolla.tagless.mtl.TestError.*
-import munit.{CatsEffectSuite, Location, TestOptions}
+import munit.CatsEffectSuite
 
-class TestAlgReferenceSpec extends CatsEffectSuite {
-  def testWithHandle[F[_] : cats.ApplicativeThrow, E](options: TestOptions)
-                                                     (f: cats.mtl.Handle[F, E] => F[Unit])
-                                                     (implicit loc: Location): Unit =
-    test(options) {
-      Handle.allowF[F, E](f).rescue { testError =>
-        new AssertionError(s"test raised unexpectedly: $testError").raiseError[F, Unit]
-      }
-    }
-
+class TestAlgReferenceSpec extends CatsEffectSuite with HandleTestSyntax {
   private val ref: RaiseAspect[TestAlg, Render, Render, Render] =
     TestAlgReference.referenceRaiseAspect[Render, Render, Render]
 
