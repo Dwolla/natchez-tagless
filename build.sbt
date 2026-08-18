@@ -297,7 +297,9 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
   // The source directory needs the gate independently — `.jvmSettings` are
   // appended after the shared block, so an unconditional `+=` would put
   // scala-jvm back onto the 2.12 source path that the shared `:=` just
-  // emptied.
+  // emptied. The second test-source directory added further below, on
+  // scala-3-jvm, gates on `scalaBinaryVersion.value == "3"` instead; that
+  // already excludes 2.12, so it needs no `isOtel4sScalaVersion` of its own.
   .jvmSettings(
     libraryDependencies ++= {
       if (isOtel4sScalaVersion.value)
@@ -313,6 +315,19 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
     },
     Test / unmanagedSourceDirectories ++= {
       if (isOtel4sScalaVersion.value) Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm")
+      else Seq.empty
+    },
+    // Test sources that need *both* axes: `derives AnyValueAspect` is Scala 3
+    // only, and asserting the span it produces needs the JVM-only oteljava
+    // testkit. Neither `src/test/scala-3` (also compiled for JS, which has no
+    // testkit) nor `src/test/scala-jvm` (also compiled on 2.13, where
+    // `derives` is a syntax error) can hold such a file alone. The `== "3"`
+    // test already excludes 2.12, so no separate `isOtel4sScalaVersion` gate
+    // is needed here — mirrors the identical addition on `otel4sTaglessMtl`
+    // below.
+    Test / unmanagedSourceDirectories ++= {
+      if (scalaBinaryVersion.value == "3")
+        Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-3-jvm")
       else Seq.empty
     },
   )

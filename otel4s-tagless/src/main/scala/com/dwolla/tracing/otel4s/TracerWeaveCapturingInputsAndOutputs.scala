@@ -138,6 +138,27 @@ object TracerWeaveCapturingInputsAndOutputs {
  *     TracerWeaveCapturingInputsAndOutputs[IO]
  *   )
  * }}}
+ *
+ * On Scala 3 the whole instance above collapses to a `derives` clause:
+ * `trait Foo[F[_]] derives AnyValueAspect` with a separate `@experimental
+ * object Foo`. See `com.dwolla.tracing.otel4s.AnyValueAspect`, which pins
+ * `Dom` and `Cod` to `ToAnyValue` so that `derives` has the one-parameter
+ * type constructor it requires. `@experimental` is still required, and
+ * ''where'' it goes matters: a `derives` clause invokes `derived` from a
+ * given the compiler synthesizes into the algebra's companion object, so the
+ * annotation belongs on the companion, not the trait — annotating the trait
+ * instead also compiles, but makes the algebra ''type'' experimental,
+ * forcing `@experimental` onto every reference to it, including untraced
+ * call sites that never touch the instance. The 3.3.x LTS line has no
+ * `-experimental` flag to opt out with. There is no Scala 2 equivalent —
+ * `derives` does not exist there — so a cross-built algebra keeps the form
+ * above.
+ *
+ * Adding the clause to an algebra that keeps the `fooAspect` above is not a
+ * way to have both: the synthesized given is the more specific type, so it
+ * silently outranks the hand-written wide one and any custom behaviour in it
+ * disappears, with no error and no warning. Pick one. See
+ * `com.dwolla.tracing.otel4s.AnyValueAspect` for the full note.
  */
 class TracerWeaveCapturingInputsAndOutputs[F[_]: FlatMap: Tracer]
   extends (Weave[F, ToAnyValue, ToAnyValue, *] ~> F) {

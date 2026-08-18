@@ -9,7 +9,8 @@ This module depends on `otel4s-core-trace`, cats, cats-tagless, circe-core and
 ## What is here
 
 `TracerInstrumentation`, `TracerWeaveCapturingInputs`,
-`TracerWeaveCapturingInputsAndOutputs`, and the `ToAnyValue` type class.
+`TracerWeaveCapturingInputsAndOutputs`, the `ToAnyValue` type class, and
+`AnyValueAspect` (Scala 3 only — see below).
 
 ## What is not here, deliberately
 
@@ -251,6 +252,16 @@ from `crossScalaVersions` does not remove it from sbt's root aggregate, which
 then fails resolving `tagless-core_2.13`). Instead, on 2.12 the otel4s
 coordinate is not declared, both source directories are emptied, and
 `publish / skip` is true. Nothing observable claims 2.12 support.
+
+## `derives AnyValueAspect` (Scala 3 only)
+
+An algebra with no `Raise` parameters that wants the short `derives` spelling
+instead of a hand-declared `implicit val fooAspect: Aspect[Foo, ToAnyValue,
+ToAnyValue]` can write `trait Foo[F[_]] derives AnyValueAspect`. `@experimental`
+goes on the algebra's **companion object**, never on the trait — see
+`AnyValueAspect.derived`'s scaladoc for why. An algebra whose methods take
+`cats.mtl.Raise` parameters needs `AnyValueRaiseAspect` instead, one module
+over — see the section below.
 
 ## `otel4s-tagless-mtl`, the sibling module
 
