@@ -33,12 +33,10 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
   private implicit val arbIdArrowSyncIO: Arbitrary[RaiseArrow[SyncIO, SyncIO, Render]] =
     Arbitrary(Gen.const(RaiseArrow.id[SyncIO, Render]))
 
-  // ------------------------------------------------ L1, L2, L3′ (discipline)
-
   // L3′ lives at the base effect: `intercept` is carrier-preserving, so the
   // effect it erases into is the one the algebra already speaks.
   checkAll(
-    "RaiseAspect[TestAlg, Render, Render, Render]",
+    "RaiseAspect[TestAlg, Render, Render, Render] (L1, L2, L3′)",
     RaiseAspectTests[TestAlg, Render, Render, Render].raiseAspect[Result, Result, Result]
   )
 
@@ -53,7 +51,7 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
   // *now*, at class construction — `unsafeRunSync()` forces that.
   Handle.allowF[SyncIO, TestError] { implicit H => SyncIO {
     checkAll(
-      "RaiseFunctorK[TestAlg] over a genuine carrier change",
+      "RaiseFunctorK[TestAlg] over a genuine carrier change (L1, L2)",
       laws.discipline.RaiseFunctorKTests[TestAlg, Render].raiseFunctorK[Result, SyncIO, SyncIO]
     )
   }}.rescue { testError =>
@@ -61,8 +59,6 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
       fail(s"unexpected TestError $testError")
     }
   }.unsafeRunSync()
-
-  // ----------------------------------------------------------------- L4, L7
 
   property("L4 arrow coherence for the carrier-change arrow") {
     forAllErrors { e => implicit H: Handle[SyncIO, TestError] =>
@@ -104,8 +100,6 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
     val decorated = RaiseAspect.observing[Result, TestError, Render](caller, OnRaise.noop[Result, Render])
     assert(decorated.functor eq caller.functor)
   }
-
-  // ------------------------------------------------- L4 at Err = Trivial (∀E)
 
   // `arrowCoherence` takes `implicit ev: Err[E]`, which narrows it from "for
   // all E" to "for all E for which Err[E] exists". `Trivial`'s instance is
@@ -200,8 +194,6 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
     } yield ()
   }
 
-  // ------------------------------------------------- L10 laziness parity
-
   testWithHandle[SyncIO, TestError]("L10 intercepting performs no effects until the result is run") { implicit H =>
     for {
       counter <- Ref.of[SyncIO, Int](0)
@@ -236,12 +228,8 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
     } yield ()
   }
 
-  // ----------------------------------------------------------- Serializable
-
   checkAll("RaisePull.id.serializable", SerializableTests.serializable(RaisePull.id[Result, Render]))
   checkAll("RaiseArrow.id.serializable", SerializableTests.serializable(RaiseArrow.id[Result, Render]))
-
-  // ------------------------------------------------------------- helpers
 
   /** A fixture whose effects are observable only when the returned `F` is run. */
   private def countingAlg[F[_] : Sync](counter: Ref[F, Int]): TestAlg[F] =

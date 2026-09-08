@@ -410,8 +410,6 @@ class MethodLocalInstanceSpec extends CatsEffectSuite with HandleTestSyntax {
     } yield ()
   }
 
-  // --- rejections ----------------------------------------------------------
-
   test("deriving an instance from a method-local one is out of scope and says so") {
     val errors = compileErrors(
       """implicit def renderList[A](implicit R: Render[A]): Render[List[A]] =

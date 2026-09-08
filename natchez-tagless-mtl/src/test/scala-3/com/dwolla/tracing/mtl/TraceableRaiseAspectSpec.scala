@@ -117,9 +117,8 @@ class TraceableRaiseAspectSpec extends munit.CatsEffectSuite {
   }
 
   test("mapK forwards to the underlying instance") {
-    // Strict predates the file-level F's migration to EitherT[SyncIO, ...];
-    // this test needs no Sync capability, so it keeps the original Either
-    // carrier rather than bridging back through F with unsafeRunSync().
+    // This test needs no Sync capability, so it uses a plain Either carrier
+    // instead of F, skipping unsafeRunSync().
     type Strict[A] = Either[BarError, A]
     type G[A] = EitherT[Eval, BarError, A]
 

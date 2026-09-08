@@ -92,8 +92,6 @@ class ObservingCapabilitySpec extends CatsEffectSuite with ScalaCheckSuite with 
     } yield ()
   }
 
-  // ------------------------------- the hook through a full interception
-
   private def countingOnRaise[G[_]](counter: Ref[G, Int]): OnRaise[G, Render] =
     new OnRaise[G, Render] {
       def apply[E](e: E)(implicit ev: Render[E]): G[Unit] = counter.update(_ + 1)
@@ -136,8 +134,6 @@ class ObservingCapabilitySpec extends CatsEffectSuite with ScalaCheckSuite with 
       }
     }
   }
-
-  // ------------------------------------------------------- Serializable
 
   /** `cats.mtl.Raise` extends `Serializable`, and `observing` is the only
     * place in this module that builds a decorated `Raise`, so this pins that

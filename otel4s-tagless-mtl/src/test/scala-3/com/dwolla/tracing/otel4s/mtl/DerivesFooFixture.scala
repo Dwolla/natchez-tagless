@@ -6,8 +6,7 @@ import cats.syntax.all.*
 
 import scala.annotation.experimental
 
-/** `Foo`'s twin, declared the way this task's `AnyValueRaiseAspect` exists to
-  * make possible.
+/** `Foo`'s twin, declared the way `AnyValueRaiseAspect` exists to make possible.
   *
   * Structurally identical to `Foo` (`FooRaiseFixture.scala`) — same parameter,
   * same error type (`FooError`, reused from that shared fixture rather than

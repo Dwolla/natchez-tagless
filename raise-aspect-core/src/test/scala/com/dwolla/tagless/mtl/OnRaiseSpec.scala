@@ -36,7 +36,6 @@ class OnRaiseSpec extends FunSuite {
     if (Platform.isJvm) {
       val noop = OnRaise.noop[F, Render]
 
-      // Test that the instance can be serialized and deserialized
       val bytes = {
         val bos = new java.io.ByteArrayOutputStream()
         val oos = new java.io.ObjectOutputStream(bos)
@@ -53,7 +52,6 @@ class OnRaiseSpec extends FunSuite {
         obj
       }
 
-      // Verify the deserialized instance works
       assertEquals(deserialized.apply[ErrA](NegativeInput(-1)), Right(()))
       assertEquals(deserialized.apply[ErrB](EmptyInput("x")), Right(()))
     }
