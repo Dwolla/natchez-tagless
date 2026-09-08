@@ -34,19 +34,42 @@ L5, L6, L7), narrowing each from "for all `E`" to "for all `E` for which
 `Render` (the law suite's usual `Err`) doesn't cover every `E`.
 `cats.tagless.Trivial` has exactly one instance, universal in `E`, so
 instantiating each law again at `Err = Trivial` restores the original `∀E`
-quantifier. All seven affected properties carry that restoration — this was
-an explicit call by the project owner, not a default; don't consolidate them
-away as redundant with the `Render` instantiations, since they're the only
-thing still proving the laws hold at their pre-M10 strength.
+quantifier. All seven affected properties carried that restoration at the
+time — this was an explicit call by the project owner, not a default, and
+not one to consolidate away as redundant with the `Render` instantiations.
+M12 (above) later retired L5 and L6 entirely and left L7 with no `Err`
+dependency to restate at `Trivial`, so today only L4's copy survives — see
+`LAWS.md`.
 
-### `traceWithInputs`'s `Apply[F]` (D9, M17)
+### `traceWithInputs`'s effect constraint (D9, M17)
 
 An earlier design for `otel4s-tagless-mtl`'s `traceWithInputs` claimed it had
-to declare an `Apply[F]` constraint, matching `RaiseAspect#intercept`'s own
-requirement. That turned out to be wrong: `WeaveInterpreter.fromRaiseAspect`
-resolves the `Apply[F]` `intercept` needs from the caller's own scope, so
-neither `traceWithInputs` nor `traceWithInputsAndOutputs` needs to declare it
-itself. The claim was retracted.
+to declare its own effect constraint, matching `RaiseAspect#intercept`'s own
+requirement (`Apply[F]` at the time; later widened to `FlatMap[F]` — see
+below). That turned out to be wrong: `WeaveInterpreter.fromRaiseAspect`
+resolves whatever `intercept` needs from the caller's own scope, so neither
+`traceWithInputs` nor `traceWithInputsAndOutputs` needs to declare it itself.
+The claim was retracted.
+
+### `intercept`'s `Apply[F]` widened to `FlatMap[F]`
+
+`RaiseAspect.observing` sequenced the `onRaise` hook ahead of the underlying
+raise with `Apply[F]`'s `*>`. That's unsound for an accumulating
+`Applicative` such as `Validated`/`Ior` — cats-mtl ships a lawful
+`Raise[Validated[E, *], E]` — because `*>` combines two `Invalid`s via
+`Semigroup` rather than discarding the first: a hook that itself produced an
+`Invalid` would fold its error into the raised value instead of being
+ignored. Widened to `FlatMap[F]` with `>>`, which discards the hook's effect
+unconditionally and excludes accumulating carriers from `intercept` entirely,
+since cats deliberately gives them no `FlatMap` instance. Propagated through
+every `intercept` override and `RaiseAspectLaws.interceptErasure`, which
+needed `Monad[A]` in place of `Applicative[A]` — `FlatMap` and `Applicative`
+are siblings in cats' hierarchy, and `Monad` is the smallest single
+constraint giving both. `natchez-tagless-mtl`'s `traceWithInputs` picked up
+`FlatMap[F]` where it previously needed only `Apply[F]`, one step further
+from the non-mtl `TraceWeaveOps.traceWithInputs`'s signature than before;
+`traceWithInputsAndOutputs` was unaffected, since it already required
+`FlatMap[F]` on both sides.
 
 ## Migrating from `natchez-tagless` to the otel4s modules
 
