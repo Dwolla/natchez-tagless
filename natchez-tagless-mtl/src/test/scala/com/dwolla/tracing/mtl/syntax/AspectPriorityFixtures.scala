@@ -4,7 +4,7 @@ package syntax
 import cats.effect.IO
 import cats.tagless.aop.Aspect
 import cats.tagless.aop.Aspect.Weave
-import cats.{Apply, ~>}
+import cats.{FlatMap, ~>}
 import com.dwolla.tagless.mtl.{OnRaise, RaiseArrow, RaiseAspect}
 import natchez.TraceableValue
 
@@ -46,7 +46,7 @@ object Foo {
       def intercept[F[_]](af: Foo[F])(
           fk: Weave[F, TraceableValue, TraceableValue, *] ~> F,
           onRaise: OnRaise[F, TraceableValue]
-      )(implicit F: Apply[F]): Foo[F] =
+      )(implicit F: FlatMap[F]): Foo[F] =
         throw new AssertionError("priority resolved to RaiseAspect instead of Aspect")
 
       def mapK[F[_], G[_]](af: Foo[F])(arrow: RaiseArrow[F, G, TraceableValue]): Foo[G] =

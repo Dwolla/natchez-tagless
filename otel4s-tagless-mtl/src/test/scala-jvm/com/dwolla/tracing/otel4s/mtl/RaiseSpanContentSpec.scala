@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all._
 import cats.tagless.aop.Aspect
-import cats.{Applicative, Apply, ~>}
+import cats.{Applicative, FlatMap, ~>}
 import com.dwolla.tagless.mtl.{OnRaise, RaiseArrow, RaiseAspect, RaiseRecorder}
 import com.dwolla.tracing.otel4s.ToAnyValue
 import com.dwolla.tracing.otel4s.mtl.syntax._
@@ -241,7 +241,7 @@ object Quiet {
       def intercept[F[_]](af: Quiet[F])(
           fk: Aspect.Weave[F, ToAnyValue, ToAnyValue, *] ~> F,
           onRaise: OnRaise[F, ToAnyValue]
-      )(implicit F: Apply[F]): Quiet[F] =
+      )(implicit F: FlatMap[F]): Quiet[F] =
         new Quiet[F] {
           def hush(i: Int)(implicit R: Raise[F, QuietError]): F[String] =
             fk(

@@ -1,6 +1,6 @@
 package com.dwolla.tracing.otel4s.mtl
 
-import cats.Apply
+import cats.FlatMap
 import cats.tagless.aop.Aspect
 import cats.~>
 import com.dwolla.tagless.mtl.{DeriveRaise, OnRaise, RaiseArrow, RaiseAspect}
@@ -62,7 +62,7 @@ object AnyValueRaiseAspect:
       def intercept[F[_]](af: Alg[F])(
           fk: Aspect.Weave[F, ToAnyValue, ToAnyValue, *] ~> F,
           onRaise: OnRaise[F, ToAnyValue]
-      )(using F: Apply[F]): Alg[F] =
+      )(using F: FlatMap[F]): Alg[F] =
         underlying.intercept(af)(fk, onRaise)
 
       def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G, ToAnyValue]): Alg[G] =

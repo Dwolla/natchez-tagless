@@ -442,9 +442,9 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
     }
 
   // def intercept[F[_]](af: Alg[F])(fk: Aspect.Weave[F, Dom, Cod, *] ~> F, onRaise: OnRaise[F, Err])
-  //                     (implicit F: Apply[F]): Alg[F]
+  //                     (implicit F: FlatMap[F]): Alg[F]
   def raiseIntercept(Dom: Type, Cod: Type, Err: Type)(algebra: Type): MethodDef = MethodDef("intercept") {
-    case PolyType(List(f), MethodType(List(af), MethodType(List(fk, onRaise), MethodType(List(applyF), _)))) =>
+    case PolyType(List(f), MethodType(List(af), MethodType(List(fk, onRaise), MethodType(List(flatMapF), _)))) =>
       val F = f.asType.toTypeConstructor
       val Af = singleType(NoPrefix, af)
       val members = overridableMembersOf(Af)
@@ -465,7 +465,7 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
           val args = method.transformedArgLists { case Parameter(pn, pt, _) if capabilityError(pt, f).isDefined =>
             val errorType = capabilityError(pt, f).get
             val errInstance = inferErrOrAbort(Err, errorType, method)
-            q"$RaiseAspectRef.observing[$F, $errorType, $Err]($pn, $onRaise)($applyF, $errInstance)"
+            q"$RaiseAspectRef.observing[$F, $errorType, $Err]($pn, $onRaise)($flatMapF, $errInstance)"
           }
 
           val codInstance = inferOrAbort(

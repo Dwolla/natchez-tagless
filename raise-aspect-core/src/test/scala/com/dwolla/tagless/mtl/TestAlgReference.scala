@@ -1,6 +1,6 @@
 package com.dwolla.tagless.mtl
 
-import cats.Apply
+import cats.FlatMap
 import cats.mtl.Raise
 import cats.tagless.aop.Aspect
 import cats.~>
@@ -34,7 +34,7 @@ object TestAlgReference {
       def intercept[F[_]](af: TestAlg[F])(
           fk: Aspect.Weave[F, Dom, Cod, *] ~> F,
           onRaise: OnRaise[F, Err]
-      )(implicit F: Apply[F]): TestAlg[F] =
+      )(implicit F: FlatMap[F]): TestAlg[F] =
         new TestAlg[F] {
           def a(i: Int)(implicit R: Raise[F, ErrA]): F[String] =
             fk(

@@ -34,7 +34,7 @@ package com.dwolla.tagless.mtl
 import cats.arrow.FunctionK
 import cats.mtl.{Handle, Raise}
 import cats.tagless.aop.Aspect
-import cats.{Apply, Eval}
+import cats.{Eval, FlatMap}
 
 import scala.annotation.experimental
 import scala.quoted.*
@@ -404,7 +404,7 @@ private[mtl] object RaiseAspectMacros:
       def intercept[F[_]](af: Alg[F])(
           fk: FunctionK[[X] =>> Aspect.Weave[F, Dom, Cod, X], F],
           onRaise: OnRaise[F, Err]
-      )(implicit F: Apply[F]): Alg[F] =
+      )(implicit F: FlatMap[F]): Alg[F] =
         ${ deriveIntercept[Alg, Dom, Cod, Err, F]('af, 'fk, 'onRaise, 'F) }
 
       def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G, Err]): Alg[G] =
@@ -421,7 +421,7 @@ private[mtl] object RaiseAspectMacros:
       alg: Expr[Alg[F]],
       fk: Expr[FunctionK[[X] =>> Aspect.Weave[F, Dom, Cod, X], F]],
       onRaise: Expr[OnRaise[F, Err]],
-      apply: Expr[Apply[F]]
+      flatMap: Expr[FlatMap[F]]
   )(using q: Quotes): Expr[Alg[F]] =
     import quotes.reflect.*
     val macros = new DeriveRaiseMacros[q.type]
@@ -462,7 +462,7 @@ private[mtl] object RaiseAspectMacros:
                 .summonErrOrAbort(TypeRepr.of[Err], tpe.dealias.typeArgs.last, methodSym)
                 .asExprOf[Err[e]]
               '{
-                RaiseAspect.observing[F, e, Err](${ arg.asExprOf[Raise[F, e]] }, $onRaise)(using $apply, $errEv)
+                RaiseAspect.observing[F, e, Err](${ arg.asExprOf[Raise[F, e]] }, $onRaise)(using $flatMap, $errEv)
               }.asTerm
       },
       body = {

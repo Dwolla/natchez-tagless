@@ -145,25 +145,29 @@ package com.dwolla.tracing.otel4s
   *
   * ==Design constraints==
   *
-  *   - `intercept` requires an `Apply[F]` — needed only to sequence the
-  *     `onRaise` hook's effect before the underlying `Raise[F, E]`'s own
-  *     `raise` runs. The woven `Aspect.Weave` is data handed to the
+  *   - `intercept` requires a `FlatMap[F]` — needed to sequence the `onRaise`
+  *     hook's effect before the underlying `Raise[F, E]`'s own `raise` runs,
+  *     discarding whatever the hook produced. `Apply[F]` is not enough: under
+  *     an accumulating `Applicative` (`Validated`, `Ior`) a failing hook's
+  *     error would combine into the raised value via `Semigroup` instead of
+  *     being discarded. The woven `Aspect.Weave` is data handed to the
   *     interpreter, never a carrier a capability is transported across, so no
   *     `Functor` is ever synthesized for it. Note this is a constraint of
   *     `RaiseAspect#intercept`, not of the syntax: neither syntax method
-  *     declares an `Apply[F]`, because `WeaveInterpreter.fromRaiseAspect`
+  *     declares a `FlatMap[F]` of its own, because `WeaveInterpreter.fromRaiseAspect`
   *     resolves that one in the caller's scope.
   *   - '''Switching an import is free for `traceWithInputsAndOutputs`, not
   *     for `traceWithInputs`.''' `traceWithInputsAndOutputs` demands exactly
   *     what its non-mtl counterpart in `com.dwolla.tracing.otel4s.syntax`
   *     demands — both declare `FlatMap[F]`. `traceWithInputs` does not: the
   *     non-mtl one declares no effect constraint, while this one resolves a
-  *     `RaiseRecorder[F, ToAnyValue]`, and absent a user-supplied `OnRaise`
-  *     that resolves through [[Otel4sDefaultOnRaise]], declared
-  *     `[F[_] : FlatMap : Tracer]`. A caller taking the default recorder
-  *     therefore has to supply `FlatMap[F]`; a caller supplying its own
-  *     `OnRaise[F, ToAnyValue]` needs only what that hook needs.
-  *     `RaiseTracerConstraintSpec` pins both directions.
+  *     `RaiseRecorder[F, ToAnyValue]`, and additionally needs a `FlatMap[F]`
+  *     in the caller's scope for `WeaveInterpreter.fromRaiseAspect` to resolve
+  *     at all — regardless of what the resolved `OnRaise[F, ToAnyValue]`
+  *     itself needs. Taking the default recorder costs nothing extra here,
+  *     since [[Otel4sDefaultOnRaise]] already demands
+  *     `[F[_] : FlatMap : Tracer]`; a caller supplying its own hook that needs
+  *     less than `FlatMap[F]` still has to supply it for `intercept`.
   *   - `Handle[F, E]` parameters are rejected at derivation time, with a
   *     message pointing at this design: `Handle` ''consumes'' `F`
   *     (`handleWith` takes an `F[A]`), so — unlike `Raise`, which only ever

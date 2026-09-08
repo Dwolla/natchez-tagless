@@ -1,7 +1,7 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.Apply
+import cats.FlatMap
 import cats.tagless.aop.Aspect
 import cats.~>
 
@@ -25,7 +25,7 @@ object PlainAlgReference {
       def intercept[F[_]](af: PlainAlg[F])(
           fk: Aspect.Weave[F, Dom, Cod, *] ~> F,
           onRaise: OnRaise[F, Err]
-      )(implicit F: Apply[F]): PlainAlg[F] =
+      )(implicit F: FlatMap[F]): PlainAlg[F] =
         new PlainAlg[F] {
           def p(i: Int): F[String] =
             fk(

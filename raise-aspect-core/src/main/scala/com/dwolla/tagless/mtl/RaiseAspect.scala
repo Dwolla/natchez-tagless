@@ -3,7 +3,7 @@ package com.dwolla.tagless.mtl
 import cats.mtl.Raise
 import cats.syntax.all._
 import cats.tagless.aop.Aspect
-import cats.{Apply, Functor}
+import cats.{FlatMap, Functor}
 import cats.~>
 
 /** The `FunctorK` analogue for algebras whose methods take `Raise` capability
@@ -48,12 +48,15 @@ trait RaiseAspect[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorK[Alg, 
     * the carrier never changes, and the weave is data rather than an effect
     * type.
     *
-    * `Apply[F]` is needed only to sequence the hook's effect before the raise.
+    * `FlatMap[F]` is needed only to sequence the hook's effect before the
+    * raise, discarding whatever the hook produced — `Apply[F]` is not enough,
+    * because an accumulating `Applicative` (`Validated`, `Ior`) would combine
+    * a failing hook's error into the raised value instead of discarding it.
     */
   def intercept[F[_]](af: Alg[F])(
       fk: Aspect.Weave[F, Dom, Cod, *] ~> F,
       onRaise: OnRaise[F, Err]
-  )(implicit F: Apply[F]): Alg[F]
+  )(implicit F: FlatMap[F]): Alg[F]
 }
 
 object RaiseAspect {
@@ -66,13 +69,13 @@ object RaiseAspect {
     * what `R` produces, prefixed by the hook's effect.
     */
   def observing[F[_], E, Err[_]](R: Raise[F, E], onRaise: OnRaise[F, Err])(implicit
-      F: Apply[F],
+      F: FlatMap[F],
       ev: Err[E]
   ): Raise[F, E] =
     new Raise[F, E] {
       val functor: Functor[F] = R.functor
 
       def raise[E2 <: E, A](e: E2): F[A] =
-        onRaise.apply[E](e)(ev) *> R.raise[E2, A](e)
+        onRaise.apply[E](e)(ev) >> R.raise[E2, A](e)
     }
 }

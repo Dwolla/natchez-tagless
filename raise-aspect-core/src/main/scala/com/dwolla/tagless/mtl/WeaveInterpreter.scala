@@ -1,6 +1,6 @@
 package com.dwolla.tagless.mtl
 
-import cats.Apply
+import cats.FlatMap
 import cats.tagless.aop.Aspect
 import cats.~>
 
@@ -60,10 +60,11 @@ trait LowPriorityWeaveInterpreter {
     * caller's interpreter and hook go straight to `RaiseAspect#intercept` —
     * this type class's `apply` and `intercept` are the same signature.
     *
-    * `Apply[F]` is `intercept`'s own constraint, needed to sequence the hook.
+    * `FlatMap[F]` is `intercept`'s own constraint, needed to sequence the
+    * hook.
     */
   implicit def fromRaiseAspect[Alg[_[_]], Dom[_], Cod[_], Err[_], F[_]](implicit
-      F: Apply[F],
+      F: FlatMap[F],
       A: RaiseAspect[Alg, Dom, Cod, Err]
   ): WeaveInterpreter[Alg, Dom, Cod, Err, F] =
     new WeaveInterpreter[Alg, Dom, Cod, Err, F] {

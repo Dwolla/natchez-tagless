@@ -44,21 +44,23 @@ class RaiseTracerWeaveOps[Alg[_[_]], F[_]](val alg: Alg[F]) extends AnyVal {
     * `[F[_] : FlatMap : Tracer]`. So a caller taking the default recorder
     * must supply `FlatMap[F]` where `otel4s.syntax` asked for nothing.
     *
-    * The requirement is conditional on that resolution, not on this
-    * signature: a caller with its own `OnRaise[F, ToAnyValue]` in scope
-    * needs only whatever that hook needs — `Applicative[F]`, or nothing at
-    * all. `RaiseTracerConstraintSpec` pins both directions.
-    * `traceWithInputsAndOutputs` is unaffected: it declares `FlatMap[F]` in
-    * both packages, so the default recorder adds nothing there.
+    * The requirement is not conditional on that resolution, unlike before
+    * `RaiseAspect#intercept` was tightened to `FlatMap[F]`: even a caller
+    * with its own `OnRaise[F, ToAnyValue]` in scope needs `FlatMap[F]`,
+    * because `WeaveInterpreter.fromRaiseAspect`'s own constraint demands it
+    * regardless of what the hook itself needs.
+    * `traceWithInputsAndOutputs` is unaffected either way: it already
+    * declares `FlatMap[F]` in both packages, so the default recorder adds
+    * nothing there.
     *
-    * There is no `Apply[F]` here, and none is needed:
+    * There is no `FlatMap[F]` here, and none is needed:
     * `WeaveInterpreter#apply` itself declares no effect constraint (see
-    * `WeaveInterpreter.scala`), and `fromRaiseAspect`'s own `Apply[F]` — the
+    * `WeaveInterpreter.scala`), and `fromRaiseAspect`'s own `FlatMap[F]` — the
     * one `RaiseAspect#intercept` requires — is resolved from the caller's
     * scope when `ev` is summoned there, not from this method's parameter
     * list; a method's own implicit parameters are not candidates for
     * resolving its other implicit parameters. (A `RaiseAspect` algebra
-    * therefore does need `Apply[F]` at the call site, but the non-mtl syntax
+    * therefore does need `FlatMap[F]` at the call site, but the non-mtl syntax
     * cannot trace such an algebra at all, so there is nothing to compare.)
     */
   def traceWithInputs[Cod[_]](implicit
