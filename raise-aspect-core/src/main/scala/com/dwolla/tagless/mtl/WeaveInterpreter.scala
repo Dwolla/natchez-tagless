@@ -40,6 +40,14 @@ object WeaveInterpreter extends LowPriorityWeaveInterpreter {
     * outranks [[LowPriorityWeaveInterpreter.fromRaiseAspect]] are exactly the
     * ones with no raise to intercept.
     *
+    * This isn't a convention a hand-written instance could violate — it's
+    * structural. `FunctorK#mapK`'s `fk: F ~> G` runs one way only; there's no
+    * reverse arrow to pull a `Raise[G, E]` capability parameter back to the
+    * `Raise[F, E]` a delegating `mapK` would need to call the original
+    * method. `RaiseArrow` exists precisely to carry that missing reverse
+    * arrow (`RaisePull`) alongside `fk`; plain `Aspect`/`FunctorK` never has
+    * one, so it can't implement such a method at all, for any algebra.
+    *
     * No effect constraint: `Aspect.weave` takes no implicit and `Aspect.mapK`
     * takes only a `FunctionK`.
     */
