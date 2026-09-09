@@ -2,10 +2,11 @@ package com.dwolla.tagless.mtl
 package laws
 
 import cats.Applicative
-import cats.effect.SyncIO
+import cats.effect.{Ref, SyncIO}
 import cats.mtl.syntax.all.*
 import cats.mtl.Raise
 import cats.syntax.all.*
+import cats.tagless.Trivial
 import com.dwolla.tagless.mtl.TestError.*
 import com.dwolla.tagless.mtl.laws.LawsInstances.*
 import munit.CatsEffectSuite
@@ -29,6 +30,21 @@ trait EdgeAlg[F[_]] extends ParentAlg[F]:
   def overloaded(s: String): F[String]
   val constant: F[String]
 
+/** An abstract type member, exercising `DeriveRaiseMacros.newTypeAlias` — the
+  * reflection-into-compiler-internals path with no counterpart on Scala 2.
+  * `Cod`/`Dom` are pinned at `Trivial` because `Out` is unconstrained: no
+  * concrete typeclass could possibly have an instance for an abstract type
+  * with no upper bound, only `Trivial`'s universal one.
+  */
+trait TypeMemberAlg[F[_]]:
+  type Out
+  def get: F[Out]
+
+object TypeMemberAlg:
+  def instance(counter: Ref[SyncIO, Int]): TypeMemberAlg[SyncIO] = new TypeMemberAlg[SyncIO]:
+    type Out = Int
+    def get: SyncIO[Out] = counter.getAndUpdate(_ + 1)
+
 object EdgeAlg:
   def instance[F[_]: Applicative]: EdgeAlg[F] = new EdgeAlg[F]:
     def inherited(i: Int)(using R: Raise[F, ErrA]): F[String] =
@@ -46,6 +62,9 @@ class EdgeCaseDerivationSpec extends CatsEffectSuite with HandleTestSyntax:
     DeriveRaise.aspect[EdgeAlg, Render, Render, Render]
 
   private val impl = EdgeAlg.instance[SyncIO]
+
+  private val typeMemberDerived: RaiseAspect[TypeMemberAlg, Trivial, Trivial, Trivial] =
+    DeriveRaise.aspect[TypeMemberAlg, Trivial, Trivial, Trivial]
 
   testWithHandle[SyncIO, TestError]("a capability method inherited from a parent trait is woven") { implicit H =>
     for {
@@ -146,5 +165,19 @@ class EdgeCaseDerivationSpec extends CatsEffectSuite with HandleTestSyntax:
       w1 <- recorder.weaves
       _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("i" -> "5")))
       _ = assertEquals(out, 15)
+    } yield ()
+  }
+
+  testWithHandle[SyncIO, TestError]("an algebra with an abstract type member derives and weaves") { implicit H =>
+    for {
+      counter <- Ref.of[SyncIO, Int](0)
+      recorder <- RecordingFk[SyncIO, Trivial, Trivial]
+      instrumented = typeMemberDerived.intercept(TypeMemberAlg.instance(counter))(recorder.fk, OnRaise.noop[SyncIO, Trivial])
+      _ <- instrumented.get
+      count <- counter.get
+      _ = assertEquals(count, 1, "intercept must still call through to the underlying implementation")
+      w1 <- recorder.weaves
+      _ = assertEquals(w1.last.weave.algebraName, "TypeMemberAlg")
+      _ = assertEquals(w1.last.weave.codomain.name, "get")
     } yield ()
   }
