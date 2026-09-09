@@ -106,7 +106,10 @@ class ToAnyValueSpec extends DisciplineSuite {
     // value, not on scale or textual form.
     assertEquals(enc(BigDecimal("2.00")), AnyValue.long(2L))
     assertEquals(enc(BigDecimal("1.50")), AnyValue.double(1.5))
-    assertEquals(enc(BigInt("123456789012345678901234567890")), AnyValue.double(BigDecimal("123456789012345678901234567890").toDouble))
+    // Wider than Double's 53 bits of mantissa: folding to AnyValue.double
+    // would silently round it, so this falls back to the exact decimal
+    // string instead.
+    assertEquals(enc(BigInt("123456789012345678901234567890")), AnyValue.string("123456789012345678901234567890"))
   }
 
   checkAll("SemigroupK[ToAnyValue]", SemigroupKTests[ToAnyValue].semigroupK[MiniInt])

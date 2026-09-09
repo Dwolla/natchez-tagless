@@ -14,15 +14,25 @@ import org.typelevel.otel4s.AnyValue
   */
 class EncodableToAnyValueSpec extends ScalaCheckSuite with ArbitraryInstances {
 
+  /** Independent of `jsonToAnyValue.onNumber`'s own round-trip check, but
+    * must agree with it: a `Double` that doesn't reproduce the original
+    * number exactly loses precision silently, so both sides fall back to
+    * the number's exact string form instead.
+    */
+  private def expectedNumber(n: io.circe.JsonNumber): AnyValue =
+    n.toLong match {
+      case Some(l) => AnyValue.long(l)
+      case None =>
+        val asDouble = n.toDouble
+        val roundTrips = n.toBigDecimal.exists(exact => scala.util.Try(BigDecimal(asDouble.toString)).toOption.contains(exact))
+        if (roundTrips) AnyValue.double(asDouble) else AnyValue.string(n.toString)
+    }
+
   private def expected(json: Json): AnyValue =
     json.fold(
       jsonNull = AnyValue.empty,
       jsonBoolean = AnyValue.boolean,
-      jsonNumber = n =>
-        n.toLong match {
-          case Some(l) => AnyValue.long(l)
-          case None => AnyValue.double(n.toDouble)
-        },
+      jsonNumber = expectedNumber,
       jsonString = AnyValue.string,
       jsonArray = arr => AnyValue.seq(arr.map(expected)),
       jsonObject = obj => AnyValue.map(obj.toMap.view.mapValues(expected).toMap)
@@ -54,5 +64,29 @@ class EncodableToAnyValueSpec extends ScalaCheckSuite with ArbitraryInstances {
 
   test("Json.Null folds to AnyValue.empty") {
     assertEquals(ToAnyValue[Json].toAnyValue(Json.Null), AnyValue.empty)
+  }
+
+  test("a whole number too big for a Long folds to AnyValue.string, preserving every digit") {
+    val exact = BigInt("123456789012345678901234567890")
+    val json = Json.fromBigInt(exact)
+
+    ToAnyValue[Json].toAnyValue(json) match {
+      case sv: AnyValue.StringValue => assertEquals(BigInt(sv.value), exact)
+      case other => fail(s"expected a StringValue preserving $exact exactly, got $other")
+    }
+  }
+
+  test("a decimal with more significant digits than a Double can hold folds to AnyValue.string, not a lossy Double") {
+    val exact = BigDecimal("0.123456789012345678901234567890")
+    val json = Json.fromBigDecimal(exact)
+
+    ToAnyValue[Json].toAnyValue(json) match {
+      case sv: AnyValue.StringValue => assertEquals(BigDecimal(sv.value), exact)
+      case other => fail(s"expected a StringValue preserving $exact exactly, got $other")
+    }
+  }
+
+  test("a decimal that Double represents exactly still folds to AnyValue.double") {
+    assertEquals(ToAnyValue[Json].toAnyValue(Json.fromDoubleOrNull(1.5)), AnyValue.double(1.5))
   }
 }

@@ -189,9 +189,29 @@ object ToAnyValue extends LowPriorityToAnyValueInstances {
   private[otel4s] val jsonToAnyValue: Json.Folder[AnyValue] = new Json.Folder[AnyValue] {
     override def onNull: AnyValue = AnyValue.empty
     override def onBoolean(value: Boolean): AnyValue = AnyValue.boolean(value)
+
+    /** otel4s has no arbitrary-precision leaf, so a number outside `Long`
+      * range only fits `AnyValue.double` when the round trip through
+      * `Double` reproduces the exact original value. When it doesn't — a
+      * `BigInt`/`BigDecimal` wider than `Double`'s 53 bits of mantissa,
+      * commonly reached via `encodableToAnyValue` — this falls back to the
+      * number's exact decimal string rather than silently rounding it.
+      *
+      * `toBigDecimal` can return `None` for a number circe itself refuses to
+      * expand (a pathological exponent, guarded as a decompression-bomb
+      * defense) — in that case skip the round-trip check entirely rather
+      * than constructing the `BigDecimal` the guard exists to avoid; `value.
+      * toString` is always safe, since it is exactly the source text circe
+      * already parsed.
+      */
     override def onNumber(value: JsonNumber): AnyValue = value.toLong match {
       case Some(l) => AnyValue.long(l)
-      case None => AnyValue.double(value.toDouble)
+      case None =>
+        val asDouble = value.toDouble
+        val roundTrips = value.toBigDecimal.exists { exact =>
+          scala.util.Try(BigDecimal(asDouble.toString)).toOption.contains(exact)
+        }
+        if (roundTrips) AnyValue.double(asDouble) else AnyValue.string(value.toString)
     }
     override def onString(value: String): AnyValue = AnyValue.string(value)
     override def onArray(value: Vector[Json]): AnyValue = AnyValue.seq(value.map(_.foldWith(this)))
