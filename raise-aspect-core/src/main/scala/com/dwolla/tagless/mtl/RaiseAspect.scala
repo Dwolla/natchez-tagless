@@ -63,7 +63,10 @@ object RaiseAspect {
     *
     * `functor` is `R`'s own — the real `Functor[F]`. Nothing is synthesized,
     * which is why this decorator is sound by construction: it can only produce
-    * what `R` produces, prefixed by the hook's effect.
+    * what `R` produces, prefixed by the hook's effect — provided `onRaise`
+    * itself never fails through the capability it observes. See
+    * [[OnRaise]]'s scaladoc for why that's a documented precondition on the
+    * hook rather than something `Apply[F]` can enforce.
     */
   def observing[F[_], E, Err[_]](R: Raise[F, E], onRaise: OnRaise[F, Err])(implicit
       F: Apply[F],

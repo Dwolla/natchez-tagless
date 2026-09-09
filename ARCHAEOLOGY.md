@@ -45,31 +45,46 @@ dependency to restate at `Trivial`, so today only L4's copy survives — see
 
 An earlier design for `otel4s-tagless-mtl`'s `traceWithInputs` claimed it had
 to declare its own effect constraint, matching `RaiseAspect#intercept`'s own
-requirement (`Apply[F]` at the time; later widened to `FlatMap[F]` — see
-below). That turned out to be wrong: `WeaveInterpreter.fromRaiseAspect`
+`Apply[F]` requirement. That turned out to be wrong: `WeaveInterpreter.fromRaiseAspect`
 resolves whatever `intercept` needs from the caller's own scope, so neither
 `traceWithInputs` nor `traceWithInputsAndOutputs` needs to declare it itself.
 The claim was retracted.
 
-### `intercept`'s `Apply[F]` widened to `FlatMap[F]`
+### Widening `intercept`'s `Apply[F]` to `FlatMap[F]` — considered and reverted
 
-`RaiseAspect.observing` sequenced the `onRaise` hook ahead of the underlying
-raise with `Apply[F]`'s `*>`. That's unsound for an accumulating
-`Applicative` such as `Validated`/`Ior` — cats-mtl ships a lawful
-`Raise[Validated[E, *], E]` — because `*>` combines two `Invalid`s via
-`Semigroup` rather than discarding the first: a hook that itself produced an
-`Invalid` would fold its error into the raised value instead of being
-ignored. Widened to `FlatMap[F]` with `>>`, which discards the hook's effect
-unconditionally and excludes accumulating carriers from `intercept` entirely,
-since cats deliberately gives them no `FlatMap` instance. Propagated through
-every `intercept` override and `RaiseAspectLaws.interceptErasure`, which
-needed `Monad[A]` in place of `Applicative[A]` — `FlatMap` and `Applicative`
-are siblings in cats' hierarchy, and `Monad` is the smallest single
-constraint giving both. `natchez-tagless-mtl`'s `traceWithInputs` picked up
-`FlatMap[F]` where it previously needed only `Apply[F]`, one step further
-from the non-mtl `TraceWeaveOps.traceWithInputs`'s signature than before;
-`traceWithInputsAndOutputs` was unaffected, since it already required
-`FlatMap[F]` on both sides.
+`RaiseAspect.observing` sequences the `onRaise` hook ahead of the underlying
+raise with `Apply[F]`'s `*>`. Under an accumulating `Applicative` such as
+`Validated` (cats-mtl ships a lawful `Raise[Validated[E, *], E]`), if the
+hook's own `F[Unit]` is itself an `Invalid[E2]`, `*>` combines it into the
+result via `Semigroup[E]` rather than discarding it — the caller sees
+`Invalid(e2 |+| e)` instead of `Invalid(e)`.
+
+A first attempt fixed this by requiring `FlatMap[F]` instead and sequencing
+with `>>`, which excludes `Validated`/`Ior` from `intercept` entirely (cats
+gives them no `FlatMap` on purpose). That was reverted: accumulating a
+hook's own error via the *same* `Semigroup` governing every other error in
+the computation is exactly what accumulating validation is for — nothing
+about `Validated`'s semantics makes that combination wrong. And the fix
+didn't address the actual concern, which is more general than accumulation:
+under any monadic `F` (the case every shipped `OnRaise` — `Otel4sDefaultOnRaise`,
+natchez's default — actually runs under), a failing hook already
+short-circuits `*>`/`>>` identically, *replacing* the real raised value with
+the hook's failure rather than combining with it. `FlatMap[F]` changes
+nothing about that; it only narrows which `F` can use `intercept`, at zero
+benefit to the `F`s still allowed.
+
+The real invariant — a raise observed through a hook must produce the exact
+same value as the same raise with no hook attached, matching the
+transparency `RaiseTracerTransparencySpec` checks for the shipped hooks — 
+can't be enforced by choosing a stronger typeclass; it would need the power
+to catch and discard the hook's own failure (`ApplicativeError`-shaped),
+which `intercept` deliberately doesn't ask for (see the `Handle[F, E]`
+rejection above: capabilities that consume `F` are kept out of this design
+on purpose). So it stands as a documented precondition on `OnRaise`
+instead — see `OnRaise`'s own scaladoc — the same way a `Functor`/`Monad`
+law is trusted rather than type-checked everywhere else in this ecosystem.
+Every shipped hook already satisfies it trivially: none of them ever raises
+through the capability they're observing.
 
 ## Migrating from `natchez-tagless` to the otel4s modules
 
