@@ -373,6 +373,25 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
     }
   }
 
+  /** Reject an abstract `val`/`var` member before it reaches `delegateMethods`.
+    *
+    * `delegateMethods` filters out every accessor (`!isAccessor`), a line
+    * taken verbatim from upstream cats-tagless's own Scala 2 macro — which,
+    * unlike its Scala 3 counterpart, has no `transformVal` facility to
+    * implement one. Left unchecked, an abstract `val` member silently gets no
+    * override in the generated `new $instance { ... }`, surfacing only as
+    * scalac's own "object creation impossible" error with no mention of
+    * `RaiseAspect` at all. This can only ever fire for an ''abstract'' val: a
+    * concrete one is already implemented and needs no override here.
+    */
+  private def rejectAbstractVals(members: Iterable[Symbol]): Unit =
+    for (member <- members if member.isMethod && member.asMethod.isAccessor && member.isAbstract)
+      abort(
+        s"abstract val ${member.name.decodedName} is not supported by RaiseAspect's Scala 2 derivation " +
+          "(only defs are) — the Scala 3 derivation supports it natively. Convert " +
+          s"`val ${member.name.decodedName}: ...` to a `def`."
+      )
+
   /** Reject every parameter that mentions `F` other than as a capability. */
   private def validateParams(method: Method, f: Symbol): Unit =
     for (ps <- method.paramLists; p <- ps) {
@@ -448,6 +467,7 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
       val F = f.asType.toTypeConstructor
       val Af = singleType(NoPrefix, af)
       val members = overridableMembersOf(Af)
+      rejectAbstractVals(members)
       val types = delegateAbstractTypes(Af, members, Af)
       val algebraName = typeNameOf(algebra)
 
@@ -500,6 +520,7 @@ class DeriveRaiseMacros(val c: blackbox.Context) {
       val G = g.asType.toTypeConstructor
       val Af = singleType(NoPrefix, af)
       val members = overridableMembersOf(Af)
+      rejectAbstractVals(members)
       val types = delegateAbstractTypes(Af, members, Af)
 
       val methods = delegateMethods(Af, members, af) {

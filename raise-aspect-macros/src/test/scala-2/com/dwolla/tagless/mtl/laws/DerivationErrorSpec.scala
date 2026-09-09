@@ -43,6 +43,16 @@ object BadAlgebras {
   trait AliasedCapabilityAlg[F[_]] {
     def m(i: Int)(implicit R: ErrARaise[F]): F[String]
   }
+
+  /** Abstract `val`s can't carry a capability parameter at all (a `val` has no
+    * parameter list), but the Scala 2 reflection macro still can't implement
+    * one: `delegateMethods` filters out every accessor, abstract or not, so
+    * left unchecked this would surface only as a raw "object creation
+    * impossible" error from scalac, not a derivation diagnostic.
+    */
+  trait AbstractValAlg[F[_]] {
+    val constant: F[String]
+  }
 }
 
 class DerivationErrorSpec extends FunSuite {
@@ -121,6 +131,15 @@ DeriveRaise.aspect[NoEvidenceAlg, Render, Render, Render]"""
       compileErrors("DeriveRaise.aspect[BadAlgebras.AliasedCapabilityAlg, Render, Render, Render]"),
       ""
     )
+  }
+
+  test("an abstract val is rejected, naming the member and pointing at def as the workaround") {
+    val errors = compileErrors(
+      "DeriveRaise.aspect[BadAlgebras.AbstractValAlg, Render, Render, Render]"
+    )
+    assert(errors.contains("abstract val constant"), errors)
+    assert(errors.contains("not supported"), errors)
+    assert(errors.contains("def"), errors)
   }
 }
 
