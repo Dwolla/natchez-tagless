@@ -1,6 +1,6 @@
 package com.dwolla.tagless.mtl
 
-import cats.FlatMap
+import cats.Apply
 import cats.tagless.aop.Aspect
 import cats.tagless.aop.Aspect.Weave
 import cats.~>
@@ -34,7 +34,7 @@ object WeaveInterpreterFixtures {
       def intercept[F[_]](af: PlainAlg[F])(
           fk: Weave[F, Render, Render, *] ~> F,
           onRaise: OnRaise[F, Render]
-      )(implicit F: FlatMap[F]): PlainAlg[F] =
+      )(implicit F: Apply[F]): PlainAlg[F] =
         throw new AssertionError("priority resolved to RaiseAspect instead of Aspect")
 
       def mapK[F[_], G[_]](af: PlainAlg[F])(arrow: RaiseArrow[F, G, Render]): PlainAlg[G] =

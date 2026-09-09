@@ -1,6 +1,6 @@
 package com.dwolla.tracing.otel4s.mtl
 
-import cats.{Applicative, FlatMap}
+import cats.{Applicative, Apply}
 import cats.mtl.Raise
 import cats.syntax.all._
 import cats.tagless.aop.Aspect
@@ -57,7 +57,7 @@ object Foo {
       def intercept[F[_]](af: Foo[F])(
           fk: Aspect.Weave[F, ToAnyValue, ToAnyValue, *] ~> F,
           onRaise: OnRaise[F, ToAnyValue]
-      )(implicit F: FlatMap[F]): Foo[F] =
+      )(implicit F: Apply[F]): Foo[F] =
         new Foo[F] {
           def foo(i: Int)(implicit R: Raise[F, FooError]): F[String] =
             fk(

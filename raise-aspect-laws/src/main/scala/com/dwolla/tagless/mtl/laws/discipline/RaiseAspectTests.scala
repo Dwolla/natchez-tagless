@@ -2,7 +2,7 @@ package com.dwolla.tagless.mtl
 package laws
 package discipline
 
-import cats.{Eq, Monad}
+import cats.{Applicative, Eq}
 import cats.laws.discipline._
 import org.scalacheck.Arbitrary
 import org.scalacheck.Prop._
@@ -19,12 +19,12 @@ trait RaiseAspectTests[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorKT
       ArbArrowBC: Arbitrary[RaiseArrow[B, C, Err]],
       EqAlgA: Eq[Alg[A]],
       EqAlgC: Eq[Alg[C]],
-      MonadA: Monad[A]
+      ApplicativeA: Applicative[A]
   ): RuleSet =
     new DefaultRuleSet(
       name = "raiseAspect",
       parent = Some(raiseFunctorK[A, B, C]),
-      "intercept erasure" -> forAll((af: Alg[A]) => laws.interceptErasure[A](af)(MonadA))
+      "intercept erasure" -> forAll((af: Alg[A]) => laws.interceptErasure[A](af)(ApplicativeA))
     )
 }
 

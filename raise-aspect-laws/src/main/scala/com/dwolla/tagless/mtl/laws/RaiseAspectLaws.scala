@@ -1,7 +1,7 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.Monad
+import cats.Applicative
 import cats.laws._
 
 /** Law L3′, the load-bearing one: intercepting an algebra with the forgetful
@@ -17,12 +17,10 @@ trait RaiseAspectLaws[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorKLa
     * Either[TestError, *]`, a raise must come back as the identical `Left`
     * through the instrumented path.
     *
-    * `Monad[A]` rather than `Functor[A]`: `intercept` needs `FlatMap` to
-    * sequence the hook and `OnRaise.noop` needs `Applicative` to produce one —
-    * `FlatMap` and `Applicative` are siblings in cats' hierarchy, so `Monad`
-    * is the smallest single constraint giving both.
+    * `Applicative[A]` rather than `Functor[A]`: `intercept` needs `Apply` to
+    * sequence the hook and `OnRaise.noop` needs `Applicative` to produce one.
     */
-  def interceptErasure[A[_]](af: Alg[A])(implicit A: Monad[A]): IsEq[Alg[A]] =
+  def interceptErasure[A[_]](af: Alg[A])(implicit A: Applicative[A]): IsEq[Alg[A]] =
     F.intercept(af)(WeaveArrows.codomainTarget[A, Dom, Cod], OnRaise.noop[A, Err]) <-> af
 }
 

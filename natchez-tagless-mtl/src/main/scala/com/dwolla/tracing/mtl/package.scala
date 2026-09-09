@@ -65,12 +65,9 @@ package com.dwolla.tracing
   *
   * ==Design constraints==
   *
-  *   - `intercept` requires a `FlatMap[F]` — needed to sequence the `onRaise`
-  *     hook's effect before the underlying `Raise[F, E]`'s own `raise` runs,
-  *     discarding whatever the hook produced. `Apply[F]` is not enough: under
-  *     an accumulating `Applicative` (`Validated`, `Ior`) a failing hook's
-  *     error would combine into the raised value via `Semigroup` instead of
-  *     being discarded. The woven `Aspect.Weave` is data handed to the
+  *   - `intercept` requires an `Apply[F]` — needed only to sequence the
+  *     `onRaise` hook's effect before the underlying `Raise[F, E]`'s own
+  *     `raise` runs. The woven `Aspect.Weave` is data handed to the
   *     interpreter, never a carrier a capability is transported across, so no
   *     `Functor` is ever synthesized for it.
   *   - `Handle[F, E]` parameters are rejected at derivation time, with a message

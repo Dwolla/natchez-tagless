@@ -270,7 +270,7 @@ class MethodLocalInstanceSpec extends CatsEffectSuite with HandleTestSyntax:
 
   testWithHandle[SyncIO, WidgetError]("the intercept hook renders a raise through the method-local Err instance") { implicit H =>
     // `intercept` wires the hook in directly —
-    // `RaiseAspect.observing($pn, $onRaise)($flatMap, $errInstance)` — so this
+    // `RaiseAspect.observing($pn, $onRaise)($applyF, $errInstance)` — so this
     // asserts a stronger claim than the test above (which observes the hook
     // only indirectly, through `mapK` and a hand-rolled recording
     // `RaisePull`): the *method-local* `Err[WidgetError]` the call was handed

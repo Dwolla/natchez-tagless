@@ -1,6 +1,6 @@
 package com.dwolla.tracing.mtl
 
-import cats.FlatMap
+import cats.Apply
 import cats.mtl.Raise
 import cats.tagless.aop.Aspect
 import cats.~>
@@ -18,7 +18,7 @@ object HandWrittenBarRaiseAspect {
       def intercept[F[_]](af: Bar[F])(
           fk: Aspect.Weave[F, TraceableValue, TraceableValue, *] ~> F,
           onRaise: OnRaise[F, TraceableValue]
-      )(implicit F: FlatMap[F]): Bar[F] =
+      )(implicit F: Apply[F]): Bar[F] =
         new Bar[F] {
           def bar(i: Int)(implicit R: Raise[F, BarError]): F[String] =
             fk(
