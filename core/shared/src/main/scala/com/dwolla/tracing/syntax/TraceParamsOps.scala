@@ -3,6 +3,7 @@ package syntax
 
 import cats.effect.Trace as _
 import cats.tagless.aop.Aspect.Weave
+import com.dwolla.tagless.WeaveNaming._
 import natchez.{TraceValue, TraceableValue}
 
 trait ToTraceParamsOps {
@@ -16,7 +17,7 @@ class TraceParamsOps[F[_], Cod[_], A](val fa: Weave[F, TraceableValue, Cod, A]) 
       l.map { advice =>
         // TODO these attribute names are kind of verbose, but the attribute naming spec says to namespace everything. Not sure what to do.
         // https://opentelemetry.io/docs/reference/specification/common/attribute-naming/
-        s"${fa.algebraName}.${fa.codomain.name}.${advice.name}" -> advice.instance.toTraceValue(advice.target.value)
+        s"${fa.qualifiedMethodName}.${advice.name}" -> advice.instance.toTraceValue(advice.target.value)
       }
     }
 }

@@ -2,6 +2,7 @@ package com.dwolla.tracing.otel4s
 
 import cats.tagless.aop.Aspect.Weave
 import cats.~>
+import com.dwolla.tagless.WeaveNaming._
 import com.dwolla.tracing.otel4s.syntax._
 import org.typelevel.otel4s.trace.Tracer
 
@@ -44,7 +45,7 @@ object TracerWeaveCapturingInputs {
 class TracerWeaveCapturingInputs[F[_]: Tracer, Cod[_]] extends (Weave[F, ToAnyValue, Cod, *] ~> F) {
   override def apply[A](fa: Weave[F, ToAnyValue, Cod, A]): F[A] =
     Tracer[F]
-      .spanBuilder(s"${fa.algebraName}.${fa.codomain.name}")
+      .spanBuilder(fa.qualifiedMethodName)
       // asAttributes stays *inside* this lambda. Tracer.noop's modifyState
       // never applies the function, so a disabled tracer pays nothing for
       // encoding — and by-name parameters are never forced.

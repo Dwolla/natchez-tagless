@@ -2,6 +2,7 @@ package com.dwolla.tracing.otel4s
 package syntax
 
 import cats.tagless.aop.Aspect.Weave
+import com.dwolla.tagless.WeaveNaming._
 import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
 
 trait ToWeaveAttributesOps {
@@ -50,7 +51,7 @@ class WeaveAttributesOps[F[_], Cod[_], A](val fa: Weave[F, ToAnyValue, Cod, A]) 
     if (entries.isEmpty) Attributes.empty
     else {
       val parameters: AnyValue = AnyValue.map(entries)
-      Attributes(Attribute(s"${fa.algebraName}.${fa.codomain.name}.parameters", parameters))
+      Attributes(Attribute(s"${fa.qualifiedMethodName}.parameters", parameters))
     }
   }
 }

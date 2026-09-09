@@ -4,6 +4,7 @@ import cats.FlatMap
 import cats.syntax.all._
 import cats.tagless.aop.Aspect.Weave
 import cats.~>
+import com.dwolla.tagless.WeaveNaming._
 import com.dwolla.tracing.otel4s.syntax._
 import org.typelevel.otel4s.trace.Tracer
 import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
@@ -164,7 +165,7 @@ class TracerWeaveCapturingInputsAndOutputs[F[_]: FlatMap: Tracer]
   extends (Weave[F, ToAnyValue, ToAnyValue, *] ~> F) {
 
   override def apply[A](fa: Weave[F, ToAnyValue, ToAnyValue, A]): F[A] = {
-    val name = s"${fa.algebraName}.${fa.codomain.name}"
+    val name = fa.qualifiedMethodName
 
     Tracer[F]
       .spanBuilder(name)

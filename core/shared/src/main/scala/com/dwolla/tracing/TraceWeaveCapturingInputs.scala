@@ -3,6 +3,7 @@ package com.dwolla.tracing
 import cats._
 import cats.syntax.all._
 import cats.tagless.aop.Aspect.Weave
+import com.dwolla.tagless.WeaveNaming._
 import com.dwolla.tracing.syntax._
 import natchez.{Trace, TraceableValue}
 
@@ -115,7 +116,7 @@ object TraceWeaveCapturingInputs {
  */
 class TraceWeaveCapturingInputs[F[_] : Apply : Trace, Cod[_]] extends (Weave[F, TraceableValue, Cod, *] ~> F) {
   override def apply[A](fa: Weave[F, TraceableValue, Cod, A]): F[A] =
-    Trace[F].span(s"${fa.algebraName}.${fa.codomain.name}") {
+    Trace[F].span(fa.qualifiedMethodName) {
       Trace[F].put(fa.asTraceParams *) *> fa.codomain.target
     }
 }
