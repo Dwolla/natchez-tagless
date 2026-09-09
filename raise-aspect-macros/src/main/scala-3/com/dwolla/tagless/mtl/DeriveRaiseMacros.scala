@@ -467,6 +467,13 @@ private[mtl] object RaiseAspectMacros:
       },
       body = {
         case (sym, tpe, body) if tpe.typeSymbol == Carrier.typeSymbol =>
+          // Drops every given/implicit clause wholesale rather than leaving a
+          // gap, so a using clause sandwiched between two ordinary clauses
+          // (Scala 3 only — Scala 2 allows at most one implicit clause, always
+          // last) collapses the domain's clause count instead of preserving
+          // it. Harmless today because every consumer (TraceParamsOps,
+          // WeaveAttributesOps) flattens domain before use; would matter only
+          // to a future consumer that compares domain shape structurally.
           val clauses = sym.tree match
             case method: DefDef => method.termParamss.filterNot(c => c.isGiven || c.isImplicit)
             case _ => Nil
