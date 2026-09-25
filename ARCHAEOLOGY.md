@@ -12,36 +12,53 @@ surviving record of the decisions that still matter.
 
 ## Design decisions
 
-### `RaiseAspect#intercept` fuses `weave` and `mapK` (M12)
+### `RaiseAspect#intercept` fuses `weave` and `mapK`
 
-Earlier milestones modeled `RaiseAspect` the way `Aspect` is modeled:
+`RaiseAspect` was first modeled the way `Aspect` is modeled:
 `weave` producing a woven algebra, then a separate `mapK` interpreting it.
 That required a `Functor` instance on the woven carrier
 (`Aspect.Weave[F, Dom, Cod, *]`), which cats-tagless can only synthesize, not
-derive honestly, for methods carrying `Raise` parameters — a real defect. M12
-fused the two operations into one `intercept` method: a `Weave` is now built
-and handed straight to the interpreter as data, so no method ever receives a
-`Raise[Aspect.Weave[F, Dom, Cod, *], E]` and nothing has to synthesize a
-`Functor` for it. `Synthetic` and `WeaveArrows`' pair of capability
+derive honestly, for methods carrying `Raise` parameters — a real defect. It
+was later fixed by fusing the two operations into one `intercept` method: a
+`Weave` is now built and handed straight to the interpreter as data, so no
+method ever receives a `Raise[Aspect.Weave[F, Dom, Cod, *], E]` and nothing
+has to synthesize a `Functor` for it. `Synthetic` and `WeaveArrows`' pair of capability
 transports existed only to work around the old defect and were deleted along
 with it.
 
-### `Err = Trivial` copies of laws L4–L7 (M10)
+### Laws removed with their APIs
 
-M10 added an `implicit ev: Err[E]` parameter to the value-level laws (L4,
-L5, L6, L7), narrowing each from "for all `E`" to "for all `E` for which
-`Err[E]` exists" — strictly weaker than what M1–M9 had established, since
-`Render` (the law suite's usual `Err`) doesn't cover every `E`.
+`RaiseAspect` once also extended `RaiseFunctorK`, whose `mapK` changed an
+algebra's carrier using a `RaiseArrow` (a forward `F ~> G` plus a `RaisePull`
+carrying `Raise` capabilities backward). Nothing outside the laws and the
+derivation ever called it — tracing only needs `intercept`, which never changes
+carrier — so it was removed along with `RaiseArrow`, `RaisePull`,
+`DeriveRaise.functorK`, and the laws that specified them: L1 (`mapK` identity),
+L2 (`mapK` composition), and L4 (arrow coherence). L5 and L6 had specified the
+lifted capability on the woven carrier, which the fusion of `weave` and `mapK`
+into `intercept` (above) eliminated.
+
+If carrier-changing `mapK` is wanted again, add it as a separate type class
+with its own derivation rather than as a supertype of `RaiseAspect`: a new
+abstract member on `RaiseAspect` would break every existing instance.
+
+### `Err = Trivial` copies of laws L4–L7
+
+Adding an `implicit ev: Err[E]` parameter to the value-level laws (L4,
+L5, L6, L7) narrowed each from "for all `E`" to "for all `E` for which
+`Err[E]` exists" — strictly weaker than what the laws had established
+before, since `Render` (the law suite's usual `Err`) doesn't cover every `E`.
 `cats.tagless.Trivial` has exactly one instance, universal in `E`, so
 instantiating each law again at `Err = Trivial` restores the original `∀E`
 quantifier. All seven affected properties carried that restoration at the
 time — this was an explicit call by the project owner, not a default, and
 not one to consolidate away as redundant with the `Render` instantiations.
-M12 (above) later retired L5 and L6 entirely and left L7 with no `Err`
-dependency to restate at `Trivial`, so today only L4's copy survives — see
-`LAWS.md`.
+The fusion into `intercept` (above) later retired L5 and L6 entirely and left
+L7 with no `Err` dependency to restate at `Trivial`. L4's copy outlived them,
+but L4 was then removed with `RaiseArrow` (see "Laws removed with their APIs",
+above), so no `Trivial` copy survives.
 
-### `traceWithInputs`'s effect constraint (D9, M17)
+### `traceWithInputs`'s effect constraint
 
 An earlier design for `otel4s-tagless-mtl`'s `traceWithInputs` claimed it had
 to declare its own effect constraint, matching `RaiseAspect#intercept`'s own

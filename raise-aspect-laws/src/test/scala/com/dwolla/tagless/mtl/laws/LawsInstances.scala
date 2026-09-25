@@ -42,8 +42,7 @@ object LawsInstances extends TestInstances {
     * `Raise[Result, TestError]` — and, because `Raise` is contravariant in `E`,
     * the `Raise[Result, ErrA]` and `Raise[Result, ErrB]` that [[eqTestAlg]] asks
     * for — so nothing about `Result` needs to be in implicit scope here. The val
-    * exists to name one instance for the value-level laws, which take the
-    * capability as an explicit parameter.
+    * exists to name the capability the L7 test decorates and compares against.
     *
     * Adding `implicit` would also be a trap: the summon on the right would then
     * resolve to the val being defined and initialize it to `null`, surfacing

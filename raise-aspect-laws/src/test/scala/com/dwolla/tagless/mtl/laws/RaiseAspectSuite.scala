@@ -25,6 +25,8 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
   private implicit val arbTestAlgResult: Arbitrary[TestAlg[Result]] =
     Arbitrary(Gen.oneOf(-1, 0, 1).map(new EitherTestAlg(_)))
 
+  // L3′ lives at the base effect: `intercept` is carrier-preserving, so the
+  // effect it erases into is the one the algebra already speaks.
   checkAll(
     "RaiseAspect[TestAlg, Render, Render, Render] (L3′)",
     RaiseAspectTests[TestAlg, Render, Render, Render].raiseAspect[Result]
