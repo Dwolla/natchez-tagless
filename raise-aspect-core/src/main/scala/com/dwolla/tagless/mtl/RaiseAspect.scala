@@ -6,15 +6,6 @@ import cats.tagless.aop.Aspect
 import cats.{Apply, Functor}
 import cats.~>
 
-/** The `FunctorK` analogue for algebras whose methods take `Raise` capability
-  * parameters. Plain `FunctorK` is uninhabited for such algebras, because
-  * `mapK` over an `F ~> G` cannot turn the `Raise[G, E]` a `G`-side method
-  * receives into the `Raise[F, E]` the underlying method needs.
-  */
-trait RaiseFunctorK[Alg[_[_]], Err[_]] extends Serializable {
-  def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G, Err]): Alg[G]
-}
-
 /** The `Aspect` analogue for algebras with `Raise` capability parameters.
   *
   * `Aspect.Weave` and `Aspect.Advice` are reused from cats-tagless verbatim so
@@ -29,14 +20,13 @@ trait RaiseFunctorK[Alg[_[_]], Err[_]] extends Serializable {
   * including several `Raise` parameters on one method.
   *
   * `Err` is not an `E` parameter. It is a per-error-type ''evidence'' type
-  * class demanded afresh at each application: `intercept`'s evidence arrives
-  * at `RaiseAspect.observing`'s `ev: Err[E]` parameter, and `mapK`'s at
-  * `RaisePull#apply`'s. Either way transport stays uniform in `E` while an
-  * interception point gains something better than `toString` to render a
-  * raised error with. Use `cats.tagless.Trivial` for `Err` when no evidence is
-  * wanted.
+  * class demanded afresh at each application: the evidence arrives at
+  * `RaiseAspect.observing`'s `ev: Err[E]` parameter, so transport stays
+  * uniform in `E` while an interception point gains something better than
+  * `toString` to render a raised error with. Use `cats.tagless.Trivial` for
+  * `Err` when no evidence is wanted.
   */
-trait RaiseAspect[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorK[Alg, Err] {
+trait RaiseAspect[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends Serializable {
 
   /** Build an `Aspect.Weave` describing each method call and hand it to `fk`,
     * which decides what interception means — tracing it, logging it, or simply

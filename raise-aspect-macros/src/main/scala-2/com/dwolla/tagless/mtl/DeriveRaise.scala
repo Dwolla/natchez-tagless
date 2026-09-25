@@ -46,11 +46,7 @@ import scala.language.experimental.macros
   */
 object DeriveRaise {
 
-  /** Derive a [[RaiseAspect]], supporting both `intercept` and `mapK`. */
+  /** Derive a [[RaiseAspect]]. */
   def aspect[Alg[_[_]], Dom[_], Cod[_], Err[_]]: RaiseAspect[Alg, Dom, Cod, Err] =
     macro DeriveRaiseMacros.aspect[Alg, Dom, Cod, Err]
-
-  /** Derive just a [[RaiseFunctorK]], when no weaving is needed. */
-  def functorK[Alg[_[_]], Err[_]]: RaiseFunctorK[Alg, Err] =
-    macro DeriveRaiseMacros.functorK[Alg, Err]
 }

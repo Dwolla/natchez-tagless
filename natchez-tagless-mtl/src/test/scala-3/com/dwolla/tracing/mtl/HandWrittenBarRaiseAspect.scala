@@ -4,7 +4,7 @@ import cats.Apply
 import cats.mtl.Raise
 import cats.tagless.aop.Aspect
 import cats.~>
-import com.dwolla.tagless.mtl.{OnRaise, RaiseArrow, RaiseAspect}
+import com.dwolla.tagless.mtl.{OnRaise, RaiseAspect}
 import natchez.TraceableValue
 
 /** The differential reference to check `derives TraceableRaiseAspect`
@@ -31,12 +31,6 @@ object HandWrittenBarRaiseAspect {
                 )
               )
             )
-        }
-
-      def mapK[F[_], G[_]](af: Bar[F])(arrow: RaiseArrow[F, G, TraceableValue]): Bar[G] =
-        new Bar[G] {
-          def bar(i: Int)(implicit R: Raise[G, BarError]): G[String] =
-            arrow.fk(af.bar(i)(arrow.pull(R)))
         }
     }
 }

@@ -1,7 +1,6 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.arrow.FunctionK
 import cats.effect.{Sync, SyncIO}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -99,40 +98,6 @@ class DifferentialOracleSpec extends CatsEffectSuite with HandleTestSyntax:
     }
   }
 
-  test("the derived mapK agrees with the reference under the identity arrow") {
-    val eqAlg = eqTestAlg[Result]
-    outcomes.foreach { outcome =>
-      val impl = new EitherTestAlg(outcome)
-      assert(
-        eqAlg.eqv(
-          derived.mapK(impl)(RaiseArrow.id[Result, Render]),
-          reference.mapK(impl)(RaiseArrow.id[Result, Render])
-        ),
-        s"mapK under the identity arrow differs for eOutcome $outcome"
-      )
-    }
-  }
-
-  /** Covers what the identity-arrow comparison above cannot: `RaiseArrow.id`'s
-    * `pull` is the identity too, so at that arrow the comparison can't see a
-    * `pull` that was composed wrongly. This one uses a genuine carrier-change
-    * arrow instead.
-    */
-  testWithHandle[SyncIO, TestError]("the derived mapK agrees with the reference under a genuine carrier change") { implicit H =>
-    val eqAlg = eqTestAlg[SyncIO]
-    val arrow = CarrierArrows.resultToSyncIO[Render]
-
-    SyncIO {
-      outcomes.foreach { outcome =>
-        val impl = new EitherTestAlg(outcome)
-        assert(
-          eqAlg.eqv(derived.mapK(impl)(arrow), reference.mapK(impl)(arrow)),
-          s"mapK under the carrier-change arrow differs for eOutcome $outcome"
-        )
-      }
-    }
-  }
-
   test("the derived intercept agrees with the reference under the forgetful interpreter") {
     val eqAlg = eqTestAlg[Result]
     val erase = WeaveArrows.codomainTarget[Result, Render, Render]
@@ -145,15 +110,5 @@ class DifferentialOracleSpec extends CatsEffectSuite with HandleTestSyntax:
         ),
         s"intercept under the forgetful interpreter differs for eOutcome $outcome"
       )
-    }
-  }
-
-  test("the derived functorK agrees with the derived aspect's mapK") {
-    val functorK = DeriveRaise.functorK[TestAlg, Render]
-    val eqAlg = eqTestAlg[Result]
-    outcomes.foreach { outcome =>
-      val impl = new EitherTestAlg(outcome)
-      val arrow = RaiseArrow(FunctionK.id[Result], RaisePull.id[Result, Render])
-      assert(eqAlg.eqv(functorK.mapK(impl)(arrow), derived.mapK(impl)(arrow)))
     }
   }

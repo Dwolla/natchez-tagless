@@ -8,7 +8,7 @@ import cats.laws._
   * interpreter and no hook recovers the original algebra, including on inputs
   * that raise.
   */
-trait RaiseAspectLaws[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorKLaws[Alg, Err] {
+trait RaiseAspectLaws[Alg[_[_]], Dom[_], Cod[_], Err[_]] {
   implicit def F: RaiseAspect[Alg, Dom, Cod, Err]
 
   /** L3′ — `intercept(af)(codomainTarget, OnRaise.noop) <-> af`.

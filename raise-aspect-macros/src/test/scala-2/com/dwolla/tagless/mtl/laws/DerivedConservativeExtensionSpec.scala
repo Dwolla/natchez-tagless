@@ -1,7 +1,6 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.arrow.FunctionK
 import cats.data.EitherT
 import cats.effect.*
 import cats.effect.syntax.all.*
@@ -20,9 +19,9 @@ import com.dwolla.tagless.mtl.{HandleApplicativeErrorInstances, HandleTestSyntax
   *
   * `ConservativeExtensionSuite` hardcodes the hand-written
   * `PlainAlgReference` as "ours" and only exposes `upstream` as a seam, so it
-  * cannot be reused here. The laws module is frozen, so rather than widen that
-  * seam this spec restates the three comparisons against the derived instance.
-  * (That missing seam is worth fixing whenever the freeze is next lifted.)
+  * cannot be reused here. This spec restates the upstream comparisons against
+  * the derived instance and adds a comparison against the hand-written
+  * reference.
   */
 class DerivedConservativeExtensionSpec extends CatsEffectSuite with HandleTestSyntax with HandleApplicativeErrorInstances {
 
@@ -68,26 +67,6 @@ class DerivedConservativeExtensionSpec extends CatsEffectSuite with HandleTestSy
         for {
           ours <- instrumented.p(i).attemptHandle
           theirs <- theirWoven.p(i).codomain.target.attemptHandle
-        } yield assertEquals(ours, theirs)
-      }
-    } yield ()
-  }
-
-  testWithHandle[SyncIO, TestError]("L9 the derived mapK agrees with upstream's FunctorK.mapK for any pull") { implicit H =>
-    // PlainAlg has no capability parameters, so the pull must never be consulted.
-    val unusablePull = new RaisePull[SyncIO, SyncIO, Render] {
-      def apply[E](rg: Raise[SyncIO, E])(implicit ev: Render[E]): Raise[SyncIO, E] =
-        fail("mapK must not consult the pull for a capability-free algebra")
-    }
-
-    val ourMapped = ours.mapK(impl)(RaiseArrow(FunctionK.id[SyncIO], unusablePull))
-    val theirMapped = upstream.mapK(impl)(FunctionK.id[SyncIO])
-
-    for {
-      _ <- exhaustiveInt.allValues.traverse_ { i =>
-        for {
-          ours <- ourMapped.p(i).attemptHandle
-          theirs <- theirMapped.p(i).attemptHandle
         } yield assertEquals(ours, theirs)
       }
     } yield ()

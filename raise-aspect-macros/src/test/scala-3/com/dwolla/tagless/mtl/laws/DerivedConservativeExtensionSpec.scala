@@ -2,10 +2,9 @@ package com.dwolla.tagless.mtl
 package laws
 
 import cats.ApplicativeError
-import cats.arrow.FunctionK
 import cats.effect.{Sync, SyncIO}
 import cats.mtl.syntax.all.*
-import cats.mtl.{Handle, Raise}
+import cats.mtl.Handle
 import cats.syntax.all.*
 import cats.tagless.Derive as CatsTaglessDerive
 import cats.tagless.aop.Aspect
@@ -64,25 +63,6 @@ class DerivedConservativeExtensionSpec extends CatsEffectSuite with HandleTestSy
         for {
           ours <- instrumented.p(i).attemptHandle
           theirs <- theirWoven.p(i).codomain.target.attemptHandle
-        } yield assertEquals(ours, theirs)
-      }
-    } yield ()
-  }
-
-  testWithHandle[SyncIO, TestError]("L9 the derived mapK agrees with upstream's FunctorK.mapK for any pull") { implicit H =>
-    // PlainAlg has no capability parameters, so the pull must never be consulted.
-    val unusablePull = new RaisePull[SyncIO, SyncIO, Render]:
-      def apply[E](rg: Raise[SyncIO, E])(implicit ev: Render[E]): Raise[SyncIO, E] =
-        fail("mapK must not consult the pull for a capability-free algebra")
-
-    val ourMapped = ours.mapK(impl)(RaiseArrow(FunctionK.id[SyncIO], unusablePull))
-    val theirMapped = upstream.mapK(impl)(FunctionK.id[SyncIO])
-
-    for {
-      _ <- exhaustiveInt.allValues.traverse_ { i =>
-        for {
-          ours <- ourMapped.p(i).attemptHandle
-          theirs <- theirMapped.p(i).attemptHandle
         } yield assertEquals(ours, theirs)
       }
     } yield ()

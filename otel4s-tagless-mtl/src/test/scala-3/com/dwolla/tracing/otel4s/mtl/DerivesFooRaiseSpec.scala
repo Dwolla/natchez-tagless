@@ -5,8 +5,8 @@ import cats.effect.{Ref, SyncIO}
 import cats.mtl.Raise
 import cats.syntax.all._
 import cats.tagless.aop.Aspect
-import cats.{Eval, Functor, ~>}
-import com.dwolla.tagless.mtl.{OnRaise, RaiseArrow, RaisePull, RaiseAspect}
+import cats.~>
+import com.dwolla.tagless.mtl.{OnRaise, RaiseAspect}
 import com.dwolla.tracing.otel4s.ToAnyValue
 
 import scala.annotation.experimental
@@ -106,36 +106,6 @@ class DerivesFooRaiseSpec extends munit.CatsEffectSuite {
         _ = assert(seen2.head.contains("negative:-1"), s"rendered through ToAnyValue, got ${seen2.head}")
       } yield ()
     }
-  }
-
-  test("mapK forwards to the underlying instance") {
-    // This test needs no Sync capability, so it uses a plain Either carrier
-    // instead of F, skipping unsafeRunSync().
-    type Strict[A] = Either[FooError, A]
-    type G[A] = EitherT[Eval, FooError, A]
-
-    val arrow: RaiseArrow[Strict, G, ToAnyValue] =
-      RaiseArrow(
-        new (Strict ~> G) { def apply[A](fa: Strict[A]): G[A] = EitherT(Eval.now(fa)) },
-        new RaisePull[G, Strict, ToAnyValue] {
-          def apply[E](rg: Raise[G, E])(implicit ev: ToAnyValue[E]): Raise[Strict, E] =
-            new Raise[Strict, E] {
-              val functor: Functor[Strict] = Functor[Strict]
-              def raise[E2 <: E, A](e: E2): Strict[A] = rg.raise[E2, A](e).value.value
-            }
-        }
-      )
-
-    val raiseG: Raise[G, FooError] = Raise[G, FooError]
-
-    assertEquals(
-      narrow.mapK(Foo[Strict])(arrow).foo(5)(raiseG).value.value,
-      wide.mapK(Foo[Strict])(arrow).foo(5)(raiseG).value.value
-    )
-    assertEquals(
-      narrow.mapK(Foo[Strict])(arrow).foo(-1)(raiseG).value.value,
-      FooError.Negative(-1).asLeft[String]
-    )
   }
 
   test("the narrow instance is accepted wherever the wide one is") {

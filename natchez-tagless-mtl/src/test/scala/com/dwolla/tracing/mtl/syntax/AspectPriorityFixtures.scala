@@ -5,7 +5,7 @@ import cats.effect.IO
 import cats.tagless.aop.Aspect
 import cats.tagless.aop.Aspect.Weave
 import cats.{Apply, ~>}
-import com.dwolla.tagless.mtl.{OnRaise, RaiseArrow, RaiseAspect}
+import com.dwolla.tagless.mtl.{OnRaise, RaiseAspect}
 import natchez.TraceableValue
 
 /** An algebra with both an `Aspect` and a `RaiseAspect` instance in scope,
@@ -37,7 +37,7 @@ object Foo {
         }
     }
 
-  /** The poison instance: throws immediately if `intercept` or `mapK` is ever invoked,
+  /** The poison instance: throws immediately if `intercept` is ever invoked,
     * so priority resolving to this instance fails the test loudly rather than producing
     * a subtly wrong span name.
     */
@@ -47,9 +47,6 @@ object Foo {
           fk: Weave[F, TraceableValue, TraceableValue, *] ~> F,
           onRaise: OnRaise[F, TraceableValue]
       )(implicit F: Apply[F]): Foo[F] =
-        throw new AssertionError("priority resolved to RaiseAspect instead of Aspect")
-
-      def mapK[F[_], G[_]](af: Foo[F])(arrow: RaiseArrow[F, G, TraceableValue]): Foo[G] =
         throw new AssertionError("priority resolved to RaiseAspect instead of Aspect")
     }
 }

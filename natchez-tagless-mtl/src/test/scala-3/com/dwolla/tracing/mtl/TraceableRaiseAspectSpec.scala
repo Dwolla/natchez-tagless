@@ -5,8 +5,8 @@ import cats.effect.{Ref, SyncIO}
 import cats.mtl.Raise
 import cats.syntax.all._
 import cats.tagless.aop.Aspect
-import cats.{Eval, Functor, ~>}
-import com.dwolla.tagless.mtl.{DeriveRaise, OnRaise, RaiseArrow, RaisePull, RaiseAspect}
+import cats.~>
+import com.dwolla.tagless.mtl.{DeriveRaise, OnRaise, RaiseAspect}
 import natchez.TraceableValue
 
 import scala.annotation.experimental
@@ -27,8 +27,8 @@ object Coexisting:
 
 /** `TraceableRaiseAspect` adds no behaviour: it pins three type parameters so
   * that `derives` has a one-parameter type constructor to work with. These
-  * tests say exactly that — the wrapper forwards both abstract members to the
-  * instance it was built from, unchanged.
+  * tests say exactly that — the wrapper forwards its one abstract member to
+  * the instance it was built from, unchanged.
   */
 @experimental
 class TraceableRaiseAspectSpec extends munit.CatsEffectSuite {
@@ -114,36 +114,6 @@ class TraceableRaiseAspectSpec extends munit.CatsEffectSuite {
         _ = assert(seen2.head.contains("negative:-1"), s"rendered through TraceableValue, got ${seen2.head}")
       } yield ()
     }
-  }
-
-  test("mapK forwards to the underlying instance") {
-    // This test needs no Sync capability, so it uses a plain Either carrier
-    // instead of F, skipping unsafeRunSync().
-    type Strict[A] = Either[BarError, A]
-    type G[A] = EitherT[Eval, BarError, A]
-
-    val arrow: RaiseArrow[Strict, G, TraceableValue] =
-      RaiseArrow(
-        new (Strict ~> G) { def apply[A](fa: Strict[A]): G[A] = EitherT(Eval.now(fa)) },
-        new RaisePull[G, Strict, TraceableValue] {
-          def apply[E](rg: Raise[G, E])(implicit ev: TraceableValue[E]): Raise[Strict, E] =
-            new Raise[Strict, E] {
-              val functor: Functor[Strict] = Functor[Strict]
-              def raise[E2 <: E, A](e: E2): Strict[A] = rg.raise[E2, A](e).value.value
-            }
-        }
-      )
-
-    val raiseG: Raise[G, BarError] = Raise[G, BarError]
-
-    assertEquals(
-      narrow.mapK(Bar[Strict])(arrow).bar(5)(raiseG).value.value,
-      wide.mapK(Bar[Strict])(arrow).bar(5)(raiseG).value.value
-    )
-    assertEquals(
-      narrow.mapK(Bar[Strict])(arrow).bar(-1)(raiseG).value.value,
-      BarError.Negative(-1).asLeft[String]
-    )
   }
 
   test("the narrow instance is accepted wherever the wide one is") {

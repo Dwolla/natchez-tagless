@@ -5,7 +5,7 @@ import cats.mtl.Raise
 import cats.syntax.all._
 import cats.tagless.aop.Aspect
 import cats.~>
-import com.dwolla.tagless.mtl.{OnRaise, RaiseArrow, RaiseAspect}
+import com.dwolla.tagless.mtl.{OnRaise, RaiseAspect}
 import com.dwolla.tracing.otel4s.ToAnyValue
 import org.typelevel.otel4s.AnyValue
 
@@ -70,12 +70,6 @@ object Foo {
                 )
               )
             )
-        }
-
-      def mapK[F[_], G[_]](af: Foo[F])(arrow: RaiseArrow[F, G, ToAnyValue]): Foo[G] =
-        new Foo[G] {
-          def foo(i: Int)(implicit R: Raise[G, FooError]): G[String] =
-            arrow.fk(af.foo(i)(arrow.pull(R)))
         }
     }
 }

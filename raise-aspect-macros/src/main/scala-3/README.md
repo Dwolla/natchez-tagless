@@ -2,7 +2,7 @@
 
 The Scala 3 `DeriveRaise` derivation, adapted from cats-tagless
 [`MacroAspect`](https://github.com/typelevel/cats-tagless/blob/v0.16.5/core/src/main/scala-3/cats/tagless/macros/MacroAspect.scala)
-and its helpers (`MacroFunctorK`, `DeriveMacros`), at tag `v0.16.5`.
+and its helper `DeriveMacros`, at tag `v0.16.5`.
 
 Entry points will be `@experimental`: `Symbol.newClass` is experimental on the
 Scala 3 LTS line, so call sites need `@experimental` or `-experimental` (3.4+).

@@ -36,8 +36,5 @@ object WeaveInterpreterFixtures {
           onRaise: OnRaise[F, Render]
       )(implicit F: Apply[F]): PlainAlg[F] =
         throw new AssertionError("priority resolved to RaiseAspect instead of Aspect")
-
-      def mapK[F[_], G[_]](af: PlainAlg[F])(arrow: RaiseArrow[F, G, Render]): PlainAlg[G] =
-        throw new AssertionError("priority resolved to RaiseAspect instead of Aspect")
     }
 }

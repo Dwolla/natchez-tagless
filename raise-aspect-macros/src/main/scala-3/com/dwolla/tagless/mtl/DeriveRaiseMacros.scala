@@ -5,7 +5,6 @@
  *   tag v0.16.5, commit 2f0c9317c09a51784f4f16abb52ee5ae63274e1b
  *   core/src/main/scala-3/cats/tagless/macros/DeriveMacros.scala
  *   core/src/main/scala-3/cats/tagless/macros/MacroAspect.scala
- *   core/src/main/scala-3/cats/tagless/macros/MacroFunctorK.scala
  *
  * Copyright 2019 cats-tagless maintainers
  *
@@ -23,10 +22,10 @@
  *
  * MODIFICATIONS: the reflection machinery is upstream's `DeriveMacros`, reduced
  * to the subset the `RaiseAspect` derivation needs. `deriveIntercept` (the
- * fused `intercept` generator, rewritten from `MacroAspect`) and `deriveMapK`
- * (rewritten from `MacroFunctorK`) transport `cats.mtl.Raise` capability
- * parameters instead of rejecting methods whose signatures mention the effect
- * type. Upstream's `addToGivenScope` block is deliberately omitted.
+ * fused `intercept` generator, rewritten from `MacroAspect`) transports
+ * `cats.mtl.Raise` capability parameters instead of rejecting methods whose
+ * signatures mention the effect type. Upstream's `addToGivenScope` block is
+ * deliberately omitted.
  */
 
 package com.dwolla.tagless.mtl
@@ -343,7 +342,7 @@ private class DeriveRaiseMacros[Q <: Quotes](using val q: Q):
     * before any class synthesis, so the messages name the types the user wrote
     * and the errors arrive before a confusing synthesis failure.
     */
-  def validate(algebra: TypeRepr, effect: TypeRepr, typeClassName: String): Unit =
+  def validate(algebra: TypeRepr, effect: TypeRepr): Unit =
     for
       member <- algebra.typeSymbol.methodMembers
       if !member.isNoSymbol
@@ -377,19 +376,19 @@ private class DeriveRaiseMacros[Q <: Quotes](using val q: Q):
               if bare.contains(effect) then
                 report.errorAndAbort(
                   s"parameter $paramName of method ${member.name} mentions the effect type F in an unsupported " +
-                    s"position; $typeClassName supports F only as the top-level return type and in Raise[F, E] " +
+                    "position; RaiseAspect supports F only as the top-level return type and in Raise[F, E] " +
                     "parameters."
                 )
 
       if !returnsEffectDirectly then
         if result.contains(effect) then
           report.errorAndAbort(
-            s"method ${member.name} returns ${result.show}; $typeClassName supports F only as the top-level " +
+            s"method ${member.name} returns ${result.show}; RaiseAspect supports F only as the top-level " +
               "return type, not nested inside another type."
           )
         else
           report.errorAndAbort(
-            s"method ${member.name} mentions the effect type F but does not return F[?]; $typeClassName " +
+            s"method ${member.name} mentions the effect type F but does not return F[?]; RaiseAspect " +
               "supports F only as the top-level return type and in Raise[F, E] parameters."
           )
 
@@ -406,15 +405,6 @@ private[mtl] object RaiseAspectMacros:
           onRaise: OnRaise[F, Err]
       )(implicit F: Apply[F]): Alg[F] =
         ${ deriveIntercept[Alg, Dom, Cod, Err, F]('af, 'fk, 'onRaise, 'F) }
-
-      def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G, Err]): Alg[G] =
-        ${ deriveMapK[Alg, F, G, Err]('af, 'arrow) }
-  }
-
-  def functorK[Alg[_[_]]: Type, Err[_]: Type](using Quotes): Expr[RaiseFunctorK[Alg, Err]] = '{
-    new RaiseFunctorK[Alg, Err]:
-      def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G, Err]): Alg[G] =
-        ${ deriveMapK[Alg, F, G, Err]('af, 'arrow) }
   }
 
   private def deriveIntercept[Alg[_[_]]: Type, Dom[_]: Type, Cod[_]: Type, Err[_]: Type, F[_]: Type](
@@ -433,7 +423,7 @@ private[mtl] object RaiseAspectMacros:
     val Alg = TypeRepr.of[Alg]
     val algebraName = Expr(Alg.classSymbol.getOrElse(Alg.typeSymbol).name)
 
-    macros.validate(TypeRepr.of[Alg[F]], TypeRepr.of[F], "RaiseAspect")
+    macros.validate(TypeRepr.of[Alg[F]], TypeRepr.of[F])
 
     def paramAdvice(param: ValDef)(using Quotes): Expr[Seq[Aspect.Advice[Eval, Dom]]] =
       val tpe = param.tpt.tpe
@@ -497,34 +487,5 @@ private[mtl] object RaiseAspectMacros:
               })
               val codomain = '{ Aspect.Advice($methodName, ${ body.asExprOf[F[t]] })(using $cod) }
               '{ $fk.apply[t](Aspect.Weave[F, Dom, Cod, t]($algebraName, $domain, $codomain)) }.asTerm
-      }
-    )
-
-  private def deriveMapK[Alg[_[_]]: Type, F[_]: Type, G[_]: Type, Err[_]: Type](
-      alg: Expr[Alg[F]],
-      arrow: Expr[RaiseArrow[F, G, Err]]
-  )(using q: Quotes): Expr[Alg[G]] =
-    import quotes.reflect.*
-    val macros = new DeriveRaiseMacros[q.type]
-    import macros.*
-
-    val G = TypeRepr.of[G]
-
-    macros.validate(TypeRepr.of[Alg[F]], TypeRepr.of[F], "RaiseFunctorK")
-
-    alg.transformTo[Alg[G]](
-      args = {
-        case (methodSym, tpe, arg) if macros.capabilityError(tpe, G).isDefined =>
-          tpe.dealias.typeArgs.last.asType match
-            case '[e] =>
-              val errEv = macros
-                .summonErrOrAbort(TypeRepr.of[Err], tpe.dealias.typeArgs.last, methodSym)
-                .asExprOf[Err[e]]
-              '{ $arrow.pull(${ arg.asExprOf[Raise[G, e]] })(using $errEv) }.asTerm
-      },
-      body = {
-        case (_, tpe, body) if tpe.typeSymbol == G.typeSymbol =>
-          tpe.typeArgs.last.asType match
-            case '[t] => '{ $arrow.fk(${ body.asExprOf[F[t]] }) }.asTerm
       }
     )

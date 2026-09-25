@@ -6,24 +6,21 @@ import cats.{Applicative, Eq}
 import cats.laws.discipline._
 import org.scalacheck.Arbitrary
 import org.scalacheck.Prop._
+import org.typelevel.discipline.Laws
 
-/** Discipline `RuleSet` for law L3′, extending the `RaiseFunctorK` rule set with
-  * the intercept-erasure law.
+/** Discipline `RuleSet` for law L3′, intercept erasure.
   */
-trait RaiseAspectTests[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends RaiseFunctorKTests[Alg, Err] {
+trait RaiseAspectTests[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends Laws {
   def laws: RaiseAspectLaws[Alg, Dom, Cod, Err]
 
-  def raiseAspect[A[_], B[_], C[_]](implicit
+  def raiseAspect[A[_]](implicit
       ArbAlgA: Arbitrary[Alg[A]],
-      ArbArrowAB: Arbitrary[RaiseArrow[A, B, Err]],
-      ArbArrowBC: Arbitrary[RaiseArrow[B, C, Err]],
       EqAlgA: Eq[Alg[A]],
-      EqAlgC: Eq[Alg[C]],
       ApplicativeA: Applicative[A]
   ): RuleSet =
     new DefaultRuleSet(
       name = "raiseAspect",
-      parent = Some(raiseFunctorK[A, B, C]),
+      parent = None,
       "intercept erasure" -> forAll((af: Alg[A]) => laws.interceptErasure[A](af)(ApplicativeA))
     )
 }

@@ -18,7 +18,7 @@ import scala.annotation.experimental
   * and `traceWithInputsAndOutputs`, and asserts the span it produces.
   *
   * `DerivesFooRaiseSpec` compares the derived instance against a hand-written
-  * one through `intercept`/`mapK` directly — a differential oracle that never
+  * one through `intercept` directly — a differential oracle that never
   * reaches a `Tracer`. This is the other half: it proves the derived instance
   * is usable at the actual tracing call site and that the derivation's
   * algebra and method names are what reach the span.

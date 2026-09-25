@@ -36,10 +36,5 @@ object PlainAlgReference {
               )
             )
         }
-
-      def mapK[F[_], G[_]](af: PlainAlg[F])(arrow: RaiseArrow[F, G, Err]): PlainAlg[G] =
-        new PlainAlg[G] {
-          def p(i: Int): G[String] = arrow.fk(af.p(i))
-        }
     }
 }

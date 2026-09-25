@@ -42,7 +42,7 @@ package com.dwolla.tracing.otel4s.mtl
   *         case TooSmall(i) => AnyValue.string("too small: " + i.toString)
   *       }
   *
-  *     // One instance serves every F: intercept/mapK are separately polymorphic per call.
+  *     // One instance serves every F: intercept is separately polymorphic per call.
   *     @experimental
   *     given RaiseAspect[Validator, ToAnyValue, ToAnyValue, ToAnyValue] =
   *       DeriveRaise.aspect[Validator, ToAnyValue, ToAnyValue, ToAnyValue]

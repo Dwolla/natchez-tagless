@@ -68,7 +68,7 @@ package com.dwolla.tracing.otel4s
   *     // implicit val raiseAspect: RaiseAspect[Validator, ToAnyValue, ToAnyValue, ToAnyValue] =
   *     //   DeriveRaise.aspect[Validator, ToAnyValue, ToAnyValue, ToAnyValue]
   *     // — declared in the companion per cats-tagless convention, not summoned; one
-  *     // instance serves every F, since intercept/mapK are separately polymorphic
+  *     // instance serves every F, since intercept is separately polymorphic
   *     // per call. The exact declaration is version-specific — see above.
   *   }
   *
@@ -179,7 +179,7 @@ package com.dwolla.tracing.otel4s
   *
   * ==Scala 3==
   *
-  * Declaring a derived instance (`DeriveRaise.aspect`/`DeriveRaise.functorK`)
+  * Declaring a derived instance (`DeriveRaise.aspect`)
   * requires an `@experimental` annotation at the call site, or the
   * `-experimental` compiler flag on Scala 3.4+ — this repository stays on the
   * 3.3.x LTS line, where that flag does not exist, so the annotation is the

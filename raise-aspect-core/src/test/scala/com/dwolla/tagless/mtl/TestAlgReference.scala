@@ -94,23 +94,5 @@ object TestAlgReference {
               )
             )
         }
-
-      def mapK[F[_], G[_]](af: TestAlg[F])(arrow: RaiseArrow[F, G, Err]): TestAlg[G] =
-        new TestAlg[G] {
-          def a(i: Int)(implicit R: Raise[G, ErrA]): G[String] =
-            arrow.fk(af.a(i)(arrow.pull(R)))
-
-          def b(x: String, y: => Int)(implicit R: Raise[G, ErrB]): G[Int] =
-            arrow.fk(af.b(x, y)(arrow.pull(R)))
-
-          def c(i: Int): G[Int] =
-            arrow.fk(af.c(i))
-
-          def d(i: Int)(j: Int)(implicit R: Raise[G, ErrA]): G[Int] =
-            arrow.fk(af.d(i)(j)(arrow.pull(R)))
-
-          def e(implicit R1: Raise[G, ErrA], R2: Raise[G, ErrB]): G[Unit] =
-            arrow.fk(af.e(arrow.pull(R1), arrow.pull(R2)))
-        }
     }
 }

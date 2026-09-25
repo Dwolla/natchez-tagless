@@ -7,7 +7,6 @@ import cats.effect.testkit.TestInstances
 import cats.laws.discipline.ExhaustiveCheck
 import cats.mtl.Raise
 import cats.syntax.all.*
-import org.scalacheck.{Arbitrary, Gen}
 
 /** Shared `Eq`, `ExhaustiveCheck` and rendering instances for the law suites.
   *
@@ -21,7 +20,7 @@ object LawsInstances extends TestInstances {
   type Result[A] = Either[TestError, A]
 
   /** Small exhaustive domains. Both include values that make the fixture raise
-    * — negatives for `a`/`d`, the empty string for `b` — so L3′ and L4 exercise
+    * — negatives for `a`/`d`, the empty string for `b` — so L3′ exercises
     * the error path rather than only the happy one.
     */
   implicit val exhaustiveInt: ExhaustiveCheck[Int] =
@@ -51,11 +50,6 @@ object LawsInstances extends TestInstances {
     * much later as an NPE at the first `raise`.
     */
   val raiseResult: Raise[Result, TestError] = Raise[Result, TestError]
-
-  /** The non-identity `RaiseArrow` L1/L2 are exercised over.
-    */
-  implicit def arbResultToSyncIO(implicit H: cats.mtl.Handle[SyncIO, TestError]): Arbitrary[RaiseArrow[Result, SyncIO, Render]] =
-    Arbitrary(Gen.const(CarrierArrows.resultToSyncIO[Render]))
 
   /** Intercept the algebra under test with a recording interpreter. The pair
     * is the fused replacement for `weave` — the algebra behaves as though it

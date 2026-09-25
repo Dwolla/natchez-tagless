@@ -2,7 +2,6 @@ package com.dwolla.tagless.mtl
 package laws
 
 import cats.*
-import cats.arrow.FunctionK
 import cats.effect.*
 import cats.mtl.*
 import cats.mtl.syntax.all.*
@@ -14,8 +13,8 @@ import com.dwolla.tagless.mtl.{HandleApplicativeErrorInstances, HandleTestSyntax
 /** Law L9 — conservative extension.
   *
   * On a capability-free algebra our derivation must agree with upstream
-  * `cats.tagless.Derive.aspect`: structurally equal rendered weaves, `Eq`-equal
-  * codomain targets, and `mapK` agreeing with `FunctorK.mapK` for ''any'' pull.
+  * `cats.tagless.Derive.aspect`: structurally equal rendered weaves and
+  * `Eq`-equal codomain targets.
   *
   * The upstream instance is abstract because deriving it is version-specific:
   * on Scala 2 it comes from cats-tagless-macros, and on Scala 3 `Derive` is
@@ -72,24 +71,5 @@ abstract class ConservativeExtensionSuite extends munit.CatsEffectSuite with Han
         } yield assertEquals(ours, theirs)
       }
     } yield ()
-  }
-
-  testWithHandle[SyncIO, TestError]("L9 our mapK agrees with upstream's FunctorK.mapK for any pull") { implicit H =>
-    // PlainAlg has no capability parameters, so the pull must never be
-    // consulted. This one blows up if it ever is.
-    val unusablePull = new RaisePull[SyncIO, SyncIO, Render] {
-      def apply[E](rg: Raise[SyncIO, E])(implicit ev: Render[E]): Raise[SyncIO, E] =
-        fail("mapK must not consult the pull for a capability-free algebra")
-    }
-
-    val ourMapped = ours.mapK(impl)(RaiseArrow(FunctionK.id[SyncIO], unusablePull))
-    val theirMapped = upstream.mapK(impl)(FunctionK.id[SyncIO])
-
-    exhaustiveInt.allValues.traverse_ { i =>
-      for {
-        ours <- ourMapped.p(i).attemptHandle
-        theirs <- theirMapped.p(i).attemptHandle
-      } yield assertEquals(ours, theirs)
-    }
   }
 }

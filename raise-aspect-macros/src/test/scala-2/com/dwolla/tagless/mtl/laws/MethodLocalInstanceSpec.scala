@@ -1,12 +1,11 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.arrow.FunctionK
+import cats.Applicative
 import cats.effect.{Ref, SyncIO}
 import cats.mtl.syntax.all.*
 import cats.mtl.Raise
 import cats.syntax.all.*
-import cats.{Applicative, Functor}
 import com.dwolla.tagless.mtl.HandleTestSyntax
 import munit.CatsEffectSuite
 
@@ -187,23 +186,6 @@ object MethodLocal {
   def precedence[F[_]](implicit F: Applicative[F]): PrecedenceAlg[F] = new PrecedenceAlg[F] {
     def pick(i: Int)(implicit R: Render[Int]): F[String] = R.render(i).pure[F]
   }
-
-  /** An arrow whose `pull` renders every raised error through the `Err` evidence
-    * the ''derivation'' handed it. That evidence is the only observable trace of
-    * which `Err[E]` the macro resolved, since `RaisePull.id` ignores it.
-    */
-  def recordingArrow[F[_]](recorded: Ref[F, Vector[String]])(implicit F: Applicative[F]): RaiseArrow[F, F, Render] =
-    RaiseArrow(
-      FunctionK.id[F],
-      new RaisePull[F, F, Render] {
-        def apply[E](rg: Raise[F, E])(implicit ev: Render[E]): Raise[F, E] =
-          new Raise[F, E] {
-            val functor: Functor[F] = rg.functor
-            def raise[E2 <: E, A](e: E2): F[A] =
-              recorded.update(_ :+ ev.render(e)) *> rg.raise[E2, A](e)
-          }
-      }
-    )
 }
 
 class MethodLocalInstanceSpec extends CatsEffectSuite with HandleTestSyntax {
@@ -228,8 +210,6 @@ class MethodLocalInstanceSpec extends CatsEffectSuite with HandleTestSyntax {
     DeriveRaise.aspect[ContraAlg, Contra, Render, Render]
   private val precedenceAspect: RaiseAspect[PrecedenceAlg, Render, Render, Render] =
     DeriveRaise.aspect[PrecedenceAlg, Render, Render, Render]
-  private val riskyFunctorK: RaiseFunctorK[WidgetRiskyAlg, Render] =
-    DeriveRaise.functorK[WidgetRiskyAlg, Render]
 
   test("the Dom advice carries the Render the method itself was handed") {
     for {
@@ -266,19 +246,6 @@ class MethodLocalInstanceSpec extends CatsEffectSuite with HandleTestSyntax {
     } yield ()
   }
 
-  testWithHandle[SyncIO, WidgetError]("the Err evidence transported with the capability is the one the method was handed") { implicit H =>
-    for {
-      recorded <- Ref.of[SyncIO, Vector[String]](Vector.empty)
-      mapped = riskyAspect.mapK(widgets[SyncIO])(recordingArrow(recorded))
-      r1 <- mapped.risky(-1)(loudError, H).attemptHandle
-      _ = assertEquals(r1, Left(WidgetError("negative:-1")))
-      r2 <- mapped.risky(-2)(quietError, H).attemptHandle
-      _ = assertEquals(r2, Left(WidgetError("negative:-2")))
-      seen <- recorded.get
-      _ = assertEquals(seen.toList, List("loudError:negative:-1", "quietError:negative:-2"))
-    } yield ()
-  }
-
   testWithHandle[SyncIO, WidgetError]("the intercept hook renders a raise through the method-local Err instance") { implicit H =>
     // `intercept` wires the hook in directly —
     // `RaiseAspect.observing($pn, $onRaise)($applyF, $errInstance)` — so the
@@ -303,20 +270,6 @@ class MethodLocalInstanceSpec extends CatsEffectSuite with HandleTestSyntax {
       _ = assertEquals(r2, Left(WidgetError("negative:-8")))
       seen2 <- rendered.get
       _ = assertEquals(seen2.toList, List("loudError:negative:-7", "quietError:negative:-8"))
-    } yield ()
-  }
-
-  testWithHandle[SyncIO, WidgetError]("the functorK path resolves Err from the method's own implicit clause too") { implicit H =>
-    for {
-      recorded <- Ref.of[SyncIO, Vector[String]](Vector.empty)
-      mapped = riskyFunctorK.mapK(widgets[SyncIO])(recordingArrow(recorded))
-      r1 <- mapped.risky(3)(loudError, H).attemptHandle
-      _ = assertEquals(r1, Right("ok:3"))
-      seen1 <- recorded.get
-      _ = assertEquals(seen1.toList, Nil)
-      _ <- mapped.risky(-3)(loudError, H).attemptHandle.void
-      seen2 <- recorded.get
-      _ = assertEquals(seen2.toList, List("loudError:negative:-3"))
     } yield ()
   }
 

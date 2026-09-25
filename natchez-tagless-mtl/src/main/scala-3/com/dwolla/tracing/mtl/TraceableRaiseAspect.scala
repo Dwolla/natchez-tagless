@@ -3,7 +3,7 @@ package com.dwolla.tracing.mtl
 import cats.Apply
 import cats.tagless.aop.Aspect
 import cats.~>
-import com.dwolla.tagless.mtl.{DeriveRaise, OnRaise, RaiseArrow, RaiseAspect}
+import com.dwolla.tagless.mtl.{DeriveRaise, OnRaise, RaiseAspect}
 import natchez.TraceableValue
 
 import scala.annotation.experimental
@@ -64,9 +64,6 @@ object TraceableRaiseAspect:
           onRaise: OnRaise[F, TraceableValue]
       )(using F: Apply[F]): Alg[F] =
         underlying.intercept(af)(fk, onRaise)
-
-      def mapK[F[_], G[_]](af: Alg[F])(arrow: RaiseArrow[F, G, TraceableValue]): Alg[G] =
-        underlying.mapK(af)(arrow)
 
   /** What a `derives TraceableRaiseAspect` clause calls.
     *

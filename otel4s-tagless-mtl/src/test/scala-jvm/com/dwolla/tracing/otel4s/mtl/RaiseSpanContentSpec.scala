@@ -5,7 +5,7 @@ import cats.mtl.{Handle, Raise}
 import cats.syntax.all._
 import cats.tagless.aop.Aspect
 import cats.{Applicative, Apply, ~>}
-import com.dwolla.tagless.mtl.{OnRaise, RaiseArrow, RaiseAspect, RaiseRecorder}
+import com.dwolla.tagless.mtl.{OnRaise, RaiseAspect, RaiseRecorder}
 import com.dwolla.tracing.otel4s.ToAnyValue
 import com.dwolla.tracing.otel4s.mtl.syntax._
 import io.opentelemetry.api.trace.StatusCode
@@ -254,12 +254,6 @@ object Quiet {
                 )
               )
             )
-        }
-
-      def mapK[F[_], G[_]](af: Quiet[F])(arrow: RaiseArrow[F, G, ToAnyValue]): Quiet[G] =
-        new Quiet[G] {
-          def hush(i: Int)(implicit R: Raise[G, QuietError]): G[String] =
-            arrow.fk(af.hush(i)(arrow.pull(R)))
         }
     }
 }
