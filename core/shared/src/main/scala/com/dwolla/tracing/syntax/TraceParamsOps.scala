@@ -1,7 +1,6 @@
 package com.dwolla.tracing
 package syntax
 
-import cats.effect.Trace as _
 import cats.tagless.aop.Aspect.Weave
 import com.dwolla.tagless.WeaveNaming._
 import natchez.{TraceValue, TraceableValue}

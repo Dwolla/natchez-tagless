@@ -2,7 +2,7 @@ package com.dwolla.tracing
 package syntax
 
 import cats.data._
-import cats.effect.{Trace => _, _}
+import cats.effect._
 import cats.tagless.aop._
 import cats.tagless.syntax.all._
 import natchez.{EntryPoint, Span}

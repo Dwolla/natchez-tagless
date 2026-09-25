@@ -1,7 +1,6 @@
 package com.dwolla.tracing
 package syntax
 
-import cats.effect.{Trace => _}
 import cats.tagless.aop._
 import cats.tagless.syntax.all._
 import natchez.Trace

@@ -2,7 +2,7 @@ package com.dwolla.tracing
 package syntax
 
 import cats._
-import cats.effect.{Trace => _, _}
+import cats.effect._
 import natchez.Span
 
 trait ToResourceInitializationSpanOps {
