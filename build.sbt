@@ -22,9 +22,14 @@ ThisBuild / mergifyStewardConfig ~= { _.map {
 }}
 ThisBuild / resolvers += Resolver.sonatypeCentralSnapshots
 
-// `sbt ciLocal`: CI's build job, run locally, for every Scala version and root
-// project in the CI matrix. The steps are read
-// from `githubWorkflowBuild`, the same setting that generates
+// Fail CI on compiler warnings. sbt-typelevel's full TypelevelPlugin sets this
+// automatically; this build enables only its ci-release and settings plugins,
+// so it has to be set explicitly.
+ThisBuild / tlFatalWarnings := githubIsWorkflowBuild.value
+
+// `sbt ciLocal`: CI's build job, run locally, with fatal warnings on, as in
+// CI, for every Scala version and root project in the CI matrix. The steps
+// are read from `githubWorkflowBuild`, the same setting that generates
 // .github/workflows/ci.yml, so the two can't drift apart. One deliberate
 // difference: Scala.js tests are linked but not run, because running them
 // needs Node, which CI provides and developer machines may not.
@@ -47,7 +52,7 @@ Global / tlCommandAliases += {
     }.flatten
 
   "ciLocal" -> (
-    List("githubWorkflowCheck") ++
+    List("githubWorkflowCheck", "set ThisBuild / tlFatalWarnings := true") ++
       (for {
         scala <- scalaVersions
         project <- rootProjects
