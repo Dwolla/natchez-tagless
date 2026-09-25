@@ -183,7 +183,7 @@ lazy val raiseAspect = crossProject(JVMPlatform, JSPlatform)
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
   // Test-only, additive split so a `Platform.isJvm` compile-time constant
-  // (see OnRaiseSpec/WeaveArrowsOnRaiseSpec) can differ between the JVM and
+  // (see OnRaiseSpec/ObservingCapabilitySpec) can differ between the JVM and
   // JS builds without moving raiseAspect to CrossType.Full. Mirrors this
   // project's existing scala-2/scala-3 source-directory convention, and the
   // `cats-kernel-laws` Platform.isJvm pattern it's modeled on.

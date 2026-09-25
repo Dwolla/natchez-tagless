@@ -133,15 +133,13 @@ package com.dwolla.tracing.otel4s
   * the fact that every backend can filter and aggregate on span attributes,
   * whereas events get flattened into pseudo-spans or rendered as logs.
   *
-  * How the hook reaches the span: `Tracer[F].currentSpanOrNoop`. `OnRaise`
-  * resolves independently of the interpreter and fires inside the method body
-  * — inside `fa.codomain.target`, which the interpreter does not wrap — so it
-  * cannot be handed the `Span` the interpreter is holding. `SpanOps#use` makes
-  * the span current for the duration of the body, which is what makes
-  * `currentSpanOrNoop` the method's own span rather than its caller's;
-  * `RaiseSpanContentSpec` asserts exactly that against a real SDK, on the child
-  * and on the parent. Under `Tracer.noop` the same call yields a noop span
-  * whose `addAttributes` does nothing, so a disabled tracer costs nothing.
+  * The default hook reaches the span through `Tracer[F].currentSpanOrNoop`,
+  * which yields the method's own span rather than its caller's;
+  * [[Otel4sDefaultOnRaise]] explains why that is the only route and why it
+  * finds the right span. `RaiseSpanContentSpec` asserts exactly that against a
+  * real SDK, on the child and on the parent. Under `Tracer.noop` the same call
+  * yields a noop span whose `addAttributes` does nothing, so a disabled tracer
+  * costs nothing.
   *
   * ==Design constraints==
   *
@@ -228,9 +226,8 @@ package com.dwolla.tracing.otel4s
   * What is ''not'' true is that the domain error is invisible to the trace. By
   * default, every algebra traced via the `RaiseAspect` path records
   * `raise.error.type` and `raise.error.value` at the moment of the raise, with
-  * no action required from the caller: both syntax methods resolve a
-  * `RaiseRecorder[F, ToAnyValue]` and hand its `OnRaise[F, ToAnyValue]` hook to
-  * `WeaveInterpreter`, which sequences it via `RaiseAspect.observing`.
+  * no action required from the caller: both syntax methods resolve their hook
+  * through [[com.dwolla.tagless.mtl.RaiseRecorder]].
   *
   * That default rendering ''is'' redaction-aware, like the rest of this
   * library: `raise.error.value` is the error's `ToAnyValue[E]` rendering, so

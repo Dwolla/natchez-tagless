@@ -2,6 +2,15 @@
 
 Semi-automatically derive [Natchez](http://tpolecat.github.io/natchez/) trace instrumentation for algebras supported by [cats-tagless](https://typelevel.org/cats-tagless/).
 
+## Modules
+
+- `natchez-tagless-mtl`: tracing for algebras whose methods take `cats.mtl.Raise` parameters (see the `com.dwolla.tracing.mtl` package scaladoc).
+- `otel4s-tagless`: the [otel4s](https://typelevel.org/otel4s/) backend (see [`otel4s-tagless/README.md`](otel4s-tagless/README.md)).
+- `otel4s-tagless-mtl`: the `Raise` counterpart of `otel4s-tagless` (see the `com.dwolla.tracing.otel4s.mtl` package scaladoc).
+- `raise-aspect` and `raise-aspect-laws`: the backend-agnostic core both `-mtl` modules build on, and its laws (see [`raise-aspect/README.md`](raise-aspect/README.md) and [`raise-aspect-laws/LAWS.md`](raise-aspect-laws/LAWS.md)).
+
+Moving from natchez to otel4s? See "Migrating from `natchez-tagless` to the otel4s modules" in [`ARCHAEOLOGY.md`](ARCHAEOLOGY.md#migrating-from-natchez-tagless-to-the-otel4s-modules).
+
 ## Concepts
 
 All the examples below have the following imports:

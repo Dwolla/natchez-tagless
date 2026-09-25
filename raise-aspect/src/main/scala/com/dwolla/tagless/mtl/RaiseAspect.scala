@@ -10,10 +10,10 @@ import cats.~>
   *
   * `Aspect.Weave` and `Aspect.Advice` are reused from cats-tagless verbatim so
   * that natchez-tagless's existing `Weave ~> F` interpreters keep working —
-  * but a `Weave` here is ''data'' handed to `fk`, never an effect type. That
-  * is the whole point of `weave` and `mapK` being fused into `intercept`: no
-  * method ever receives a `Raise[Aspect.Weave[F, Dom, Cod, *], E]`, so nothing
-  * ever has to synthesize a `Functor` for the woven carrier.
+  * but a `Weave` here is ''data'' handed to `fk`, never an effect type.
+  * `intercept` builds each `Weave` and hands it to `fk` in one step, so no
+  * method ever receives a `Raise[Aspect.Weave[F, Dom, Cod, *], E]`, and
+  * nothing ever has to synthesize a `Functor` for the woven carrier.
   *
   * There is deliberately no `E` parameter: transport is uniform in the error
   * type, so each method is handled with whatever error types it declares,
@@ -48,7 +48,7 @@ trait RaiseAspect[Alg[_[_]], Dom[_], Cod[_], Err[_]] extends Serializable {
 
 object RaiseAspect {
 
-  /** The only capability-side helper the fused expansion needs: decorate a
+  /** The only capability-side helper the derived expansion needs: decorate a
     * `Raise[F, E]` with the observation hook, ''at the same carrier''.
     *
     * `functor` is `R`'s own — the real `Functor[F]`. Nothing is synthesized,

@@ -216,12 +216,12 @@ class SpanContentSpec extends CatsEffectSuite {
     } yield ()
   }
 
-  // D3, corrected 2026-08-02, applied to the *return value* this time: ping()
-  // is both zero-parameter and Unit-returning, so both candidate attributes
-  // would be empty and both are omitted rather than recorded as
-  // `MapValue({})`/`EmptyValue`. ToAnyValue[Unit] is unchanged — it still
-  // encodes `()` to AnyValue.empty; only the interpreter's decision about
-  // whether to spend an attribute slot on that is.
+  // The omit-when-empty rule applied to the *return value* as well as the
+  // parameters: ping() is both zero-parameter and Unit-returning, so both
+  // candidate attributes would be empty and both are omitted rather than
+  // recorded as `MapValue({})`/`EmptyValue`. ToAnyValue[Unit] still encodes
+  // `()` to AnyValue.empty; the omission is the interpreter's decision not to
+  // spend an attribute slot on it.
   test("TracerWeaveCapturingInputsAndOutputs records no attributes at all for ping()") {
     for {
       counts <- FooCallCounts.of[IO]

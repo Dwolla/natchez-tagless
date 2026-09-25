@@ -126,10 +126,9 @@ package com.dwolla.tracing
   * `TraceableValue` rendering, even though the `Throwable` channel above
   * still only shows `Submarine`. This
   * happens with no action required from the caller: both syntax methods
-  * resolve a `RaiseRecorder[F, TraceableValue]` and hand its
-  * `OnRaise[F, TraceableValue]` hook to `WeaveInterpreter`, which sequences it
-  * via `RaiseAspect.observing` — falling back to this `Trace`-based recording
-  * whenever no more specific hook is in scope.
+  * resolve their hook through [[com.dwolla.tagless.mtl.RaiseRecorder]], which
+  * falls back to this `Trace`-based recording whenever no more specific hook is
+  * in scope.
   *
   * This default rendering ''is'' redaction-aware, like the rest of this
   * library: `raise.error.value` is the error's `TraceableValue[E]` rendering,
