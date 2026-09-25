@@ -314,3 +314,76 @@ object Foo {
   }
 }
 ```
+
+## Scala 3: derives and @experimental
+
+On Scala 3, four types can be derived with a `derives` clause:
+`TraceableAspect` (natchez-tagless), `AnyValueAspect` (otel4s-tagless),
+`TraceableRaiseAspect` (natchez-tagless-mtl), and `AnyValueRaiseAspect`
+(otel4s-tagless-mtl). Each one's `derived` method, which is what a `derives`
+clause calls, is `@experimental`:
+
+- `TraceableRaiseAspect.derived` and `AnyValueRaiseAspect.derived` call
+  `DeriveRaise.aspect`, which synthesizes a class with `quotes.reflect`'s
+  `Symbol.newClass`. That is experimental on the 3.3.x LTS line.
+- `TraceableAspect.derived` and `AnyValueAspect.derived` call cats-tagless's
+  `Derive.aspect`, and cats-tagless annotates its `object Derive` as
+  `@experimental` in its entirety.
+
+On Scala 3.4+ the `-experimental` compiler flag is an alternative. This
+repository targets the 3.3.x LTS line, where that flag does not exist.
+
+`derives` does not exist on Scala 2, so a cross-built algebra cannot use it in
+its shared sources.
+
+### Put `@experimental` on the companion object, not on the trait
+
+The annotation is required wherever `derived` is *invoked* from, and a
+`derives` clause invokes it from a given the compiler synthesizes into the
+algebra's **companion object**. So `@experimental` belongs on the companion:
+
+```scala
+// no @experimental here: the algebra type stays usable from ordinary code
+trait Greeter[F[_]] derives TraceableAspect {
+  def greet(name: String): F[String]
+}
+
+// ...it goes here instead, where the synthesized given lands
+@experimental
+object Greeter {
+  def apply[F[_]: Applicative]: Greeter[F] = new Greeter[F] {
+    def greet(name: String): F[String] = ("hello, " + name).pure[F]
+  }
+}
+```
+
+A sibling `@experimental` definition elsewhere in the same file is not enough.
+With the annotation nowhere at all, the `derives` clause itself reports
+`method derived is marked @experimental and therefore may only be used in an
+experimental scope`.
+
+Annotating the trait instead also compiles, and it is the placement to avoid:
+it makes the algebra *type* experimental, so the annotation goes viral across
+the algebra's whole consumer surface. An unrelated, untraced
+`def use[F[_]](v: Greeter[F])` then fails with `trait Greeter is marked
+@experimental and therefore may only be used in an experimental scope`. On the
+companion, the annotation reaches only the companion's own members, and every
+consumer of the algebra type is unaffected.
+
+If the algebra declares no companion at all, the trait is the only place left
+for the annotation. Declaring an empty `@experimental object Greeter` alongside
+the trait avoids the virality.
+
+### Without `derives`
+
+The hand-written spelling, a `given`/`implicit val` whose right-hand side calls
+`DeriveRaise.aspect` or `Derive.aspect`, puts `@experimental` on that single
+instance instead. That costs slightly less than `derives`, which has no way to
+annotate the synthesized given alone, so `@experimental object Greeter` makes
+*every* companion member experimental. Both spellings leave the algebra type
+itself clean, and both require `@experimental` at the sites that summon the
+instance. The scaladoc of `TraceableRaiseAspect` and `AnyValueRaiseAspect`
+has a compiled example of the hand-written spelling, under "Without derives:".
+
+Every `derived` method's scaladoc carries a compiled example of the `derives`
+spelling.

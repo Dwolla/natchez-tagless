@@ -23,9 +23,9 @@ package com.dwolla.tracing.otel4s
   * (`DeriveRaise.aspect[Validator, ToAnyValue, ToAnyValue, ToAnyValue]`, in
   * `Validator`'s companion, per cats-tagless convention) is identical on Scala
   * 2 and 3 except for one detail: Scala 3 requires `@experimental` on that
-  * declaration. See `Scala3UsageNote` in this package for the complete,
-  * compiled Scala 3 declaration, and `AnyValueRaiseAspect` for the shorter
-  * `derives` spelling.
+  * declaration. See `AnyValueRaiseAspect`'s scaladoc, under "Without
+  * derives:", for the complete, compiled Scala 3 declaration, and
+  * `AnyValueRaiseAspect` for the shorter `derives` spelling.
   *
   * {{{
   *   import cats.Applicative
@@ -39,7 +39,7 @@ package com.dwolla.tracing.otel4s
   *   import org.typelevel.otel4s.trace.Tracer
   *
   *   // A real error ADT is case classes matched by the ToAnyValue instance —
-  *   // `case TooSmall(i) => ...`, as `Scala3UsageNote` shows. A *compiled doc
+  *   // `case TooSmall(i) => ...`, as `AnyValueRaiseAspect` shows. A *compiled doc
   *   // example* cannot use them: its declarations end up inside a method, and
   *   // a method-local case class's synthesized equals is an unchecked
   *   // outer-reference type test that Scala 2 warns about. Nothing about the
@@ -192,14 +192,9 @@ package com.dwolla.tracing.otel4s
   * of the companion-object `implicit val` above — see `AnyValueRaiseAspect`,
   * which pins `Dom`, `Cod` and `Err` to `ToAnyValue` so that `derives` has a
   * one-parameter type constructor to work with. `@experimental` is still
-  * required, and ''where'' it goes matters: a `derives` clause invokes
-  * `derived` from a given the compiler synthesizes into the algebra's
-  * companion object, so the annotation belongs on the '''companion''' —
-  * `trait Validator[F[_]] derives AnyValueRaiseAspect` with a separate
-  * `@experimental object Validator`. Annotating the trait also compiles, but
-  * makes the algebra ''type'' experimental, which forces `@experimental` onto
-  * every reference to it, including untraced call sites that never touch the
-  * instance. There is no Scala 2 equivalent — `derives` does not exist there —
+  * required, on the algebra's '''companion object''' rather than the trait;
+  * the natchez-tagless README, "Scala 3: derives and @experimental", explains
+  * why. There is no Scala 2 equivalent — `derives` does not exist there —
   * so a cross-built algebra keeps the companion-object declaration shown in
   * the worked example above.
   *

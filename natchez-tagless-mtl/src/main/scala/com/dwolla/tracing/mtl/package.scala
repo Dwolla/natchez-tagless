@@ -15,7 +15,8 @@ package com.dwolla.tracing
   * (`DeriveRaise.aspect[Validator, TraceableValue, TraceableValue, TraceableValue]`, in
   * `Validator`'s companion, per cats-tagless convention) is identical on Scala 2 and
   * 3 except for one detail: Scala 3 requires `@experimental` on that declaration. See
-  * `Scala3UsageNote` in this package for the complete, compiled Scala 3 declaration.
+  * `TraceableRaiseAspect`'s scaladoc, under "Without derives:", for the complete,
+  * compiled Scala 3 declaration.
   *
   * {{{
   *   import cats.effect.IO
@@ -90,23 +91,18 @@ package com.dwolla.tracing
   * that flag does not exist, so the annotation is the only option. This matches
   * upstream cats-tagless's own Scala 3 derivation, for the same reason: the
   * underlying `quotes.reflect` APIs (`Symbol.newClass`) are experimental on that
-  * line. Scala 2 is unaffected. See the Scala 3-specific companion object in this
-  * module's test sources for the annotation placement, or `DeriveRaise`'s own
-  * scaladoc in `raise-aspect`.
+  * line. Scala 2 is unaffected. See `TraceableRaiseAspect`'s scaladoc or the
+  * Scala 3-specific companion object in this module's test sources for the
+  * annotation placement, or `DeriveRaise`'s own scaladoc in `raise-aspect`.
   *
   * There is also a shorter Scala-3-only spelling for exactly this natchez shape:
   * an algebra can declare its instance with a `derives` clause instead of the
   * companion-object `implicit val` above — see
   * `com.dwolla.tracing.mtl.TraceableRaiseAspect`, which pins `Dom`, `Cod` and
   * `Err` to `TraceableValue` so that `derives` has a one-parameter type
-  * constructor to work with. `@experimental` is still required, and ''where''
-  * it goes matters: a `derives` clause invokes `derived` from a given the
-  * compiler synthesizes into the algebra's companion object, so the annotation
-  * belongs on the '''companion''' — `trait Validator[F[_]] derives
-  * TraceableRaiseAspect` with a separate `@experimental object Validator`.
-  * Annotating the trait also compiles, but makes the algebra ''type''
-  * experimental, which forces `@experimental` onto every reference to it,
-  * including untraced call sites that never touch the instance. There is no
+  * constructor to work with. `@experimental` is still required, on the
+  * algebra's '''companion object''' rather than the trait; the natchez-tagless
+  * README, "Scala 3: derives and @experimental", explains why. There is no
   * Scala 2 equivalent — `derives` does not exist there — so a cross-built
   * algebra keeps the companion-object declaration shown in the worked example
   * above.
