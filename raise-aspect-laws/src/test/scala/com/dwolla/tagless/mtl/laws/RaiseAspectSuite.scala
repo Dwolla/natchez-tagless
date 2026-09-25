@@ -230,6 +230,7 @@ abstract class RaiseAspectSuite extends CatsEffectSuite with DisciplineSuite wit
 
   checkAll("RaisePull.id.serializable", SerializableTests.serializable(RaisePull.id[Result, Render]))
   checkAll("RaiseArrow.id.serializable", SerializableTests.serializable(RaiseArrow.id[Result, Render]))
+  checkAll("RaiseAspect.serializable", SerializableTests.serializable(instance))
 
   /** A fixture whose effects are observable only when the returned `F` is run. */
   private def countingAlg[F[_] : Sync](counter: Ref[F, Int]): TestAlg[F] =

@@ -281,12 +281,9 @@ class MethodLocalInstanceSpec extends CatsEffectSuite with HandleTestSyntax {
 
   testWithHandle[SyncIO, WidgetError]("the intercept hook renders a raise through the method-local Err instance") { implicit H =>
     // `intercept` wires the hook in directly —
-    // `RaiseAspect.observing($pn, $onRaise)($applyF, $errInstance)` — so this
-    // asserts a stronger claim than the test above (which observes the hook
-    // only indirectly, through `mapK` and a hand-rolled recording
-    // `RaisePull`): the *method-local* `Err[WidgetError]` the call was handed
-    // is exactly what reaches the hook, not a derivation-site instance and
-    // not `toString`.
+    // `RaiseAspect.observing($pn, $onRaise)($applyF, $errInstance)` — so the
+    // *method-local* `Err[WidgetError]` the call was handed is exactly what
+    // reaches the hook: not a derivation-site instance, and not `toString`.
     for {
       rendered <- Ref.of[SyncIO, Vector[String]](Vector.empty)
       hook = new OnRaise[SyncIO, Render] {
@@ -294,10 +291,12 @@ class MethodLocalInstanceSpec extends CatsEffectSuite with HandleTestSyntax {
       }
       recorder <- RecordingFk[SyncIO, Render, Render]
       instrumented = riskyAspect.intercept(widgets[SyncIO])(recorder.fk, hook)
-      _ <- instrumented.risky(-7)(loudError, H).attemptHandle.void
+      r1 <- instrumented.risky(-7)(loudError, H).attemptHandle
+      _ = assertEquals(r1, Left(WidgetError("negative:-7")))
       seen1 <- rendered.get
       _ = assertEquals(seen1.toList, List("loudError:negative:-7"))
-      _ <- instrumented.risky(-8)(quietError, H).attemptHandle.void
+      r2 <- instrumented.risky(-8)(quietError, H).attemptHandle
+      _ = assertEquals(r2, Left(WidgetError("negative:-8")))
       seen2 <- rendered.get
       _ = assertEquals(seen2.toList, List("loudError:negative:-7", "quietError:negative:-8"))
     } yield ()
@@ -319,8 +318,12 @@ class MethodLocalInstanceSpec extends CatsEffectSuite with HandleTestSyntax {
 
   testWithHandle[SyncIO, WidgetError]("all three instance kinds resolve on one algebra") { implicit H =>
     for {
+      rendered <- Ref.of[SyncIO, Vector[String]](Vector.empty)
+      hook = new OnRaise[SyncIO, Render] {
+        def apply[E](e: E)(implicit ev: Render[E]): SyncIO[Unit] = rendered.update(_ :+ ev.render(e))
+      }
       recorder <- RecordingFk[SyncIO, Render, Render]
-      instrumented = widgetAspect.intercept(widgets[SyncIO])(recorder.fk, OnRaise.noop[SyncIO, Render])
+      instrumented = widgetAspect.intercept(widgets[SyncIO])(recorder.fk, hook)
       _ <- instrumented.show(Widget(4))(loud)
       w1 <- recorder.weaves
       _ = assertEquals(WeaveRenderer.render(w1.last.weave).domain, List(List("w" -> "loud:4")))
@@ -329,10 +332,9 @@ class MethodLocalInstanceSpec extends CatsEffectSuite with HandleTestSyntax {
       made = w2.last.weave
       madeTarget <- made.codomain.target.map(made.codomain.instance.render).attemptHandle
       _ = assertEquals(madeTarget, Right("quiet:5"))
-      recorded <- Ref.of[SyncIO, Vector[String]](Vector.empty)
-      mapped = widgetAspect.mapK(widgets[SyncIO])(recordingArrow(recorded))
-      _ <- mapped.risky(-6)(loudError, H).attemptHandle.void
-      seen <- recorded.get
+      risked <- instrumented.risky(-6)(loudError, H).attemptHandle
+      _ = assertEquals(risked, Left(WidgetError("negative:-6")))
+      seen <- rendered.get
       _ = assertEquals(seen.toList, List("loudError:negative:-6"))
     } yield ()
   }
