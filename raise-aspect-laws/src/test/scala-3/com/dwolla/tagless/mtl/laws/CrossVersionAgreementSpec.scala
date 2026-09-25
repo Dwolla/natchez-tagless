@@ -1,18 +1,18 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.effect.*
-import cats.syntax.all.*
-import com.dwolla.tagless.mtl.HandleTestSyntax
+import cats.effect.SyncIO
 import munit.CatsEffectSuite
 
-/** The Scala 2 half — the derived instance reproduces the shared expected
-  * renderings. The Scala 3 spec of the same name asserts the same list, so the two
+import scala.annotation.experimental
+
+/** The Scala 3 half — the derived instance reproduces the shared expected
+  * renderings. The Scala 2 spec of the same name asserts the same list, so the two
   * derivations are directly comparable in CI.
   */
-class CrossVersionAgreementSpec extends CatsEffectSuite with HandleTestSyntax {
-
-  testWithHandle[SyncIO, TestError]("the Scala 2 derivation matches the shared expected weave renderings") { implicit H =>
+@experimental
+class CrossVersionAgreementSpec extends CatsEffectSuite with HandleTestSyntax:
+  testWithHandle[SyncIO, TestError]("the Scala 3 derivation matches the shared expected weave renderings") { implicit H =>
     val derived = DeriveRaise.aspect[TestAlg, Render, Render, Render]
 
     for {
@@ -21,4 +21,3 @@ class CrossVersionAgreementSpec extends CatsEffectSuite with HandleTestSyntax {
       rendered <- ExpectedWeaves.rendered(instrumented, recorder)
     } yield assertEquals(rendered, ExpectedWeaves.expected)
   }
-}

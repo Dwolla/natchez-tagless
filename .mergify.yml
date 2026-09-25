@@ -60,13 +60,13 @@ pull_request_rules:
       add:
       - otel4s-tagless-mtl
       remove: []
-- name: Label raise-aspect-core PRs
+- name: Label raise-aspect PRs
   conditions:
-  - files~=^raise-aspect-core/
+  - files~=^raise-aspect/
   actions:
     label:
       add:
-      - raise-aspect-core
+      - raise-aspect
       remove: []
 - name: Label raise-aspect-laws PRs
   conditions:
@@ -75,14 +75,6 @@ pull_request_rules:
     label:
       add:
       - raise-aspect-laws
-      remove: []
-- name: Label raise-aspect-macros PRs
-  conditions:
-  - files~=^raise-aspect-macros/
-  actions:
-    label:
-      add:
-      - raise-aspect-macros
       remove: []
 - name: Label scalacache PRs
   conditions:

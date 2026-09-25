@@ -1,7 +1,5 @@
 package com.dwolla.tagless.mtl
 
-import scala.language.experimental.macros
-
 /** Derivation entry points for algebras whose methods take `cats.mtl.Raise`
   * capability parameters.
   *

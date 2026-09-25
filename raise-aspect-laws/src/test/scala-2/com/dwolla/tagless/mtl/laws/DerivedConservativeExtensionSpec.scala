@@ -1,9 +1,7 @@
 package com.dwolla.tagless.mtl
 package laws
 
-import cats.data.EitherT
 import cats.effect.*
-import cats.effect.syntax.all.*
 import cats.mtl.syntax.all.*
 import cats.mtl.*
 import cats.syntax.all.*
@@ -11,7 +9,7 @@ import cats.tagless.Derive as CatsTaglessDerive
 import cats.tagless.aop.Aspect
 import munit.CatsEffectSuite
 import LawsInstances.*
-import cats.{ApplicativeError, Monad}
+import cats.ApplicativeError
 import com.dwolla.tagless.mtl.{HandleApplicativeErrorInstances, HandleTestSyntax}
 
 /** Law L9 for the ''derived'' instance — our derivation is a conservative

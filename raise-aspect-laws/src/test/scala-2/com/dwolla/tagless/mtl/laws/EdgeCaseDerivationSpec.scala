@@ -71,7 +71,7 @@ class EdgeCaseDerivationSpec extends CatsEffectSuite with HandleTestSyntax {
     } yield ()
   }
 
-  testWithHandle[SyncIO, TestError]("a nullary def returning F[A] is woven with an empty domain") { implicit H =>
+  testWithHandle[SyncIO, TestError]("a nullary def returning F[A] is woven with an empty domain") { _ =>
     for {
       recorder <- RecordingFk[SyncIO, Render, Render]
       instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[SyncIO, Render])
@@ -84,7 +84,7 @@ class EdgeCaseDerivationSpec extends CatsEffectSuite with HandleTestSyntax {
     } yield ()
   }
 
-  testWithHandle[SyncIO, TestError]("overloads are woven independently, each keeping its own parameter type") { implicit H =>
+  testWithHandle[SyncIO, TestError]("overloads are woven independently, each keeping its own parameter type") { _ =>
     for {
       recorder <- RecordingFk[SyncIO, Render, Render]
       instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[SyncIO, Render])
@@ -101,7 +101,7 @@ class EdgeCaseDerivationSpec extends CatsEffectSuite with HandleTestSyntax {
     } yield ()
   }
 
-  testWithHandle[SyncIO, TestError]("a capability-free method on the same algebra is woven unchanged") { implicit H =>
+  testWithHandle[SyncIO, TestError]("a capability-free method on the same algebra is woven unchanged") { _ =>
     for {
       recorder <- RecordingFk[SyncIO, Render, Render]
       instrumented = derived.intercept(impl)(recorder.fk, OnRaise.noop[SyncIO, Render])

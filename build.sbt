@@ -74,9 +74,8 @@ lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
   taglessCore,
   core,
   scalacache,
-  raiseAspectCore,
+  raiseAspect,
   raiseAspectLaws,
-  raiseAspectMacros,
   natchezTaglessMtl,
   otel4sTagless,
   otel4sTaglessMtl,
@@ -159,11 +158,11 @@ lazy val scalacache = crossProject(JVMPlatform)
   .settings(doctestSettings *)
   .dependsOn(core)
 
-lazy val raiseAspectCore = crossProject(JVMPlatform, JSPlatform)
+lazy val raiseAspect = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
-  .in(file("raise-aspect-core"))
+  .in(file("raise-aspect"))
   .settings(
-    name := "raise-aspect-core",
+    name := "raise-aspect",
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % catsVersion,
       "org.typelevel" %%% "cats-mtl" % catsMtlVersion,
@@ -174,11 +173,18 @@ lazy val raiseAspectCore = crossProject(JVMPlatform, JSPlatform)
       "org.scalameta" %%% "munit" % munitVersion % Test,
       "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
     ),
+    // The Scala 2 def-macro implementation needs the compiler APIs at compile
+    // time only; `Provided` keeps them off downstream classpaths.
+    libraryDependencies ++= {
+      if (scalaBinaryVersion.value.startsWith("2"))
+        Seq("scala-compiler", "scala-reflect").map("org.scala-lang" % _ % scalaVersion.value % Provided)
+      else Seq.empty
+    },
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
   // Test-only, additive split so a `Platform.isJvm` compile-time constant
   // (see OnRaiseSpec/WeaveArrowsOnRaiseSpec) can differ between the JVM and
-  // JS builds without moving raiseAspectCore to CrossType.Full. Mirrors this
+  // JS builds without moving raiseAspect to CrossType.Full. Mirrors this
   // project's existing scala-2/scala-3 source-directory convention, and the
   // `cats-kernel-laws` Platform.isJvm pattern it's modeled on.
   .jvmSettings(
@@ -202,7 +208,7 @@ lazy val raiseAspectLaws = crossProject(JVMPlatform, JSPlatform)
     ),
     // law L9 compares our derivation against upstream's on capability-free
     // algebras. On Scala 2 that lives in cats-tagless-macros; on Scala 3 it is
-    // `Derive` in cats-tagless-core, which raise-aspect-core already provides.
+    // `Derive` in cats-tagless-core, which raise-aspect already provides.
     libraryDependencies ++= {
       if (scalaBinaryVersion.value.startsWith("2"))
         Seq("org.typelevel" %%% "cats-tagless-macros" % catsTaglessVersion % Test)
@@ -210,31 +216,7 @@ lazy val raiseAspectLaws = crossProject(JVMPlatform, JSPlatform)
     },
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
-  .dependsOn(raiseAspectCore % "compile->compile;test->test")
-
-lazy val raiseAspectMacros = crossProject(JVMPlatform, JSPlatform)
-  .crossType(CrossType.Pure)
-  .in(file("raise-aspect-macros"))
-  .settings(
-    name := "raise-aspect-macros",
-    libraryDependencies ++= {
-      if (scalaBinaryVersion.value.startsWith("2"))
-        Seq("scala-compiler", "scala-reflect").map("org.scala-lang" % _ % scalaVersion.value % Provided)
-      else Seq.empty
-    },
-    libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-effect" % catsEffectVersion % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
-    ),
-    // A macro bundle manipulates trees the compiler cannot see through, which
-    // provokes spurious unused warnings. Upstream cats-tagless drops the same
-    // options in its macros module.
-    scalacOptions ~= {
-      _.filterNot(o => o.startsWith("-Wunused") || o.startsWith("-Ywarn-unused"))
-    },
-    tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
-  )
-  .dependsOn(raiseAspectCore % "compile->compile;test->test", raiseAspectLaws % "test->test")
+  .dependsOn(raiseAspect % "compile->compile;test->test")
 
 lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
@@ -250,7 +232,7 @@ lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform)
   .settings(doctestSettings *)
   // test->test reuses core's InMemorySuite harness (Kleisli/IOLocal Trace wiring)
   // for the integration test, rather than re-deriving it.
-  .dependsOn(core % "compile->compile;test->test", raiseAspectCore, raiseAspectMacros)
+  .dependsOn(core % "compile->compile;test->test", raiseAspect)
 
 // otel4s versions of core's three tracing interpreters. Deliberately *not* a
 // natchez module: it depends on otel4s-core-trace and taglessCore and nothing
@@ -437,7 +419,7 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
     },
   )
   .settings(doctestSettings *)
-  .dependsOn(otel4sTagless, raiseAspectCore, raiseAspectMacros)
+  .dependsOn(otel4sTagless, raiseAspect)
 
 // sbt-buildinfo can't be enabled only for the test scope, so this is the workaround to use it only in tests
 lazy val buildInfoForTests = crossProject(JVMPlatform, JSPlatform)
