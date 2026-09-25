@@ -258,8 +258,9 @@ coordinate is not declared, both source directories are emptied, and
 An algebra with no `Raise` parameters that wants the short `derives` spelling
 instead of a hand-declared `implicit val fooAspect: Aspect[Foo, ToAnyValue,
 ToAnyValue]` can write `trait Foo[F[_]] derives AnyValueAspect`. `@experimental`
-goes on the algebra's **companion object**, never on the trait — see
-`AnyValueAspect.derived`'s scaladoc for why. An algebra whose methods take
+goes on the algebra's **companion object**, never on the trait — see "Scala 3:
+derives and @experimental" in [the root README](../README.md#scala-3-derives-and-experimental)
+for why. An algebra whose methods take
 `cats.mtl.Raise` parameters needs `AnyValueRaiseAspect` instead, one module
 over — see the section below.
 

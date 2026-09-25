@@ -95,9 +95,10 @@ same value as the same raise with no hook attached, matching the
 transparency `RaiseTracerTransparencySpec` checks for the shipped hooks — 
 can't be enforced by choosing a stronger typeclass; it would need the power
 to catch and discard the hook's own failure (`ApplicativeError`-shaped),
-which `intercept` deliberately doesn't ask for (see the `Handle[F, E]`
-rejection above: capabilities that consume `F` are kept out of this design
-on purpose). So it stands as a documented precondition on `OnRaise`
+which `intercept` deliberately doesn't ask for (see the "Design constraints"
+section of `com.dwolla.tracing.mtl`'s package scaladoc for why `Handle[F, E]`
+parameters are rejected: capabilities that consume `F` are kept out of this
+design on purpose). So it stands as a documented precondition on `OnRaise`
 instead — see `OnRaise`'s own scaladoc — the same way a `Functor`/`Monad`
 law is trusted rather than type-checked everywhere else in this ecosystem.
 Every shipped hook already satisfies it trivially: none of them ever raises

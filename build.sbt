@@ -30,9 +30,12 @@ ThisBuild / tlFatalWarnings := githubIsWorkflowBuild.value
 // `sbt ciLocal`: CI's build job, run locally, with fatal warnings on, as in
 // CI, for every Scala version and root project in the CI matrix. The steps
 // are read from `githubWorkflowBuild`, the same setting that generates
-// .github/workflows/ci.yml, so the two can't drift apart. One deliberate
-// difference: Scala.js tests are linked but not run, because running them
-// needs Node, which CI provides and developer machines may not.
+// .github/workflows/ci.yml, so the commands stay close to CI's — but the
+// alias skips `githubWorkflowBuildPreamble`/`Postamble` and any step that
+// isn't a `WorkflowStep.Sbt`, and `stepsFor` below recognizes only the two
+// exact command lists it filters on, so it's not a byte-for-byte guarantee.
+// One deliberate difference: Scala.js tests are linked but not run, because
+// running them needs Node, which CI provides and developer machines may not.
 //
 // An alias rather than a task because it has to switch Scala versions (`++`),
 // which only commands can do.
