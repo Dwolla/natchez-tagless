@@ -3,7 +3,7 @@ package com.dwolla.tracing
 /** Traces algebras whose methods take `cats.mtl.Raise` capability parameters —
   * algebras `cats.tagless.aop.Aspect` alone cannot weave, because plain `Aspect`
   * (like `FunctorK`) requires the effect type to appear only as each method's
-  * top-level return type. `RaiseAspect` (`raise-aspect-core`) lifts that
+  * top-level return type. `RaiseAspect` (`raise-aspect`) lifts that
   * restriction for `Raise[F, E]` parameters specifically; this module wires the
   * result into natchez tracing the same way `com.dwolla.tracing.syntax` already
   * does for plain `Aspect` instances.
@@ -92,7 +92,7 @@ package com.dwolla.tracing
   * underlying `quotes.reflect` APIs (`Symbol.newClass`) are experimental on that
   * line. Scala 2 is unaffected. See the Scala 3-specific companion object in this
   * module's test sources for the annotation placement, or `DeriveRaise`'s own
-  * scaladoc in `raise-aspect-macros`.
+  * scaladoc in `raise-aspect`.
   *
   * There is also a shorter Scala-3-only spelling for exactly this natchez shape:
   * an algebra can declare its instance with a `derives` clause instead of the
@@ -164,7 +164,7 @@ package com.dwolla.tracing
   * default rather than to raw `toString`.
   *
   * The `Trace`-based default itself is reached the same lexical way, not
-  * automatically: `RaiseRecorder`'s mechanism lives in `raise-aspect-core`,
+  * automatically: `RaiseRecorder`'s mechanism lives in `raise-aspect`,
   * which cannot name natchez, so the natchez default is a `DefaultOnRaise`
   * instance declared in `com.dwolla.tracing.mtl.syntax` and mixed into that
   * package's package object. It arrives with

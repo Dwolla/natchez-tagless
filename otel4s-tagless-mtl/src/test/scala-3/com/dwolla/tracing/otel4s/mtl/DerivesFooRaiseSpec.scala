@@ -35,9 +35,9 @@ class DerivesFooRaiseSpec extends munit.CatsEffectSuite {
     * munit-cats-effect's registered `SyncIO` transform reports it as a test
     * failure with a real stack trace instead of silently succeeding on an
     * unexamined `Left`. Inlined rather than shared: this module's
-    * `otel4sTaglessMtl` project depends on `raiseAspectCore` for compile
+    * `otel4sTaglessMtl` project depends on `raiseAspect` for compile
     * only, not `test->test`, so `SyncIOTestSyntax` (defined in
-    * `raise-aspect-core`'s test sources) isn't on this module's test
+    * `raise-aspect`'s test sources) isn't on this module's test
     * classpath.
     */
   private def runOrFail[A](fa: F[A]): SyncIO[A] =

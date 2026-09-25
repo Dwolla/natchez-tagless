@@ -5,7 +5,7 @@ import com.dwolla.tagless.mtl.RaiseRecorder
 import munit.CatsEffectSuite
 import natchez.{Trace, TraceableValue}
 
-/** After `RaiseRecorder` moved to `raise-aspect-core`, the
+/** After `RaiseRecorder` moved to `raise-aspect`, the
   * natchez default (`NatchezDefaultOnRaise`) is reached lexically — by importing
   * `com.dwolla.tracing.mtl.syntax`, which carries it via the package object — not
   * automatically through implicit scope the way the old `fromTrace` was.

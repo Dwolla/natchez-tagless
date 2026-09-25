@@ -24,7 +24,7 @@ loosening the test.
 | L6 | synthesized functor maps the target and preserves `algebraName`/`domain`/`codomain.name` | retired at M12 — no value-level content; see below | none — retired |
 | L7 | the capability decorator reports the ambient `Functor[F]` | true by construction in `RaiseAspect.observing` (`functor = R.functor`) since M12, not a checked property | `RaiseAspectSuite`, one unit test: `"L7 the decorated capability reports the caller's own Functor instance"` |
 | L8 | weave structure fidelity and capability erasure | concrete tests, not a law trait | `RaiseAspectSuite`, four `"L8 …"` tests; two compare rendered output via `WeaveRenderer`, two compare behavior directly |
-| L9 | conservative extension vs. `cats.tagless.Derive.aspect` | `ConservativeExtensionSuite.scala` | `scala-2/ConservativeExtensionSpec` and `scala-3/ConservativeExtensionSpec` (hand-written reference vs. upstream); `raise-aspect-macros`'s `DerivedConservativeExtensionSpec` additionally checks the macro-derived instance against both upstream and the hand-written reference |
+| L9 | conservative extension vs. `cats.tagless.Derive.aspect` | `ConservativeExtensionSuite.scala` | `scala-2/ConservativeExtensionSpec` and `scala-3/ConservativeExtensionSpec` (hand-written reference vs. upstream); `scala-2/DerivedConservativeExtensionSpec` and `scala-3/DerivedConservativeExtensionSpec` additionally check the macro-derived instance against both upstream and the hand-written reference |
 | L10 | laziness parity — weaving runs no effects, and running the intercepted path runs the same number of effects as the plain one | concrete tests, not a law trait | `RaiseAspectSuite`, two `"L10 …"` tests, over `SyncIO` with a `Ref`-based effect counter |
 | — | `Serializable` for the typeclass instances | `cats.kernel.laws.discipline.SerializableTests` | `RaiseAspectSuite`, two checkAlls: `RaisePull.id` and `RaiseArrow.id` |
 
@@ -85,7 +85,7 @@ def instance: RaiseAspect[TestAlg, Render, Render, Render]
 
 `ReferenceRaiseAspectSpec` supplies the hand-written reference instance.
 `DerivedRaiseAspectSpec` (one per Scala major version, in
-`raise-aspect-macros`) supplies the macro-derived instance and inherits every
+this module's tests) supplies the macro-derived instance and inherits every
 law above unchanged:
 
 ```scala

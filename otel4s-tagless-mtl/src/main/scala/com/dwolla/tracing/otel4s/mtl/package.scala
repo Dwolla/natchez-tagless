@@ -3,7 +3,7 @@ package com.dwolla.tracing.otel4s
 /** Traces algebras whose methods take `cats.mtl.Raise` capability parameters —
   * algebras `cats.tagless.aop.Aspect` alone cannot weave, because plain
   * `Aspect` (like `FunctorK`) requires the effect type to appear only as each
-  * method's top-level return type. `RaiseAspect` (`raise-aspect-core`) lifts
+  * method's top-level return type. `RaiseAspect` (`raise-aspect`) lifts
   * that restriction for `Raise[F, E]` parameters specifically; this module
   * wires the result into otel4s tracing the same way
   * `com.dwolla.tracing.otel4s.syntax` already does for plain `Aspect`
@@ -12,7 +12,7 @@ package com.dwolla.tracing.otel4s
   * It is the otel4s counterpart of `com.dwolla.tracing.mtl`
   * (`natchez-tagless-mtl`): the method names match, the recorded attribute
   * keys match, and the resolution mechanism is literally the same code in
-  * `raise-aspect-core`. What differs is the rendering type class —
+  * `raise-aspect`. What differs is the rendering type class —
   * `ToAnyValue` here, `natchez.TraceableValue` there — see ARCHAEOLOGY.md if
   * you're moving an algebra between the two.
   *
@@ -108,7 +108,7 @@ package com.dwolla.tracing.otel4s
   *     recording site decides an empty value is not worth an attribute slot.
   *
   * Both names come from `com.dwolla.tagless.mtl.RaiseRecorder.ErrorTypeKey`
-  * and `ErrorValueKey` in `raise-aspect-core`, and are therefore
+  * and `ErrorValueKey` in `raise-aspect`, and are therefore
   * '''byte-identical to what `natchez-tagless-mtl` records''' — a query written
   * against a natchez-instrumented service keeps working after a migration.
   * They are deliberately ''not'' OpenTelemetry's registered semconv
@@ -265,7 +265,7 @@ package com.dwolla.tracing.otel4s
   * default rather than to raw `toString`.
   *
   * The `Tracer`-based default itself is reached the same lexical way, not
-  * automatically: `RaiseRecorder`'s mechanism lives in `raise-aspect-core`,
+  * automatically: `RaiseRecorder`'s mechanism lives in `raise-aspect`,
   * which cannot name otel4s, so the otel4s default is a `DefaultOnRaise`
   * instance declared in [[Otel4sDefaultOnRaise]] and mixed into
   * `com.dwolla.tracing.otel4s.mtl.syntax`'s package object. It arrives with

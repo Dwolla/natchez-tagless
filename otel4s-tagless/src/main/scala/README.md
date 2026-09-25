@@ -18,7 +18,7 @@ This module depends on `otel4s-core-trace`, cats, cats-tagless, circe-core and
   and the `Raise`-aware syntax live one module over, in `otel4s-tagless-mtl`
   — see the section at the end of this file. This module stays plain-`Aspect`
   only, so a user who does not take `Raise` parameters pays for neither
-  cats-mtl nor `raise-aspect-core`.
+  cats-mtl nor `raise-aspect`.
 
 ## Where a `Tracer[F]` comes from
 
@@ -267,13 +267,13 @@ over — see the section below.
 
 Artifact `otel4s-tagless-mtl`, package `com.dwolla.tracing.otel4s.mtl`, syntax
 in `com.dwolla.tracing.otel4s.mtl.syntax`. It depends on this module,
-`raise-aspect-core` and `raise-aspect-macros`, and carries the identical 2.12
+`raise-aspect`, and carries the identical 2.12
 containment for the identical reason.
 
 **What it is for.** An algebra whose methods take a `cats.mtl.Raise[F, E]`
 capability parameter cannot be woven by plain `Aspect`, which requires `F` to
 appear only as each method's top-level return type. `RaiseAspect`
-(`raise-aspect-core`) lifts that restriction for `Raise` parameters
+(`raise-aspect`) lifts that restriction for `Raise` parameters
 specifically; this module wires it into otel4s tracing. It is the otel4s
 counterpart of `natchez-tagless-mtl`, file for file.
 
@@ -311,7 +311,7 @@ same child span that carries `parameters` and `returnValue`, not the caller's:
 
 The omission is the same omit-when-empty rule described above for parameters
 and return values, and it keeps `ToAnyValue` total. Both keys are constants on
-`com.dwolla.tagless.mtl.RaiseRecorder` in `raise-aspect-core`, so they are
+`com.dwolla.tagless.mtl.RaiseRecorder` in `raise-aspect`, so they are
 byte-identical to what `natchez-tagless-mtl` records: a query written against a
 natchez-instrumented service keeps working after a migration. They are
 deliberately not semconv's `error.type`, which describes how an operation

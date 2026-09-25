@@ -22,7 +22,7 @@ object TestError {
 }
 
 /** A tiny `Dom`/`Cod` type class for the smoke tests, standing in for natchez's
-  * `TraceableValue`. Deliberately defined here so `raise-aspect-core` never
+  * `TraceableValue`. Deliberately defined here so `raise-aspect` never
   * depends on natchez.
   */
 trait Render[A] extends Serializable {

@@ -14,7 +14,7 @@ import scala.annotation.experimental
   *
   * JVM-only: `ObjectOutputStream` does not exist on Scala.js. `core` is
   * `CrossType.Full`, so this file simply lives under `core/jvm` rather than
-  * needing the `Platform.isJvm` constant `raise-aspect-core` uses.
+  * needing the `Platform.isJvm` constant `raise-aspect` uses.
   *
   * `scala-3` and not plain `scala` under that: the subjects below are
   * `TraceableAspect`, a Scala 3-only main source, and `DerivesLookup`, which

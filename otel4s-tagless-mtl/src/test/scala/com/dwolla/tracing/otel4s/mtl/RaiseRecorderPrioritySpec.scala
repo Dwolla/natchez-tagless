@@ -40,7 +40,7 @@ class RaiseRecorderPrioritySpec extends CatsEffectSuite {
   }
 
   test("resolving with both a user OnRaise and a Tracer in scope reports no ambiguous implicit") {
-    // The 2.13 shape guard, at the otel4s Err. `raise-aspect-core`'s
+    // The 2.13 shape guard, at the otel4s Err. `raise-aspect`'s
     // `RaiseRecorderSpec` covers the mechanism; this covers this module's
     // actual instantiation of it.
     val errors: String = compileErrors(
