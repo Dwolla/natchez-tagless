@@ -22,6 +22,41 @@ ThisBuild / mergifyStewardConfig ~= { _.map {
 }}
 ThisBuild / resolvers += Resolver.sonatypeCentralSnapshots
 
+// `sbt ciLocal`: CI's build job, run locally, for every Scala version and root
+// project in the CI matrix. The steps are read
+// from `githubWorkflowBuild`, the same setting that generates
+// .github/workflows/ci.yml, so the two can't drift apart. One deliberate
+// difference: Scala.js tests are linked but not run, because running them
+// needs Node, which CI provides and developer machines may not.
+//
+// An alias rather than a task because it has to switch Scala versions (`++`),
+// which only commands can do.
+Global / tlCommandAliases += {
+  val scalaVersions = (ThisBuild / githubWorkflowScalaVersions).value.toList
+  val rootProjects = (ThisBuild / githubWorkflowBuildMatrixAdditions).value.getOrElse("project", Nil)
+  val buildSteps = (ThisBuild / githubWorkflowBuild).value.toList.collect { case step: WorkflowStep.Sbt => step.commands }
+
+  // `Test/scalaJSLinkerResult` only resolves on the JS root (CI itself gates
+  // that step on `matrix.project == 'natchez-tagless-rootJS'`, a condition
+  // lost once WorkflowStep.Sbt is collapsed to its bare commands above), and
+  // `test` on the JS root needs Node, which local machines may not have.
+  def stepsFor(project: String): List[String] =
+    buildSteps.filterNot { commands =>
+      (commands == List("Test/scalaJSLinkerResult") && !project.endsWith("JS")) ||
+        (commands == List("test") && project.endsWith("JS"))
+    }.flatten
+
+  "ciLocal" -> (
+    List("githubWorkflowCheck") ++
+      (for {
+        scala <- scalaVersions
+        project <- rootProjects
+        command <- s"project $project" :: s"++ $scala" :: stepsFor(project)
+      } yield command) ++
+      List("project /")
+  )
+}
+
 val catsVersion = "2.13.0"
 val catsEffectVersion = "3.7.0"
 val catsMtlVersion = "1.7.0"
