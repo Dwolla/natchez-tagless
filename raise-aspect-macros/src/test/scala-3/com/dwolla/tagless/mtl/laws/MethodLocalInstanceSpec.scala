@@ -279,6 +279,10 @@ class MethodLocalInstanceSpec extends CatsEffectSuite with HandleTestSyntax:
         def apply[E](e: E)(implicit ev: Render[E]): SyncIO[Unit] = rendered.update(_ :+ ev.render(e))
       recorder <- RecordingFk[SyncIO, Render, Render]
       instrumented = riskyAspect.intercept(widgets[SyncIO])(recorder.fk, hook)
+      ok <- instrumented.risky(3)(using loudError, H).attemptHandle
+      _ = assertEquals(ok, Right("ok:3"))
+      seen0 <- rendered.get
+      _ = assertEquals(seen0.toList, Nil)
       r1 <- instrumented.risky(-7)(using loudError, H).attemptHandle
       _ = assertEquals(r1, Left(WidgetError("negative:-7")))
       seen1 <- rendered.get
