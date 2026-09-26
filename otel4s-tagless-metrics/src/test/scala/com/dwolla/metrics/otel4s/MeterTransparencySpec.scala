@@ -18,6 +18,8 @@ class MeterTransparencySpec extends CatsEffectSuite {
 
   private val interpreters: List[(String, IO[Instrumentation[IO, *] ~> IO])] = List(
     "MeterInstrumentation" -> MeterInstrumentation[IO](CallDuration.DefaultBucketBoundaries),
+    "RpcMeterInstrumentation" ->
+      RpcMeterInstrumentation[IO](RpcRole.Server, RpcSystem("thrift"), RpcService("com.example.FooService")),
   )
 
   interpreters.foreach { case (label, interpreter) =>

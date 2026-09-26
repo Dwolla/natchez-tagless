@@ -2,12 +2,14 @@ package com.dwolla.metrics.otel4s
 
 import cats.effect.IO
 import cats.effect.testkit.TestControl
+import cats.syntax.all._
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.scalacheck.Gen
 import org.scalacheck.effect.PropF
 import org.typelevel.otel4s.AttributeKey
 import org.typelevel.otel4s.metrics.{BucketBoundaries, Meter}
 import org.typelevel.otel4s.semconv.attributes.{CodeAttributes, ErrorAttributes}
+import org.typelevel.otel4s.semconv.experimental.attributes.RpcExperimentalAttributes
 
 import java.util.concurrent.TimeoutException
 import scala.concurrent.duration._
@@ -150,6 +152,63 @@ abstract class MeasurementContentSuite extends CatsEffectSuite with ScalaCheckEf
       val point = pointFor(ErrorAttributes.ErrorType, "canceled", histogramNamed("Foo.duration", histograms))
       assertEquals(point.count, 1L)
       assertEqualsDouble(point.sum, 1.0, 1e-9)
+    }
+  }
+
+  private val thrift: RpcSystem = RpcSystem("thrift")
+  private val fooService: RpcService = RpcService("com.example.FooService")
+
+  private def rpc(foo: Foo[IO], role: RpcRole)(implicit meter: Meter[IO]): IO[Foo[IO]] =
+    RpcMeterInstrumentation[IO](role, thrift, fooService).map(Foo.metered(foo, _))
+
+  private val rpcRoles: List[(RpcRole, String, String)] = List(
+    (RpcRole.Server, "rpc.server.call.duration", "Measures the duration of an incoming Remote Procedure Call (RPC)."),
+    (RpcRole.Client, "rpc.client.call.duration", "Measures the duration of an outgoing Remote Procedure Call (RPC)."),
+  )
+
+  rpcRoles.foreach { case (role, metricName, description) =>
+    test(s"$role records to $metricName in seconds, with rpc.system.name and rpc.method = <service>/<method>") {
+      PropF.forAllF(callDurations) { callDuration =>
+        measured { implicit meter =>
+          rpc(sleepingFoo(callDuration, callDuration), role).flatMap(_.greet("world"))
+        }.map { case (result, histograms) =>
+          assertEquals(result, "hello world")
+          val histogram = histogramNamed(metricName, histograms)
+          assertEquals(histogram.unit, "s")
+          assertEquals(histogram.description, description)
+          val point = pointFor(RpcExperimentalAttributes.RpcMethod, "com.example.FooService/greet", histogram)
+          assertEquals(point.attributes.get(RpcExperimentalAttributes.RpcSystemName).map(_.value), Some("thrift"))
+          assertEquals(point.attributes.get(ErrorAttributes.ErrorType), None)
+          assertEquals(point.count, 1L)
+          assertEqualsDouble(point.sum, callDuration.toUnit(SECONDS), 1e-9)
+          assertEquals(point.boundaries, defaultBoundaries)
+        }
+      }
+    }
+  }
+
+  test("an RPC-instrumented algebra records only the RPC metric, never <Alg>.duration") {
+    measured { implicit meter =>
+      rpc(sleepingFoo(1.milli, 1.milli), RpcRole.Server).flatMap(foo => foo.ping() >> foo.greet("world"))
+    }.map { case (_, histograms) =>
+      assertEquals(histograms.map(_.name), List("rpc.server.call.duration"))
+    }
+  }
+
+  test("a failed or canceled RPC call records error.type alongside the RPC attributes") {
+    val failure = new FooFailure
+    measured { implicit meter =>
+      rpc(Foo[IO](_ => IO.raiseError(failure), IO.sleep(10.seconds)), RpcRole.Client).flatMap { foo =>
+        (foo.greet("world").attempt, foo.ping().timeout(1.second).attempt).tupled
+      }
+    }.map { case ((greeted, pinged), histograms) =>
+      assert(greeted.left.exists(_ eq failure), s"expected the identical FooFailure back, got $greeted")
+      assert(pinged.left.exists(_.isInstanceOf[TimeoutException]), s"expected a TimeoutException, got $pinged")
+      val histogram = histogramNamed("rpc.client.call.duration", histograms)
+      val greet = pointFor(RpcExperimentalAttributes.RpcMethod, "com.example.FooService/greet", histogram)
+      val ping = pointFor(RpcExperimentalAttributes.RpcMethod, "com.example.FooService/ping", histogram)
+      assertEquals(greet.attributes.get(ErrorAttributes.ErrorType).map(_.value), Some(classOf[FooFailure].getName))
+      assertEquals(ping.attributes.get(ErrorAttributes.ErrorType).map(_.value), Some("canceled"))
     }
   }
 }
