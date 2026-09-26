@@ -62,5 +62,11 @@ excludes the span's own overhead.
   `rpc.server.call.duration` through the same `Meter` — e.g. natchez-smithy4s's
   `withMetrics` — lands in the same histogram, told apart by `rpc.system.name`
   and `rpc.method`.
+- **Import the RPC types by name next to natchez-smithy4s.** Its metrics
+  module has its own `RpcRole`, so `import com.dwolla.metrics.otel4s._` and
+  `import com.dwolla.metrics.smithy._` together make `RpcRole` ambiguous.
+  Import `com.dwolla.metrics.otel4s.{RpcRole, RpcService, RpcSystem}` (or
+  rename one, e.g. `RpcRole => TaglessRpcRole`) instead; the two `withMetrics`
+  syntaxes coexist.
 - **`code.function.name` is not fully qualified.** cats-tagless knows only an
   algebra's simple name, so it records `EncryptionService.encrypt`.

@@ -15,7 +15,7 @@ trait ToWithMetricsOps {
 /** Records every method call's duration, in seconds, through the ambient
   * `Meter[F]`. Each overload returns `F[Alg[F]]`: running it creates what the
   * interpreter needs once, and yields the wrapped algebra; nothing is created
-  * per call.
+  * after the first call.
   *
   * Overloads rather than default arguments: a method with defaults can't gain a
   * parameter, or a same-named sibling with defaults, without breaking binary

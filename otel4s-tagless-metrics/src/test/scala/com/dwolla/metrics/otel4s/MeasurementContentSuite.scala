@@ -19,8 +19,7 @@ import scala.concurrent.duration._
   * Every property lives here; a subclass supplies only `histogramsFrom`, which
   * runs a function against a real `Meter[IO]` and reports what it recorded.
   * oteljava is the only backend today (`OtelJavaMeasurementContentSpec`, JVM);
-  * otel4s-sdk is one more subclass once its testkit is released against
-  * otel4s-core 1.x.
+  * otel4s-sdk is one more subclass once it reaches a stable release.
   */
 abstract class MeasurementContentSuite extends CatsEffectSuite with ScalaCheckEffectSuite {
 
@@ -42,6 +41,9 @@ abstract class MeasurementContentSuite extends CatsEffectSuite with ScalaCheckEf
       case List(histogram) => histogram
       case other => fail(s"expected exactly one histogram named $name, found ${other.size} among ${histograms.map(_.name)}")
     }
+
+  private def attributeKeys(point: RecordedPoint): Set[String] =
+    point.attributes.map(_.key.name).toSet
 
   protected def pointFor(key: AttributeKey[String], value: String, histogram: RecordedHistogram): RecordedPoint =
     histogram.points.filter(_.attributes.get(key).map(_.value).contains(value)) match {
@@ -126,6 +128,7 @@ abstract class MeasurementContentSuite extends CatsEffectSuite with ScalaCheckEf
     }.map { case (_, histograms) =>
       val point = pointFor(CodeAttributes.CodeFunctionName, "Foo.greet", histogramNamed("Foo.duration", histograms))
       assertEquals(point.attributes.get(ErrorAttributes.ErrorType), None)
+      assertEquals(attributeKeys(point), Set("code.function.name"))
     }
   }
 
@@ -140,6 +143,7 @@ abstract class MeasurementContentSuite extends CatsEffectSuite with ScalaCheckEf
         val point = pointFor(ErrorAttributes.ErrorType, classOf[FooFailure].getName, histogramNamed("Foo.duration", histograms))
         assertEquals(point.attributes.get(CodeAttributes.CodeFunctionName).map(_.value), Some("Foo.greet"))
         assertEqualsDouble(point.sum, callDuration.toUnit(SECONDS), 1e-9)
+        assertEquals(attributeKeys(point), Set("code.function.name", "error.type"))
       }
     }
   }
@@ -182,6 +186,7 @@ abstract class MeasurementContentSuite extends CatsEffectSuite with ScalaCheckEf
           assertEquals(point.count, 1L)
           assertEqualsDouble(point.sum, callDuration.toUnit(SECONDS), 1e-9)
           assertEquals(point.boundaries, defaultBoundaries)
+          assertEquals(attributeKeys(point), Set("rpc.system.name", "rpc.method"))
         }
       }
     }
@@ -209,6 +214,8 @@ abstract class MeasurementContentSuite extends CatsEffectSuite with ScalaCheckEf
       val ping = pointFor(RpcExperimentalAttributes.RpcMethod, "com.example.FooService/ping", histogram)
       assertEquals(greet.attributes.get(ErrorAttributes.ErrorType).map(_.value), Some(classOf[FooFailure].getName))
       assertEquals(ping.attributes.get(ErrorAttributes.ErrorType).map(_.value), Some("canceled"))
+      assertEquals(attributeKeys(greet), Set("rpc.system.name", "rpc.method", "error.type"))
+      assertEquals(attributeKeys(ping), Set("rpc.system.name", "rpc.method", "error.type"))
     }
   }
 }

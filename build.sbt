@@ -470,11 +470,12 @@ lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
     publish / skip := !isOtel4sScalaVersion.value,
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
-  // Metric *content* needs an SDK. The cross-platform one (otel4s-sdk) has not
-  // been released against otel4s-core 1.x, so the only backend today is
-  // oteljava, which is JVM-only — hence `%%` and `.jvmSettings`. The content
-  // properties live in the shared, backend-agnostic MeasurementContentSuite;
-  // an otel4s-sdk backend later is one more subclass.
+  // Metric *content* needs an SDK. The only backend tested today is oteljava,
+  // which is JVM-only — hence `%%` and `.jvmSettings`. otel4s-sdk (which also
+  // targets Scala.js) is not yet at a stable release; its 0.19.0 testkit is
+  // built against otel4s-core 1.0.0, so a backend for it can be added once it
+  // stabilizes. The content properties live in the shared, backend-agnostic
+  // MeasurementContentSuite, so that backend is one more subclass.
   .jvmSettings(
     libraryDependencies ++= {
       if (isOtel4sScalaVersion.value)
