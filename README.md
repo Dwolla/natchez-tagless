@@ -10,6 +10,7 @@ Semi-automatically derive [Natchez](http://tpolecat.github.io/natchez/) trace in
 - `natchez-tagless-scalacache`: cats-tagless instances for ScalaCache's `Cache` trait, built on `natchez-tagless`.
 - `otel4s-tagless`: the [otel4s](https://typelevel.org/otel4s/) backend (see [`otel4s-tagless/README.md`](otel4s-tagless/README.md)).
 - `otel4s-tagless-mtl`: the `Raise` counterpart of `otel4s-tagless` (see the `com.dwolla.tracing.otel4s.mtl` package scaladoc).
+- `otel4s-tagless-metrics`: call-duration metrics for tagless algebras via otel4s, for in-process calls or following the OpenTelemetry RPC conventions (see [`otel4s-tagless-metrics/README.md`](otel4s-tagless-metrics/README.md)).
 - `raise-aspect` and `raise-aspect-laws`: the backend-agnostic core both `-mtl` modules build on, and its laws (see [`raise-aspect/README.md`](raise-aspect/README.md) and [`raise-aspect-laws/LAWS.md`](raise-aspect-laws/LAWS.md)).
 
 Moving from natchez to otel4s? See "Migrating from `natchez-tagless` to the otel4s modules" in [`ARCHAEOLOGY.md`](ARCHAEOLOGY.md#migrating-from-natchez-tagless-to-the-otel4s-modules).
