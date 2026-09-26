@@ -16,7 +16,9 @@ private[otel4s] object MeterInstrumentation {
 }
 
 /** Records each call's duration to `<algebraName>.duration`, in seconds, with
-  * `code.function.name = <algebraName>.<methodName>`.
+  * `code.function.name = <algebraName>.<methodName>`; a failed call also
+  * carries `error.type` (the error's class name, or `"canceled"`). Errors and
+  * cancellation propagate unchanged.
   *
   * The metric name comes from the `Instrumentation`, so the histogram can't be
   * created until the first call; it is created then and kept in `histogram`.
@@ -31,7 +33,8 @@ private[otel4s] class MeterInstrumentation[F[_]: MonadCancelThrow: Meter](bucket
 
   override def apply[A](fa: Instrumentation[F, A]): F[A] = {
     val codeFunctionName = Attribute(CodeAttributes.CodeFunctionName, s"${fa.algebraName}.${fa.methodName}")
-    val attributesFor: Resource.ExitCase => List[Attribute[_]] = _ => List(codeFunctionName)
+    val attributesFor: Resource.ExitCase => List[Attribute[_]] =
+      exitCase => codeFunctionName :: CallDuration.errorType(exitCase).toList
 
     histogramFor(fa.algebraName).flatMap(_.recordDuration(SECONDS, attributesFor).surround(fa.value))
   }

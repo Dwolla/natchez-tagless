@@ -7,8 +7,9 @@ import org.scalacheck.Gen
 import org.scalacheck.effect.PropF
 import org.typelevel.otel4s.AttributeKey
 import org.typelevel.otel4s.metrics.{BucketBoundaries, Meter}
-import org.typelevel.otel4s.semconv.attributes.CodeAttributes
+import org.typelevel.otel4s.semconv.attributes.{CodeAttributes, ErrorAttributes}
 
+import java.util.concurrent.TimeoutException
 import scala.concurrent.duration._
 
 /** Metric ''content'', asserted against a real SDK.
@@ -114,6 +115,41 @@ abstract class MeasurementContentSuite extends CatsEffectSuite with ScalaCheckEf
         .flatMap(_.ping())
     }.map { case (_, histograms) =>
       assertEquals(histogramNamed("Foo.duration", histograms).points.map(_.boundaries), List(List(0.0001, 0.001, 0.01)))
+    }
+  }
+
+  test("a successful call records no error.type") {
+    measured { implicit meter =>
+      generic(sleepingFoo(1.milli, 1.milli)).flatMap(_.greet("world"))
+    }.map { case (_, histograms) =>
+      val point = pointFor(CodeAttributes.CodeFunctionName, "Foo.greet", histogramNamed("Foo.duration", histograms))
+      assertEquals(point.attributes.get(ErrorAttributes.ErrorType), None)
+    }
+  }
+
+  test("a failed call returns the identical error and records its class name as error.type") {
+    PropF.forAllF(callDurations) { callDuration =>
+      val failure = new FooFailure
+      measured { implicit meter =>
+        generic(Foo[IO](_ => IO.sleep(callDuration) >> IO.raiseError(failure), IO.unit))
+          .flatMap(_.greet("world").attempt)
+      }.map { case (result, histograms) =>
+        assert(result.left.exists(_ eq failure), s"expected the identical FooFailure back, got $result")
+        val point = pointFor(ErrorAttributes.ErrorType, classOf[FooFailure].getName, histogramNamed("Foo.duration", histograms))
+        assertEquals(point.attributes.get(CodeAttributes.CodeFunctionName).map(_.value), Some("Foo.greet"))
+        assertEqualsDouble(point.sum, callDuration.toUnit(SECONDS), 1e-9)
+      }
+    }
+  }
+
+  test("a call canceled by a timeout records error.type = canceled, with the time spent before cancellation") {
+    measured { implicit meter =>
+      generic(sleepingFoo(10.seconds, 1.milli)).flatMap(_.greet("world").timeout(1.second).attempt)
+    }.map { case (result, histograms) =>
+      assert(result.left.exists(_.isInstanceOf[TimeoutException]), s"expected a TimeoutException, got $result")
+      val point = pointFor(ErrorAttributes.ErrorType, "canceled", histogramNamed("Foo.duration", histograms))
+      assertEquals(point.count, 1L)
+      assertEqualsDouble(point.sum, 1.0, 1e-9)
     }
   }
 }
