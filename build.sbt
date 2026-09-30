@@ -70,7 +70,7 @@ val catsEffectVersion = "3.7.0"
 val catsMtlVersion = "1.7.0"
 val catsTaglessVersion = "0.16.5"
 val disciplineMunitVersion = "2.0.0"
-val munitVersion = "1.2.0"
+val munitVersion = "1.3.1"
 val otel4sVersion = "1.0.1"
 
 lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
