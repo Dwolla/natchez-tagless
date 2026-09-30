@@ -82,6 +82,7 @@ lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
   natchezTaglessMtl,
   otel4sTagless,
   otel4sTaglessMtl,
+  otel4sTaglessMetrics,
 )
 
 // otel4s publishes no _2.12 artifacts, so `otel4sTagless` is empty on 2.12.
@@ -423,6 +424,81 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
   )
   .settings(doctestSettings *)
   .dependsOn(otel4sTagless, raiseAspect)
+
+// Duration metrics for any cats-tagless `Instrument` algebra, recorded through
+// an otel4s `Meter`. A sibling of otel4sTagless rather than part of it, so an
+// application that only traces never pulls in otel4s-core-metrics and one that
+// only measures never pulls in otel4s-core-trace. Main scope is
+// otel4s-core-metrics plus the stable otel4s-semconv (which depends only on
+// otel4s-core-common): no backend, no experimental semconv, nothing of ours.
+//
+// 2.12 is contained exactly as in otel4sTagless, for the identical reason — see
+// the comment on that project. Every `isOtel4sScalaVersion` gate below is
+// required, as there.
+lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("otel4s-tagless-metrics"))
+  .settings(
+    name := "otel4s-tagless-metrics",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %%% "cats-core" % catsVersion,
+      "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
+      "org.scalameta" %%% "munit" % munitVersion % Test,
+      "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+      "org.typelevel" %%% "scalacheck-effect-munit" % "2.1.0" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % catsEffectVersion % Test,
+    ),
+    libraryDependencies ++= {
+      if (isOtel4sScalaVersion.value)
+        Seq(
+          "org.typelevel" %%% "otel4s-core-metrics" % otel4sVersion,
+          "org.typelevel" %%% "otel4s-semconv" % otel4sVersion,
+          // Experimental semconv makes no binary-compatibility promise, so main
+          // code inlines the RPC names it needs; RpcSemanticConventionsSpec
+          // checks them against this.
+          "org.typelevel" %%% "otel4s-semconv-metrics-experimental" % otel4sVersion % Test,
+          // 0.19.0 is the last otel4s-sdk built against otel4s-core 1.0.x; 0.19.1+
+          // need core 1.1.0. Move it together with `otel4sVersion` (0.19.4 pairs
+          // with otel4s 1.1.0).
+          "org.typelevel" %%% "otel4s-sdk-metrics-testkit" % "0.19.0" % Test,
+        )
+      else Seq.empty
+    },
+    Compile / unmanagedSourceDirectories := {
+      if (isOtel4sScalaVersion.value) (Compile / unmanagedSourceDirectories).value else Seq.empty
+    },
+    Test / unmanagedSourceDirectories := {
+      if (isOtel4sScalaVersion.value) (Test / unmanagedSourceDirectories).value else Seq.empty
+    },
+    publish / skip := !isOtel4sScalaVersion.value,
+    tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
+  )
+  // Metric *content* needs an SDK. The content properties live in the shared,
+  // backend-agnostic MeasurementContentSuite, which runs against otel4s-sdk on
+  // every platform (OtelSdkMeasurementContentSpec) and against oteljava on the
+  // JVM (OtelJavaMeasurementContentSpec, hence `%%` and `.jvmSettings` for its
+  // testkit).
+  .jvmSettings(
+    libraryDependencies ++= {
+      if (isOtel4sScalaVersion.value)
+        Seq(
+          "org.typelevel" %% "otel4s-oteljava-metrics-testkit" % otel4sVersion % Test,
+          // AttributeConverters, for decoding a point's Java Attributes back
+          // into the otel4s model.
+          "org.typelevel" %% "otel4s-oteljava-common" % otel4sVersion % Test,
+        )
+      else Seq.empty
+    },
+    Test / unmanagedSourceDirectories ++= {
+      if (isOtel4sScalaVersion.value) Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm")
+      else Seq.empty
+    },
+  )
+  .settings(doctestSettings *)
+  // Test only: WithMetricsSyntaxSpec and the doctest pin that `withMetrics(...)`
+  // stacks with otel4s-tagless's `instrumentAndTrace`. Never a Compile dependency.
+  .dependsOn(otel4sTagless % Test)
 
 // sbt-buildinfo can't be enabled only for the test scope, so this is the workaround to use it only in tests
 lazy val buildInfoForTests = crossProject(JVMPlatform, JSPlatform)
