@@ -8,10 +8,10 @@ import org.typelevel.otel4s.metrics.Meter
 
 /** What can be checked without an SDK, on every platform.
   *
-  * The only coverage the interpreters get on Scala.js: the content suite needs
-  * an SDK, and the only backend it runs against today, oteljava, is JVM-only.
-  * Under `Meter.noop`, `recordDuration` is `Resource.unit`, so these pin that
-  * wrapping a call changes nothing observable about it.
+  * Checks transparency under `Meter.noop`: `recordDuration` is `Resource.unit`,
+  * so these pin that wrapping a call changes nothing observable about it even
+  * when metrics are disabled. The SDK-backed suites don't exercise that
+  * disabled-meter path.
   */
 class MeterTransparencySpec extends CatsEffectSuite {
   private implicit val meter: Meter[IO] = Meter.noop[IO]

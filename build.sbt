@@ -458,6 +458,10 @@ lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
           // code inlines the RPC names it needs; RpcSemanticConventionsSpec
           // checks them against this.
           "org.typelevel" %%% "otel4s-semconv-metrics-experimental" % otel4sVersion % Test,
+          // 0.19.0 is the last otel4s-sdk built against otel4s-core 1.0.x; 0.19.1+
+          // need core 1.1.0. Move it together with `otel4sVersion` (0.19.4 pairs
+          // with otel4s 1.1.0).
+          "org.typelevel" %%% "otel4s-sdk-metrics-testkit" % "0.19.0" % Test,
         )
       else Seq.empty
     },
@@ -470,12 +474,11 @@ lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
     publish / skip := !isOtel4sScalaVersion.value,
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
-  // Metric *content* needs an SDK. The only backend tested today is oteljava,
-  // which is JVM-only — hence `%%` and `.jvmSettings`. otel4s-sdk (which also
-  // targets Scala.js) is not yet at a stable release; its 0.19.0 testkit is
-  // built against otel4s-core 1.0.0, so a backend for it can be added once it
-  // stabilizes. The content properties live in the shared, backend-agnostic
-  // MeasurementContentSuite, so that backend is one more subclass.
+  // Metric *content* needs an SDK. The content properties live in the shared,
+  // backend-agnostic MeasurementContentSuite, which runs against otel4s-sdk on
+  // every platform (OtelSdkMeasurementContentSpec) and against oteljava on the
+  // JVM (OtelJavaMeasurementContentSpec, hence `%%` and `.jvmSettings` for its
+  // testkit).
   .jvmSettings(
     libraryDependencies ++= {
       if (isOtel4sScalaVersion.value)

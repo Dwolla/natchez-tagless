@@ -18,8 +18,8 @@ import scala.concurrent.duration._
   *
   * Every property lives here; a subclass supplies only `histogramsFrom`, which
   * runs a function against a real `Meter[IO]` and reports what it recorded.
-  * oteljava is the only backend today (`OtelJavaMeasurementContentSpec`, JVM);
-  * otel4s-sdk is one more subclass once it reaches a stable release.
+  * It runs against otel4s-sdk (`OtelSdkMeasurementContentSpec`, every
+  * platform) and oteljava (`OtelJavaMeasurementContentSpec`, JVM).
   */
 abstract class MeasurementContentSuite extends CatsEffectSuite with ScalaCheckEffectSuite {
 
