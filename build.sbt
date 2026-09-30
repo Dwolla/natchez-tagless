@@ -72,7 +72,7 @@ val catsTaglessVersion = "0.16.5"
 // Must track discipline-munit's discipline-core dependency; bump them together.
 val disciplineCoreVersion = "1.7.0"
 val disciplineMunitVersion = "2.0.0"
-val munitVersion = "1.3.1"
+val munitVersion = "1.3.6"
 val munitScalacheckVersion = "1.3.1"
 val otel4sVersion = "1.1.0"
 
