@@ -461,7 +461,7 @@ lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
           // 0.19.0 is the last otel4s-sdk built against otel4s-core 1.0.x; 0.19.1+
           // need core 1.1.0. Move it together with `otel4sVersion` (0.19.4 pairs
           // with otel4s 1.1.0).
-          "org.typelevel" %%% "otel4s-sdk-metrics-testkit" % "0.19.0" % Test,
+          "org.typelevel" %%% "otel4s-sdk-metrics-testkit" % "0.19.4" % Test,
         )
       else Seq.empty
     },
