@@ -58,10 +58,18 @@ excludes the span's own overhead.
   boundaries are instrument *advice*, not identity, so wrapping another instance
   of the same algebra with different boundaries records into the first one's
   buckets. Tune buckets centrally with an SDK View.
-- **The RPC metric is shared.** Anything else recording
-  `rpc.server.call.duration` through the same `Meter` — e.g. natchez-smithy4s's
-  `withMetrics` — lands in the same histogram, told apart by `rpc.system.name`
-  and `rpc.method`.
+- **The RPC metric is comparable across libraries.** natchez-smithy4s's
+  `withMetrics` records the same OpenTelemetry RPC metric with an identical
+  name, unit, description, and buckets, so thrift and smithy4s calls in one
+  service can be compared directly, told apart by `rpc.system.name`.
+- **Give each library its own `Meter`.** A metric stream is identified by its
+  instrumentation scope as well as its name, and the scope is meant to name
+  the instrumenting library, so pass a `Meter` from
+  `MeterProvider[F].get("otel4s-tagless-metrics")` rather than one shared
+  application-wide `Meter`. Separate scopes keep the two libraries from
+  conflicting if their metric descriptions ever drift apart; a query that
+  aggregates by `rpc.system.name` still combines both. Share one `Meter` only
+  if your metrics backend can't aggregate across instrumentation scopes.
 - **Import the RPC types by name next to natchez-smithy4s.** Its metrics
   module has its own `RpcRole`, so `import com.dwolla.metrics.otel4s._` and
   `import com.dwolla.metrics.smithy._` together make `RpcRole` ambiguous.

@@ -74,9 +74,11 @@ class WithMetricsOps[Alg[_[_]], F[_]](val alg: Alg[F]) extends AnyVal {
     * `rpc.method = <service.name>/<methodName>`, plus `error.type` for a failed
     * call. The histogram is created once, when the returned `F` runs.
     *
-    * Anything else recording the same RPC metric through the same `Meter` —
-    * e.g. natchez-smithy4s's `withMetrics` — aggregates into the same
-    * histogram, told apart by `rpc.system.name` and `rpc.method`.
+    * natchez-smithy4s's `withMetrics` records the same metric with an
+    * identical descriptor, so the two are directly comparable, told apart by
+    * `rpc.system.name`. Give each library its own `Meter` (instrumentation
+    * scope) unless your backend can't aggregate across scopes; see the module
+    * README.
     */
   def withMetrics(role: RpcRole, system: RpcSystem, service: RpcService)
                  (implicit I: Instrument[Alg], F: MonadCancelThrow[F], M: Meter[F]): F[Alg[F]] =
