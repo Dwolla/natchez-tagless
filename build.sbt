@@ -66,7 +66,7 @@ Global / tlCommandAliases += {
 }
 
 val catsVersion = "2.13.0"
-val catsEffectVersion = "3.7.0"
+val catsEffectVersion = "3.7.1"
 val catsMtlVersion = "1.7.0"
 val catsTaglessVersion = "0.16.5"
 val disciplineMunitVersion = "2.0.0"
