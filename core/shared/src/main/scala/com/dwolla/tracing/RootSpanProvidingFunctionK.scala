@@ -27,8 +27,7 @@ object RootSpanProvidingFunctionK {
  *   }
  *
  *   object Foo {
- *     implicit val fooInstrument: Instrument[Foo] = { // Derive.instrument
- *       // TODO reintroduce derived instance when cats-tagless-macros supports Scala 3
+ *     implicit val fooInstrument: Instrument[Foo] = {
  *       new Instrument[Foo] {
  *         override def instrument[F[_]](af: Foo[F]): Foo[Instrumentation[F, *]] =
  *           new Foo[Instrumentation[F, *]] {

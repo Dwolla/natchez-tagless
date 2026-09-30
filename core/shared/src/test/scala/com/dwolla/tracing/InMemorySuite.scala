@@ -52,11 +52,11 @@ trait InMemorySuite extends CatsEffectSuite {
 
   def testTraceKleisli[F[_] : Async](traceProgram: EntryPoint[Kleisli[F, Span[F], *]] => Kleisli[F, Span[F], Unit],
                                      expectedHistory: List[(Lineage, NatchezCommand)]
-                                    ): Kleisli[F, Span[F], Unit] =
+                                    ): F[Unit] =
     testTrace(
       traceProgram,
       expectedHistory
-    )
+    ).run(Span.noop[F])
 
   def testTraceIoLocal[A](traceProgram: Local[IO, Span[IO]] => EntryPoint[IO] => IO[A],
                           expectedHistory: List[(Lineage, NatchezCommand)]

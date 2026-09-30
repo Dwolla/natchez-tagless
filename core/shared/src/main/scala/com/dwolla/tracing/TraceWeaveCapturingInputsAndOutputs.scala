@@ -3,6 +3,7 @@ package com.dwolla.tracing
 import cats._
 import cats.syntax.all._
 import cats.tagless.aop.Aspect.Weave
+import com.dwolla.tagless.WeaveNaming._
 import com.dwolla.tracing.syntax._
 import natchez.{Trace, TraceableValue}
 
@@ -63,8 +64,7 @@ object TraceWeaveCapturingInputsAndOutputs {
  *
  *   object Foo {
  *     import LowPriorityTraceableValueInstances._
- *     implicit val fooTracingAspect: Aspect[Foo, TraceableValue, TraceableValue] = { // Derive.aspect
- *       // TODO reintroduce derived instance when cats-tagless-macros supports Scala 3
+ *     implicit val fooTracingAspect: Aspect[Foo, TraceableValue, TraceableValue] = {
  *       new Aspect[Foo, TraceableValue, TraceableValue] {
  *         override def weave[F[_]](af: Foo[F]): Foo[Aspect.Weave[F, TraceableValue, TraceableValue, *]] =
  *           new Foo[Aspect.Weave[F, TraceableValue, TraceableValue, *]] {
@@ -92,6 +92,26 @@ object TraceWeaveCapturingInputsAndOutputs {
  *     myFoo.weave
  * }}}
  *
+ * On Scala 3 the whole instance above collapses to a `derives` clause:
+ * `trait Foo[F[_]] derives TraceableAspect` with a separate `@experimental
+ * object Foo`. See `com.dwolla.tracing.TraceableAspect`, which pins `Dom` and
+ * `Cod` to `TraceableValue` so that `derives` has the one-parameter type
+ * constructor it requires. `@experimental` is still required, and ''where'' it
+ * goes matters: a `derives` clause invokes `derived` from a given the compiler
+ * synthesizes into the algebra's companion object, so the annotation belongs
+ * on the companion, not the trait — annotating the trait instead also
+ * compiles, but makes the algebra ''type'' experimental, forcing
+ * `@experimental` onto every reference to it, including untraced call sites
+ * that never touch the instance. The 3.3.x LTS line has no `-experimental`
+ * flag to opt out with. There is no Scala 2 equivalent — `derives` does not
+ * exist there — so a cross-built algebra keeps the form above.
+ *
+ * Adding the clause to an algebra that keeps the `fooTracingAspect` above is
+ * not a way to have both: the synthesized given is the more specific type, so
+ * it silently outranks the hand-written wide one and any custom behaviour in
+ * it disappears, with no error and no warning. Pick one. See
+ * `com.dwolla.tracing.TraceableAspect` for the full note.
+ *
  * Ensure that `TraceableValue` instances exist for all the method
  * parameter and return types in the algebra, or you'll see
  * compile-time errors similar to this:
@@ -111,11 +131,11 @@ object TraceWeaveCapturingInputsAndOutputs {
  */
 class TraceWeaveCapturingInputsAndOutputs[F[_] : FlatMap : Trace] extends (Weave[F, TraceableValue, TraceableValue, *] ~> F) {
   override def apply[A](fa: Weave[F, TraceableValue, TraceableValue, A]): F[A] =
-    Trace[F].span(s"${fa.algebraName}.${fa.codomain.name}") {
+    Trace[F].span(fa.qualifiedMethodName) {
       for {
         _ <- Trace[F].put(fa.asTraceParams: _*)
         out <- fa.codomain.target
-        _ <- Trace[F].put(s"${fa.algebraName}.${fa.codomain.name}.returnValue" -> fa.codomain.instance.toTraceValue(out))
+        _ <- Trace[F].put(s"${fa.qualifiedMethodName}.returnValue" -> fa.codomain.instance.toTraceValue(out))
       } yield out
     }
 }

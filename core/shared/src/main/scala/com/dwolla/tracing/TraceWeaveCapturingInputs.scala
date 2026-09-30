@@ -3,6 +3,7 @@ package com.dwolla.tracing
 import cats._
 import cats.syntax.all._
 import cats.tagless.aop.Aspect.Weave
+import com.dwolla.tagless.WeaveNaming._
 import com.dwolla.tracing.syntax._
 import natchez.{Trace, TraceableValue}
 
@@ -68,8 +69,7 @@ object TraceWeaveCapturingInputs {
  *   }
  *
  *   object Foo {
- *     implicit val fooTracingAspect: Aspect.Domain[Foo, TraceableValue] = { // Derive.instrument
- *       // TODO reintroduce derived instance when cats-tagless-macros supports Scala 3
+ *     implicit val fooTracingAspect: Aspect.Domain[Foo, TraceableValue] = {
  *       new Aspect.Domain[Foo, TraceableValue] {
  *         override def weave[F[_]](af: Foo[F]): Foo[Aspect.Weave[F, TraceableValue, Trivial, *]] =
  *           new Foo[Aspect.Weave[F, TraceableValue, Trivial, *]] {
@@ -116,7 +116,7 @@ object TraceWeaveCapturingInputs {
  */
 class TraceWeaveCapturingInputs[F[_] : Apply : Trace, Cod[_]] extends (Weave[F, TraceableValue, Cod, *] ~> F) {
   override def apply[A](fa: Weave[F, TraceableValue, Cod, A]): F[A] =
-    Trace[F].span(s"${fa.algebraName}.${fa.codomain.name}") {
-      Trace[F].put(fa.asTraceParams: _*) *> fa.codomain.target
+    Trace[F].span(fa.qualifiedMethodName) {
+      Trace[F].put(fa.asTraceParams *) *> fa.codomain.target
     }
 }

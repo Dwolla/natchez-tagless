@@ -1,0 +1,38 @@
+package com.dwolla.tracing.mtl
+
+import cats.Applicative
+import cats.mtl.Raise
+import cats.syntax.all._
+import natchez.{TraceValue, TraceableValue}
+
+sealed trait BarError extends Product with Serializable
+
+object BarError {
+  final case class Negative(i: Int) extends BarError
+
+  /** Deliberately not `toString`: the integration suite asserts on this exact
+    * string to prove the default recorder renders through `TraceableValue`
+    * rather than falling back to the error's own `toString`.
+    */
+  implicit val traceableValueBarError: TraceableValue[BarError] =
+    new TraceableValue[BarError] {
+      def toTraceValue(a: BarError): TraceValue = a match {
+        case Negative(i) => TraceValue.StringValue(s"negative:$i")
+      }
+    }
+}
+
+trait Bar[F[_]] {
+  def bar(i: Int)(implicit R: Raise[F, BarError]): F[String]
+}
+
+object Bar {
+
+  /** Raises on negative input, succeeds otherwise — so both the success and the
+    * raise/rescue paths are exercised through the same implementation.
+    */
+  def apply[F[_]: Applicative]: Bar[F] = new Bar[F] {
+    def bar(i: Int)(implicit R: Raise[F, BarError]): F[String] =
+      if (i < 0) R.raise(BarError.Negative(i)) else s"bar:$i".pure[F]
+  }
+}

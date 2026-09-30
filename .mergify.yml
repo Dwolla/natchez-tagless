@@ -36,6 +36,46 @@ pull_request_rules:
       add:
       - core
       remove: []
+- name: Label natchez-tagless-mtl PRs
+  conditions:
+  - files~=^natchez-tagless-mtl/
+  actions:
+    label:
+      add:
+      - natchez-tagless-mtl
+      remove: []
+- name: Label otel4s-tagless PRs
+  conditions:
+  - files~=^otel4s-tagless/
+  actions:
+    label:
+      add:
+      - otel4s-tagless
+      remove: []
+- name: Label otel4s-tagless-mtl PRs
+  conditions:
+  - files~=^otel4s-tagless-mtl/
+  actions:
+    label:
+      add:
+      - otel4s-tagless-mtl
+      remove: []
+- name: Label raise-aspect PRs
+  conditions:
+  - files~=^raise-aspect/
+  actions:
+    label:
+      add:
+      - raise-aspect
+      remove: []
+- name: Label raise-aspect-laws PRs
+  conditions:
+  - files~=^raise-aspect-laws/
+  actions:
+    label:
+      add:
+      - raise-aspect-laws
+      remove: []
 - name: Label scalacache PRs
   conditions:
   - files~=^scalacache/
@@ -43,4 +83,12 @@ pull_request_rules:
     label:
       add:
       - scalacache
+      remove: []
+- name: Label tagless-core PRs
+  conditions:
+  - files~=^tagless-core/
+  actions:
+    label:
+      add:
+      - tagless-core
       remove: []
