@@ -3,8 +3,8 @@
 otel4s versions of `natchez-tagless`'s three tracing interpreters, in package
 `com.dwolla.tracing.otel4s`, with syntax in `com.dwolla.tracing.otel4s.syntax`.
 
-This module depends on `otel4s-core-trace`, cats, cats-tagless, circe-core and
-`tagless-core` — it must never depend on natchez.
+This module depends on `otel4s-core-trace`, `otel4s-semconv`, cats,
+cats-tagless, circe-core and `tagless-core` — it must never depend on natchez.
 
 ## What is here
 
@@ -24,8 +24,9 @@ This module depends on `otel4s-core-trace`, cats, cats-tagless, circe-core and
 
 Not from here. An application gets one from `TracerProvider[F].get(name)`,
 supplied by a backend module — `otel4s-oteljava` on the JVM, `otel4s-sdk`
-cross-platform. This module depends on `otel4s-core-trace` only, and the one
-`Tracer` it can construct itself is `Tracer.noop`, which the tests use.
+cross-platform. This module depends on `otel4s-core-trace` and `otel4s-semconv`
+(for the stable `code.function.name` key), neither of which is a backend, and
+the one `Tracer` it can construct itself is `Tracer.noop`, which the tests use.
 
 ## The attribute layout
 
@@ -68,6 +69,12 @@ One structured attribute rather than one per parameter is deliberate: it costs
 one slot against `SpanLimits.maxNumberOfAttributes` (default 128) where twenty
 flat attributes would cost twenty, and `maxAttributeValueLength` still recurses
 into the tree, so nothing escapes truncation by being nested.
+
+`code.function.name` repeats the span name, and it spends a slot anyway
+because it is the join key between spans and metrics: `otel4s-tagless-metrics`
+records the same attribute on `com.dwolla.code.function.duration`, and a
+metric data point has no span name, so this attribute is what lets a query
+line a call's span up with its duration measurements.
 
 `TracerInstrumentation` records neither the arguments nor the return value; it
 only names the span (and records `code.function.name`).
@@ -184,6 +191,16 @@ tree — a `JsonObject` becomes an `AnyValue.map`, a JSON array an
 `AnyValue.seq`, and so on — not a JSON string. Only a type with neither an
 `Encoder` nor a `Show` fails to resolve. Write your own instance to override
 either fallback; it lives in your type's companion and outranks both.
+
+Collections, maps and tuples never use the fallback, so an element's own
+instance, including a redacting one, is always honored inside them: `Seq`,
+`Set`, `Array`, `Chain` and the cats `NonEmpty*` types record as a sequence of
+their elements' encodings, a tuple as a sequence of its elements' encodings in
+position, and a `Map` (or `NonEmptyMap`) as a map whose values use the value's
+instance and whose keys are rendered from the key's instance — a string as-is,
+a number or boolean with `toString`. A `Set` records its iteration order, which
+for an unsorted `Set` is unspecified and can differ between two equal sets, so
+equal sets can record as differently ordered sequences.
 
 The `Float` widening (`ToAnyValue[Float]`) is exact in the IEEE-754 sense and
 inexact-looking in print — `0.1f` records as `0.10000000149011612`. The
