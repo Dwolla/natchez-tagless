@@ -308,6 +308,12 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
     Test / unmanagedSourceDirectories := {
       if (isOtel4sScalaVersion.value) (Test / unmanagedSourceDirectories).value else Seq.empty
     },
+    // The generated tuple instances extend ToAnyValue's priority chain, so
+    // they are gated with the rest of the module's sources.
+    Compile / sourceGenerators += Def.task {
+      if (isOtel4sScalaVersion.value) ToAnyValueTupleBoilerplate.generate((Compile / sourceManaged).value)
+      else Seq.empty
+    }.taskValue,
     publish / skip := !isOtel4sScalaVersion.value,
     // sbt-typelevel-mima decides whether to check previous artifacts from
     // `publishArtifact`, not `publish / skip`; without this, 2.12 would look

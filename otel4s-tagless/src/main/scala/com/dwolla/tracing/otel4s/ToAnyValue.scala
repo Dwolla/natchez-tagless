@@ -1,7 +1,7 @@
 package com.dwolla.tracing.otel4s
 
 import cats.*
-import cats.data.NonEmptyList
+import cats.data.{Chain, NonEmptyChain, NonEmptyList, NonEmptyMap, NonEmptySeq, NonEmptySet, NonEmptyVector}
 import cats.syntax.all.*
 import io.circe.{Encoder, Json, JsonNumber, JsonObject}
 import org.typelevel.otel4s.AnyValue
@@ -85,9 +85,11 @@ import org.typelevel.scalaccompat.annotation.nowarn213
   *   val redacted: AnyValue = ToAnyValue[Password].toAnyValue(new Password("hunter2"))
   *
   *   // Option.empty[String], never a bare `None`. `ToAnyValue` is
-  *   // contravariant and `None`'s type is `None.type`, so the search for the
-  *   // element instance is a *diverging* implicit expansion rather than a
-  *   // clean miss, and the error names `mapToAnyValue` instead of the Option.
+  *   // contravariant and `None`'s type is `None.type`, so the element type is
+  *   // left undetermined and the search fails confusingly rather than as a
+  *   // clean miss: Scala 2 reports a *diverging* implicit expansion that names
+  *   // an unrelated collection instance, and Scala 3 an ambiguity between the
+  *   // primitive instances.
   *   // The same goes for `Nil`: write `List.empty[String]`.
   *   val absent: AnyValue = ToAnyValue[Option[String]].toAnyValue(Option.empty[String])
   *
@@ -100,7 +102,7 @@ trait ToAnyValue[-A] {
   def toAnyValue(a: A): AnyValue
 }
 
-object ToAnyValue extends LowPriorityToAnyValueInstances {
+object ToAnyValue extends ToAnyValueTupleInstances {
   def apply[A](implicit ev: ToAnyValue[A]): ToAnyValue[A] = ev
 
   def instance[A](f: A => AnyValue): ToAnyValue[A] =
@@ -149,12 +151,43 @@ object ToAnyValue extends LowPriorityToAnyValueInstances {
   implicit def seqToAnyValue[A](implicit ev: ToAnyValue[A]): ToAnyValue[Seq[A]] =
     instance[Seq[A]](as => AnyValue.seq(as.map(ev.toAnyValue)))
 
-  implicit def mapToAnyValue[A](implicit ev: ToAnyValue[A]): ToAnyValue[Map[String, A]] =
-    instance[Map[String, A]](m => AnyValue.map(m.map { case (k, v) => k -> ev.toAnyValue(v) }))
+  /** A map records as a `MapValue`, keys and values both through their own
+    * `ToAnyValue`, so a redacting instance is honored on either side. Without
+    * this, a map with non-`String` keys falls through to circe's `Encoder`,
+    * which renders keys with `KeyEncoder` and values with `Encoder` and never
+    * consults either `ToAnyValue`.
+    *
+    * `AnyValue` map keys are strings, so each key's encoding is rendered as
+    * one: a string leaf is used as-is, and a long, double or boolean leaf is
+    * rendered with `toString`, which for `String`, `Int`, `Long`, `UUID` and
+    * the other types circe has a `KeyEncoder` for gives the same key circe
+    * would. Any other encoding (a sequence, map, byte array or empty value)
+    * is rendered with otel4s's own `Show[AnyValue]`. Keys that render to the
+    * same string, as every key does under a redacting instance, collapse to
+    * one entry, and the last in iteration order wins.
+    */
+  implicit def mapToAnyValue[K, A](implicit keys: ToAnyValue[K], values: ToAnyValue[A]): ToAnyValue[Map[K, A]] =
+    instance[Map[K, A]](m => AnyValue.map(m.map { case (k, v) => mapKey(keys.toAnyValue(k)) -> values.toAnyValue(v) }))
+
+  private def mapKey(key: AnyValue): String = key match {
+    case s: AnyValue.StringValue => s.value
+    case l: AnyValue.LongValue => l.value.toString
+    case d: AnyValue.DoubleValue => d.value.toString
+    case b: AnyValue.BooleanValue => b.value.toString
+    case other => other.show
+  }
+
+  /** Keyed like `mapToAnyValue`, in the map's sorted order. */
+  implicit def nonEmptyMapToAnyValue[K, A](implicit keys: ToAnyValue[K], values: ToAnyValue[A]): ToAnyValue[NonEmptyMap[K, A]] =
+    instance[NonEmptyMap[K, A]](m => mapToAnyValue(keys, values).toAnyValue(m.toSortedMap))
 
   /** Element-wise, like `seqToAnyValue`, so each element's own `ToAnyValue` —
     * including a redacting one — is used. Without this, a `Set` falls through
     * to circe's `Encoder`, which never consults the element's `ToAnyValue`.
+    *
+    * The sequence records the set's iteration order, which is unspecified for
+    * an unsorted `Set` and can differ between two equal sets, so the same set
+    * of values can record as differently ordered sequences.
     */
   implicit def setToAnyValue[A](implicit ev: ToAnyValue[A]): ToAnyValue[Set[A]] =
     instance[Set[A]](as => AnyValue.seq(as.toSeq.map(ev.toAnyValue)))
@@ -162,6 +195,33 @@ object ToAnyValue extends LowPriorityToAnyValueInstances {
   /** Element-wise and in order; see `setToAnyValue` for why. */
   implicit def nonEmptyListToAnyValue[A](implicit ev: ToAnyValue[A]): ToAnyValue[NonEmptyList[A]] =
     instance[NonEmptyList[A]](as => AnyValue.seq(as.toList.map(ev.toAnyValue)))
+
+  /** Element-wise and in order; see `setToAnyValue` for why. */
+  implicit def nonEmptyVectorToAnyValue[A](implicit ev: ToAnyValue[A]): ToAnyValue[NonEmptyVector[A]] =
+    instance[NonEmptyVector[A]](as => AnyValue.seq(as.toVector.map(ev.toAnyValue)))
+
+  /** Element-wise and in order; see `setToAnyValue` for why. */
+  implicit def nonEmptySeqToAnyValue[A](implicit ev: ToAnyValue[A]): ToAnyValue[NonEmptySeq[A]] =
+    instance[NonEmptySeq[A]](as => AnyValue.seq(as.toSeq.map(ev.toAnyValue)))
+
+  /** Element-wise and in order; see `setToAnyValue` for why. */
+  implicit def chainToAnyValue[A](implicit ev: ToAnyValue[A]): ToAnyValue[Chain[A]] =
+    instance[Chain[A]](as => AnyValue.seq(as.toVector.map(ev.toAnyValue)))
+
+  /** Element-wise and in order; see `setToAnyValue` for why. */
+  implicit def nonEmptyChainToAnyValue[A](implicit ev: ToAnyValue[A]): ToAnyValue[NonEmptyChain[A]] =
+    instance[NonEmptyChain[A]](as => AnyValue.seq(as.toChain.toVector.map(ev.toAnyValue)))
+
+  /** Element-wise, in the set's sorted order; see `setToAnyValue` for why. */
+  implicit def nonEmptySetToAnyValue[A](implicit ev: ToAnyValue[A]): ToAnyValue[NonEmptySet[A]] =
+    instance[NonEmptySet[A]](as => AnyValue.seq(as.toSortedSet.toSeq.map(ev.toAnyValue)))
+
+  /** Element-wise and in order; see `setToAnyValue` for why. `Array` is not a
+    * `Seq`, so `seqToAnyValue` does not cover it, and circe reaches it
+    * through its generic `Iterable` encoder.
+    */
+  implicit def arrayToAnyValue[A](implicit ev: ToAnyValue[A]): ToAnyValue[Array[A]] =
+    instance[Array[A]](as => AnyValue.seq(as.iterator.map(ev.toAnyValue).toVector))
 
   /** Concatenates rather than nests, which is what makes this lawful.
    * `ContravariantSemigroupal`'s associativity law demands that
@@ -235,8 +295,9 @@ object ToAnyValue extends LowPriorityToAnyValueInstances {
 /** Neither fallback below needs the `NotGiven` ambiguity guards
   * `com.dwolla.tracing.ToTraceValue` carries: those exist because natchez's
   * primitive instances live in an upstream companion at the same priority as
-  * its fallbacks, while every instance here — primitives, `Contravariant`,
-  * and both fallbacks — lives in a companion this module owns, ranked
+  * its fallbacks, while every instance here — primitives, collections,
+  * tuples, `Contravariant`, and both fallbacks — lives in `object
+  * ToAnyValue` or a trait it extends, all owned by this module, ranked
   * unambiguously by how many `extends` hops separate it from `object
   * ToAnyValue`.
   */
