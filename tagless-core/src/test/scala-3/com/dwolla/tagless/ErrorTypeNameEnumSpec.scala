@@ -34,5 +34,6 @@ class ErrorTypeNameEnumSpec extends FunSuite {
     assert(anonymousSuffix.findFirstIn(className).isDefined, className)
     assert(!className.contains("Shade"), className)
     assertEquals(ErrorTypeName(shade), anonymousSuffix.replaceFirstIn(className, "") + "$Light")
+    assertEquals(ErrorTypeName(shade), "com.dwolla.tagless.EnumHolder$Light")
   }
 }

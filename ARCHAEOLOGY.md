@@ -176,8 +176,8 @@ error:
   `Raise` comes from `Handle.allowF` over a `MonadThrow`, cats-mtl's submarine
   encoding triggers a finalization strategy that recognizes the `Submarine`
   and reports the domain error instead: status `ERROR`, `error.type` set to
-  its type name (computed by `ErrorTypeName`; Scala 3 enum cases: `<Enum>$<Case>`), and no exception
-  event. The domain error's *value* is
+  its type name (computed by `ErrorTypeName`; Scala 3 enum cases:
+  `<Enum>$<Case>`), and no exception event. The domain error's *value* is
   in the trace only if something inspects the `Raise` channel
   explicitly — which is what `otel4s-tagless-mtl`'s `RaiseAspect` support
   does; see its README. The string-vs-structured difference described above

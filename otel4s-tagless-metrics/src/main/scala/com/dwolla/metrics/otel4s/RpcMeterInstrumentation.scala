@@ -24,7 +24,7 @@ private[otel4s] object RpcMeterInstrumentation {
 /** Records each call's duration, in seconds, to the RPC call-duration histogram
   * it was built with, following the OpenTelemetry RPC semantic conventions:
   * `rpc.system.name = system.name`, `rpc.method = <service.name>/<methodName>`,
-  * and, for a failed call, `error.type` (the error's class name, with Scala 3 enum cases as `<Enum>\$<Case>`, or
+  * and, for a failed call, `error.type` (the error's type name, computed by `ErrorTypeName`; Scala 3 enum cases as `<Enum>\$<Case>`, or
   * `"canceled"`). Errors and cancellation propagate unchanged.
   */
 private[otel4s] class RpcMeterInstrumentation[F[_]: MonadCancelThrow](system: RpcSystem,

@@ -295,9 +295,10 @@ puts the error.
   exception event. The module recognizes cats-mtl's
   private `Submarine` for this; see `com.dwolla.tagless.RaisedError`. On
   Scala.js that recognition relies on runtime class names, which Scala.js keeps
-  by default; an application whose linker strips them
-  (`runtimeClassNameMapper`), or renames them, also disables Submarine
-  unwrapping and falls back to reporting the raw exception.
+  by default; if an application's linker strips or
+  renames them (`runtimeClassNameMapper`), Submarine unwrapping stops working
+  and `error.type` records the raw exception's class name, as the linker left
+  it.
 - When `Raise` lives in the effect's **success** channel — `EitherT`, say — the
   effect *succeeds* carrying a value that describes a failure, so the span is
   finalized as OK.

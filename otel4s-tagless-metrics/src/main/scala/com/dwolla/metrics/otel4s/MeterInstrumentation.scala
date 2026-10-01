@@ -28,7 +28,7 @@ private[otel4s] object MeterInstrumentation {
 
 /** Records each call's duration, in seconds, to `com.dwolla.code.function.duration`
   * with `code.function.name = <algebraName>.<methodName>`; a failed call also
-  * carries `error.type` (the error's class name, with Scala 3 enum cases as `<Enum>\$<Case>`, or `"canceled"`). Errors and
+  * carries `error.type` (the error's type name, computed by `ErrorTypeName`; Scala 3 enum cases as `<Enum>\$<Case>`, or `"canceled"`). Errors and
   * cancellation propagate unchanged.
   */
 private[otel4s] class MeterInstrumentation[F[_]: MonadCancelThrow](callDuration: Histogram[F, Double])
