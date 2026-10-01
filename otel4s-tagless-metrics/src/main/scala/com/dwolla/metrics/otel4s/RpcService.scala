@@ -8,12 +8,19 @@ package com.dwolla.metrics.otel4s
   *
   * A distinct type rather than a `String` so it cannot be swapped with the
   * `RpcSystem` beside it. Not a case class, so it can gain members without
-  * breaking binary compatibility.
+  * breaking binary compatibility. Two values with the same name are equal.
   */
 sealed abstract class RpcService {
   def name: String
 
   override def toString: String = s"RpcService($name)"
+
+  final override def equals(other: Any): Boolean = other match {
+    case that: RpcService => name == that.name
+    case _ => false
+  }
+
+  final override def hashCode: Int = name.hashCode
 }
 
 object RpcService {
