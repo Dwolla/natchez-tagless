@@ -71,7 +71,7 @@ val catsMtlVersion = "1.7.0"
 val catsTaglessVersion = "0.16.5"
 val disciplineMunitVersion = "2.0.0"
 val munitVersion = "1.3.1"
-val otel4sVersion = "1.0.1"
+val otel4sVersion = "1.1.0"
 
 lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
   taglessCore,
@@ -205,7 +205,10 @@ lazy val raiseAspectLaws = crossProject(JVMPlatform, JSPlatform)
     name := "raise-aspect-laws",
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-laws" % catsVersion,
-      "org.typelevel" %%% "discipline-munit" % disciplineMunitVersion,
+      // Main code needs only `org.typelevel.discipline.Laws`; users pick their
+      // own test framework. 1.7.0 is the discipline-core discipline-munit 2.0.0 uses.
+      "org.typelevel" %%% "discipline-core" % "1.7.0",
+      "org.typelevel" %%% "discipline-munit" % disciplineMunitVersion % Test,
       "org.typelevel" %%% "cats-effect" % catsEffectVersion % Test,
       "org.typelevel" %%% "cats-effect-testkit" % catsEffectVersion % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
@@ -301,6 +304,10 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
       if (isOtel4sScalaVersion.value) (Test / unmanagedSourceDirectories).value else Seq.empty
     },
     publish / skip := !isOtel4sScalaVersion.value,
+    // sbt-typelevel-mima decides whether to check previous artifacts from
+    // `publishArtifact`, not `publish / skip`; without this, 2.12 would look
+    // for `_2.12` artifacts that were never published once a release is tagged.
+    publishArtifact := isOtel4sScalaVersion.value,
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
   // Span *content* can only be asserted with a testkit: every otel4s span type
@@ -392,6 +399,10 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
       if (isOtel4sScalaVersion.value) (Test / unmanagedSourceDirectories).value else Seq.empty
     },
     publish / skip := !isOtel4sScalaVersion.value,
+    // sbt-typelevel-mima decides whether to check previous artifacts from
+    // `publishArtifact`, not `publish / skip`; without this, 2.12 would look
+    // for `_2.12` artifacts that were never published once a release is tagged.
+    publishArtifact := isOtel4sScalaVersion.value,
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
   .jvmSettings(
@@ -458,9 +469,9 @@ lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
           // code inlines the RPC names it needs; RpcSemanticConventionsSpec
           // checks them against this.
           "org.typelevel" %%% "otel4s-semconv-metrics-experimental" % otel4sVersion % Test,
-          // 0.19.0 is the last otel4s-sdk built against otel4s-core 1.0.x; 0.19.1+
-          // need core 1.1.0. Move it together with `otel4sVersion` (0.19.4 pairs
-          // with otel4s 1.1.0).
+          // otel4s-sdk is pre-1.0 and versioned separately: 0.19.4 is the
+          // release built against otel4s-core 1.1.0. Move it together with
+          // `otel4sVersion`.
           "org.typelevel" %%% "otel4s-sdk-metrics-testkit" % "0.19.4" % Test,
         )
       else Seq.empty
@@ -472,6 +483,10 @@ lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
       if (isOtel4sScalaVersion.value) (Test / unmanagedSourceDirectories).value else Seq.empty
     },
     publish / skip := !isOtel4sScalaVersion.value,
+    // sbt-typelevel-mima decides whether to check previous artifacts from
+    // `publishArtifact`, not `publish / skip`; without this, 2.12 would look
+    // for `_2.12` artifacts that were never published once a release is tagged.
+    publishArtifact := isOtel4sScalaVersion.value,
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
   // Metric *content* needs an SDK. The content properties live in the shared,
