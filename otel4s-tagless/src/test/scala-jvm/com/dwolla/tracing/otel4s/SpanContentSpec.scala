@@ -141,8 +141,8 @@ class SpanContentSpec extends CatsEffectSuite {
   }
 
   // ping() is the empty-parameter-list, Unit-returning edge. Under
-  // TracerInstrumentation it is unremarkable — the interpreter records no
-  // attributes for any method — but it is the baseline the
+  // TracerInstrumentation it is unremarkable — the interpreter records only
+  // code.function.name for any method — but it is the baseline the
   // TracerWeaveCapturingInputs case below has to match.
   test("a zero-parameter, Unit-returning method is spanned like any other") {
     for {
