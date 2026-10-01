@@ -115,6 +115,9 @@ lazy val taglessCore = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
       "org.scalameta" %%% "munit" % munitVersion % Test,
       "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
+      "org.typelevel" %%% "cats-mtl" % catsMtlVersion % Test,
+      "org.typelevel" %%% "cats-effect" % catsEffectVersion % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
     ),
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
