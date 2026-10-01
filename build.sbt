@@ -69,8 +69,7 @@ val catsVersion = "2.13.0"
 val catsEffectVersion = "3.7.1"
 val catsMtlVersion = "1.7.0"
 val catsTaglessVersion = "0.16.5"
-// The discipline-core version discipline-munit depends on, so the laws
-// module's Compile dependency never disagrees with its Test framework.
+// Must track discipline-munit's discipline-core dependency; bump them together.
 val disciplineCoreVersion = "1.7.0"
 val disciplineMunitVersion = "2.0.0"
 val munitVersion = "1.3.1"
