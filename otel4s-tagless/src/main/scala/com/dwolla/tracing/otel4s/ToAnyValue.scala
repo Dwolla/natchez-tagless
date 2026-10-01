@@ -99,8 +99,8 @@ import org.typelevel.scalaccompat.annotation.nowarn213
   *   // contravariant and `None`'s type is `None.type`, so the element type is
   *   // left undetermined and the search fails confusingly rather than as a
   *   // clean miss: Scala 2 reports a *diverging* implicit expansion that names
-  *   // an unrelated collection instance, and Scala 3 an ambiguity between the
-  *   // primitive instances.
+  *   // an unrelated instance, and Scala 3 an ambiguity between the primitive
+  *   // instances.
   *   // The same goes for `Nil`: write `List.empty[String]`.
   *   val absent: AnyValue = ToAnyValue[Option[String]].toAnyValue(Option.empty[String])
   *
@@ -353,13 +353,26 @@ object ToAnyValue extends ToAnyValueTupleInstances {
   * specific of the two, which cancels the subclass bonus and leaves `List`
   * ambiguous on Scala 2. The type-constructor parameter `C[_]` is what makes
   * it tie.
+  *
+  * On Scala 2, a type that itself extends `Iterable`, `Seq` or `Set` and has
+  * its own instance in its companion is ambiguous with the generic instance;
+  * bring its instance into lexical scope with an import instead.
   */
 trait GenericCollectionToAnyValueInstances {
 
-  /** Element-wise and in iteration order, for anything that converts to an
-    * `Iterable` and has no instance of its own: `Iterable` itself, the
-    * `scala.collection` supertypes, and the mutable collections.
+  /** Element-wise and in iteration order, for any single-parameter `C[A]`
+    * that converts to an `Iterable[A]` and has no instance of its own:
+    * `Iterable` itself, `scala.collection.Seq` and `scala.collection.Set`,
+    * and the mutable sequences and sets. A map is not `Iterable` in its value
+    * type, so `scala.collection.Map` and `mutable.Map` have no instance;
+    * convert them with `.toMap`.
+    *
+    * `asIterable` is declared before `ev` deliberately. Scala 2 also unifies
+    * `C[A]` with a non-collection's base type, such as `Comparable[Instant]`;
+    * resolving `ev` first would recurse into the very instance being
+    * searched for and report a diverging implicit expansion instead of a
+    * missing instance.
     */
-  implicit def iterableToAnyValue[A, C[_]](implicit ev: ToAnyValue[A], asIterable: C[A] => Iterable[A]): ToAnyValue[C[A]] =
+  implicit def iterableToAnyValue[A, C[_]](implicit asIterable: C[A] => Iterable[A], ev: ToAnyValue[A]): ToAnyValue[C[A]] =
     ToAnyValue.instance[C[A]](as => AnyValue.seq(asIterable(as).iterator.map(ev.toAnyValue).toVector))
 }

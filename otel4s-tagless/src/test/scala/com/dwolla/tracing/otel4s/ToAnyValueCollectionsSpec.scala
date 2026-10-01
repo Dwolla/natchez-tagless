@@ -197,7 +197,7 @@ class ToAnyValueCollectionsSpec extends FunSuite {
     )
   }
 
-  test("a Map[String, A] still encodes through the String-keyed instance") {
+  test("a Map[String, A] uses the key as-is and encodes each value through the value's ToAnyValue") {
     assertEquals(
       ToAnyValue[Map[String, Secret]].toAnyValue(Map("k" -> secret("hunter2"))),
       AnyValue.map(Map("k" -> redacted)),

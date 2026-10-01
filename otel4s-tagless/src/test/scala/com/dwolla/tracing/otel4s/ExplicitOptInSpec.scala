@@ -30,6 +30,18 @@ class ExplicitOptInSpec extends FunSuite with ScalaCheckSuite {
     assertNoInstance(compileErrors("com.dwolla.tracing.otel4s.ToAnyValue[Option[com.dwolla.tracing.otel4s.ExplicitOptInSpec.ShowOnly]]"))
   }
 
+  test("a Comparable type with no instance is reported as missing, not as a diverging expansion") {
+    // Scala 2 unifies the generic Iterable instance's C[A] with Comparable[Instant];
+    // resolving the element instance before the Iterable evidence would recurse
+    // into ToAnyValue[Instant] and report divergence instead of a missing instance.
+    val bare = compileErrors("com.dwolla.tracing.otel4s.ToAnyValue[java.time.Instant]")
+    val inList = compileErrors("com.dwolla.tracing.otel4s.ToAnyValue[List[java.time.Instant]]")
+    assertNoInstance(bare)
+    assertNoInstance(inList)
+    assert(!bare.contains("diverging"), bare)
+    assert(!inList.contains("diverging"), inList)
+  }
+
   test("fromEncoder records the Encoder's JSON") {
     Prop.forAll { (foo: Foo) =>
       assertEquals(ToAnyValue[Foo].toAnyValue(foo), AnyValue.long(foo.foo.toLong))
