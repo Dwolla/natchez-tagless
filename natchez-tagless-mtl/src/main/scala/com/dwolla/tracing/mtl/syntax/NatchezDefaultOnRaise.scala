@@ -1,6 +1,7 @@
 package com.dwolla.tracing.mtl
 package syntax
 
+import com.dwolla.tagless.ErrorTypeName
 import com.dwolla.tagless.mtl.{DefaultOnRaise, OnRaise, RaiseRecorder}
 import natchez.{Trace, TraceableValue}
 
@@ -17,7 +18,7 @@ trait NatchezDefaultOnRaise {
       def onRaise: OnRaise[F, TraceableValue] = new OnRaise[F, TraceableValue] {
         def apply[E](e: E)(implicit ev: TraceableValue[E]): F[Unit] =
           T.put(
-            RaiseRecorder.ErrorTypeKey -> e.getClass.getName,
+            RaiseRecorder.ErrorTypeKey -> ErrorTypeName(e),
             RaiseRecorder.ErrorValueKey -> ev.toTraceValue(e)
           )
       }

@@ -2,6 +2,7 @@ package com.dwolla.tracing.otel4s.mtl
 
 import cats.FlatMap
 import cats.syntax.all._
+import com.dwolla.tagless.ErrorTypeName
 import com.dwolla.tagless.mtl.{DefaultOnRaise, OnRaise, RaiseRecorder}
 import com.dwolla.tracing.otel4s.ToAnyValue
 import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
@@ -54,7 +55,7 @@ trait Otel4sDefaultOnRaise {
           // AnyValue.empty, matching the omit-when-empty rule this module
           // already applies to parameters and return values.
           val attributes: Attributes =
-            Attributes(Attribute(RaiseRecorder.ErrorTypeKey, e.getClass.getName)) ++ (
+            Attributes(Attribute(RaiseRecorder.ErrorTypeKey, ErrorTypeName(e))) ++ (
               if (value == AnyValue.empty) Attributes.empty
               else Attributes(Attribute(RaiseRecorder.ErrorValueKey, value))
             )
