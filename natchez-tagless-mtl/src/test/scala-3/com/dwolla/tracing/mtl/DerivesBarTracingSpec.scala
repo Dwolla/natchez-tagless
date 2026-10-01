@@ -4,7 +4,6 @@ import cats.data.Kleisli
 import cats.effect.{IO, IOLocal, MonadCancelThrow}
 import cats.mtl.{Handle, Local}
 import cats.syntax.all.*
-import com.dwolla.tagless.mtl.RaiseRecorder
 import com.dwolla.tracing.InMemorySuite
 import com.dwolla.tracing.mtl.syntax.*
 import natchez.InMemory.Lineage.Root
@@ -87,8 +86,8 @@ class DerivesBarTracingSpec extends InMemorySuite {
     Root("test") / "DerivesBar.bar" -> Put(List("DerivesBar.bar.i" -> NumberValue(-1))),
     Root("test") / "DerivesBar.bar" -> Put(
       List(
-        RaiseRecorder.ErrorTypeKey -> StringValue(classOf[BarError.Negative].getName),
-        RaiseRecorder.ErrorValueKey -> StringValue("negative:-1")
+        "com.dwolla.raise.error.type" -> StringValue(classOf[BarError.Negative].getName),
+        "com.dwolla.raise.error.value" -> StringValue("negative:-1")
       )
     ),
     Root("test") -> ReleaseSpan("DerivesBar.bar"),

@@ -5,7 +5,7 @@ import cats.effect.{IO, IOLocal, MonadCancelThrow}
 import cats.mtl.{Handle, Local}
 import cats.syntax.all._
 import cats.tagless.Trivial
-import com.dwolla.tagless.mtl.{RaiseAspect, RaiseRecorder}
+import com.dwolla.tagless.mtl.RaiseAspect
 import com.dwolla.tracing.InMemorySuite
 import com.dwolla.tracing.mtl.syntax._
 import natchez.InMemory.Lineage.Root
@@ -122,8 +122,8 @@ abstract class RaiseTraceIntegrationSuite extends InMemorySuite {
     Root("test") / "Bar.bar" -> Put(List("Bar.bar.i" -> NumberValue(-1))),
     Root("test") / "Bar.bar" -> Put(
       List(
-        RaiseRecorder.ErrorTypeKey -> StringValue(classOf[BarError.Negative].getName),
-        RaiseRecorder.ErrorValueKey -> StringValue("negative:-1")
+        "com.dwolla.raise.error.type" -> StringValue(classOf[BarError.Negative].getName),
+        "com.dwolla.raise.error.value" -> StringValue("negative:-1")
       )
     ),
     Root("test") -> ReleaseSpan("Bar.bar"),

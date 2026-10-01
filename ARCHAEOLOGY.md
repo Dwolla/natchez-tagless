@@ -164,7 +164,7 @@ without a compile error:
   isn't in the trace unless something inspects the `Raise` channel
   explicitly — which is what `otel4s-tagless-mtl`'s `RaiseAspect` support
   does; see its README. The same string-vs-structured divergence described
-  above for parameters and return values applies to `raise.error.value`
+  above for parameters and return values applies to `com.dwolla.raise.error.value`
   too: an error ADT with both an `Encoder` and a `Show` records JSON text
   under `natchez-tagless-mtl` and a structured `AnyValue` tree here — both
   now rank the `Encoder` above `Show`, just in different shapes.

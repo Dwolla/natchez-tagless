@@ -307,8 +307,8 @@ same child span that carries `parameters` and `returnValue`, not the caller's:
 
 | key | value |
 | --- | --- |
-| `raise.error.type` | the error's runtime class name; always recorded |
-| `raise.error.value` | the error's `ToAnyValue` rendering; **omitted** when it would encode to `AnyValue.empty` |
+| `com.dwolla.raise.error.type` | the error's runtime class name; always recorded |
+| `com.dwolla.raise.error.value` | the error's `ToAnyValue` rendering; **omitted** when it would encode to `AnyValue.empty` |
 
 The omission is the same omit-when-empty rule described above for parameters
 and return values, and it keeps `ToAnyValue` total. Both keys are constants on

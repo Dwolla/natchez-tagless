@@ -119,8 +119,8 @@ package com.dwolla.tracing
   *
   * The domain error is not, however, invisible to the trace. By default, every
   * algebra traced via the `RaiseAspect` path records the typed error as span
-  * fields at the moment of the raise — `raise.error.type` and
-  * `raise.error.value`, named as `RaiseRecorder.ErrorTypeKey` and
+  * fields at the moment of the raise — `com.dwolla.raise.error.type` and
+  * `com.dwolla.raise.error.value`, named as `RaiseRecorder.ErrorTypeKey` and
   * `RaiseRecorder.ErrorValueKey` on `com.dwolla.tagless.mtl.RaiseRecorder`'s
   * companion — giving the domain error's runtime class name and its
   * `TraceableValue` rendering, even though the `Throwable` channel above
@@ -131,12 +131,12 @@ package com.dwolla.tracing
   * in scope.
   *
   * This default rendering ''is'' redaction-aware, like the rest of this
-  * library: `raise.error.value` is the error's `TraceableValue[E]` rendering,
+  * library: `com.dwolla.raise.error.value` is the error's `TraceableValue[E]` rendering,
   * so the newtype-plus-custom-`TraceableValue` pattern documented on
   * `TraceWeaveCapturingInputs`/`TraceWeaveCapturingInputsAndOutputs` applies
   * to error values too. An error ADT carrying a token or a card number should
   * declare a `TraceableValue` that omits or masks it, exactly as a sensitive
-  * parameter type would. Note that `raise.error.type` still records the
+  * parameter type would. Note that `com.dwolla.raise.error.type` still records the
   * error's runtime class name unconditionally.
   *
   * ==Overriding the default recording==

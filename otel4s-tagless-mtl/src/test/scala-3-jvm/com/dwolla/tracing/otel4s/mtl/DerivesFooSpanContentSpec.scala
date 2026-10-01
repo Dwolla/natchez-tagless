@@ -3,7 +3,6 @@ package com.dwolla.tracing.otel4s.mtl
 import cats.effect.IO
 import cats.mtl.Handle
 import cats.syntax.all.*
-import com.dwolla.tagless.mtl.RaiseRecorder
 import com.dwolla.tracing.otel4s.mtl.syntax.*
 import io.opentelemetry.sdk.trace.data.SpanData
 import munit.CatsEffectSuite
@@ -56,8 +55,8 @@ class DerivesFooSpanContentSpec extends CatsEffectSuite {
             "com.dwolla.code.function.arguments",
             AnyValue.map(Map("i" -> AnyValue.long(-1L))),
           ),
-          Attribute(RaiseRecorder.ErrorTypeKey, classOf[FooError.Negative].getName),
-          Attribute(RaiseRecorder.ErrorValueKey, "negative:-1"),
+          Attribute("com.dwolla.raise.error.type", classOf[FooError.Negative].getName),
+          Attribute("com.dwolla.raise.error.value", "negative:-1"),
         )
       )
     }
