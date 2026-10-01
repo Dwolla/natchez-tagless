@@ -57,6 +57,7 @@ class DerivesFooSpanContentSpec extends CatsEffectSuite {
           ),
           Attribute("com.dwolla.raise.error.type", classOf[FooError.Negative].getName),
           Attribute("com.dwolla.raise.error.value", "negative:-1"),
+          Attribute("error.type", classOf[FooError.Negative].getName),
         )
       )
     }

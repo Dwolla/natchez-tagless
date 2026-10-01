@@ -279,33 +279,30 @@ differently ordered sequences.
 
 ## Error recording
 
-otel4s does this for you and this module neither adds to it nor takes it away.
-`SpanBuilder`'s default finalization strategy is
-`SpanFinalizer.Strategy.reportAbnormal`, so a `Throwable` that escapes a traced
-method is recorded as an exception event and the span status is set to `Error`;
-a cancelation sets `Error` with `"canceled"`.
+A `Throwable` that escapes a traced method gets otel4s's default
+(`SpanFinalizer.Strategy.reportAbnormal`): an exception event and span status
+`Error`. A cancelation sets `Error` with `"canceled"`.
 
-**Whether a cats-mtl `Raise` error reaches any of that depends on where the
-`Raise` instance puts the error, and neither answer is the one you want.**
-`reportAbnormal` is driven by `Resource.ExitCase`, which only knows about
-`MonadCancel` outcomes — succeeded, errored, canceled.
+How a cats-mtl `Raise` error is reported depends on where the `Raise` instance
+puts the error.
 
-- When `Raise` lives in the effect's **success** channel — `EitherT`, say — the
-  effect *succeeds* carrying a value that happens to describe a failure, and
-  the span is finalized as OK. otel4s cannot see into the error channel of a
-  type it knows nothing about.
 - When you get your `Raise` from **`Handle.allowF` over a `MonadThrow` `F`**,
-  which is the shape `otel4s-tagless-mtl`'s own examples use, cats-mtl uses its
-  submarine encoding: `R.raise(e)` really *is* `F.raiseError(Submarine(e))`. So
-  the resource exits `Errored`, and `reportAbnormal` marks the span `ERROR` and
-  attaches an `exception` event whose `exception.type` is
-  `cats.mtl.Handle.Submarine` — an opaque wrapper that names neither your error
-  type nor its value. Measured against the oteljava testkit in
-  `otel4s-tagless-mtl`'s `RaiseSpanContentSpec`.
+  which is the shape `otel4s-tagless-mtl`'s own examples use, cats-mtl's
+  submarine encoding makes `R.raise(e)` really *be*
+  `F.raiseError(Submarine(e))`. If that escapes the traced method, the span is
+  reported as the domain error: status `ERROR`, `error.type` set to the error's
+  runtime class name, and no exception event. The module recognizes cats-mtl's
+  private `Submarine` for this; see `com.dwolla.tagless.RaisedError`. On
+  Scala.js that recognition relies on runtime class names, which Scala.js keeps
+  by default; an application whose linker strips them
+  (`runtimeClassNameMapper`) falls back to reporting the raw exception.
+- When `Raise` lives in the effect's **success** channel — `EitherT`, say — the
+  effect *succeeds* carrying a value that describes a failure, so the span is
+  finalized as OK.
 
-Either way, the *domain* error is not in the trace. Putting it there needs an
-interpreter that inspects the `Raise` channel explicitly, which is what
-`otel4s-tagless-mtl` does — see below.
+Recording the domain error's value as well needs an interpreter that inspects
+the `Raise` channel explicitly, which is what `otel4s-tagless-mtl` does — see
+below.
 
 If you want to change or suppress the automatic behaviour, the sealed escape
 hatch is `SpanBuilder.State.withFinalizationStrategy` reached through

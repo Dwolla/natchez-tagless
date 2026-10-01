@@ -55,7 +55,7 @@ private[otel4s] final class TracerWeaveCapturingInputs[F[_]: Tracer, Cod[_]] ext
       // asAttributes stays *inside* this lambda. Tracer.noop's modifyState
       // never applies the function, so a disabled tracer pays nothing for
       // encoding — and by-name parameters are never forced.
-      .modifyState(_.addAttributes(FunctionCallAttributes.codeFunctionName(name) ++ fa.asAttributes))
+      .modifyState(_.withFinalizationStrategy(SpanFinalization.strategy).addAttributes(FunctionCallAttributes.codeFunctionName(name) ++ fa.asAttributes))
       .build
       .surround(fa.codomain.target)
   }

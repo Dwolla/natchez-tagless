@@ -20,7 +20,7 @@ private[otel4s] final class TracerInstrumentation[F[_]: Tracer] extends (Instrum
     val name = s"${fa.algebraName}.${fa.methodName}"
     Tracer[F]
       .spanBuilder(name)
-      .modifyState(_.addAttributes(FunctionCallAttributes.codeFunctionName(name)))
+      .modifyState(_.withFinalizationStrategy(SpanFinalization.strategy).addAttributes(FunctionCallAttributes.codeFunctionName(name)))
       .build
       .surround(fa.value)
   }

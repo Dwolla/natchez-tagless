@@ -197,35 +197,29 @@ package com.dwolla.tracing.otel4s
   * so a cross-built algebra keeps the companion-object declaration shown in
   * the worked example above.
   *
-  * ==The Submarine caveat==
+  * ==Raises that escape a traced method==
   *
   * A raise that crosses the traced wrapper before being rescued surfaces in the
   * `Throwable` channel as cats-mtl's own opaque `Submarine` exception (see
   * [[https://github.com/typelevel/cats-mtl/issues/648 cats-mtl#648]]), not as
-  * the domain error. That is upstream and is not fixable from this side.
+  * the domain error. The otel4s-tagless interpreters recognize it (see
+  * `com.dwolla.tagless.RaisedError`) and finalize the method span as the
+  * domain error instead of otel4s's default (measured against the oteljava
+  * testkit in `RaiseSpanContentSpec`, with `Handle.allowF[IO, E]`):
   *
-  * otel4s's default finalization strategy,
-  * `SpanFinalizer.Strategy.reportAbnormal`, sees the traced effect exit with
-  * `Resource.ExitCase.Errored` (measured against the oteljava testkit in
-  * `RaiseSpanContentSpec`, with `Handle.allowF[IO, E]`) and:
+  *   - the method span's '''status is `ERROR`''',
+  *   - `error.type` is the domain error's runtime class name, and
+  *   - there is '''no `exception` span event'''.
   *
-  *   - sets the method span's '''status to `ERROR`''' (with no description),
-  *     and
-  *   - adds one span event named '''`exception`''', carrying
-  *     `exception.type = cats.mtl.Handle.Submarine` and
-  *     `exception.stacktrace`. There is no `exception.message`, because the
-  *     `Submarine` carries none.
+  * An enclosing span is unaffected as long as the rescue happens inside it: it
+  * finishes with status `UNSET` and no events. This means every raise that is
+  * not rescued inside the method marks its span `ERROR`, even where the raise
+  * is an ordinary, expected domain outcome — see `otel4s-tagless`'s README for
+  * when otel4s can and can't see into a `Raise` channel at all.
   *
-  * The domain error's own name appears nowhere in that report — only in
-  * `com.dwolla.raise.error.type`. An enclosing span is unaffected as long as the rescue
-  * happens inside it: it finishes with status `UNSET` and no events. This
-  * means every raise that is not rescued inside the method marks its span
-  * `ERROR`, even where the raise is an ordinary, expected domain outcome — see
-  * `otel4s-tagless`'s README for when otel4s can and can't see into a `Raise`
-  * channel at all.
-  *
-  * What is ''not'' true is that the domain error is invisible to the trace. By
-  * default, every algebra traced via the `RaiseAspect` path records
+  * The raise-time attributes are independent of that and cover every raise,
+  * including ones rescued inside the method. By default, every algebra traced
+  * via the `RaiseAspect` path records
   * `com.dwolla.raise.error.type` and `com.dwolla.raise.error.value` at the moment of the raise, with
   * no action required from the caller: both syntax methods resolve their hook
   * through [[com.dwolla.tagless.mtl.RaiseRecorder]].

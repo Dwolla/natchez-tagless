@@ -78,6 +78,7 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
           ),
           Attribute("com.dwolla.raise.error.type", expectedErrorType),
           Attribute("com.dwolla.raise.error.value", "negative:-1"),
+          Attribute("error.type", expectedErrorType),
         )
       )
     }
@@ -142,29 +143,22 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
             AnyValue.map(Map("i" -> AnyValue.long(-1L))),
           ),
           Attribute("com.dwolla.raise.error.type", QuietError.Silent.getClass.getName),
+          Attribute("error.type", QuietError.Silent.getClass.getName),
         )
       )
       assertEquals(attributesOf(spans.head).get[String]("com.dwolla.raise.error.value"), None)
     }
   }
 
-  // What otel4s does with the raise *on its own*, independently of this
-  // module's hook — pinned as a test rather than described in prose because
-  // the module's scaladoc quotes these values, and the natchez module's
-  // superficially similar claim is about entirely different code
-  // (`natchez.mtl.LocalTrace#span`'s `attachError`).
-  //
-  // `Handle.allowF` over `IO` uses cats-mtl's submarine encoding, so `R.raise`
-  // really is `IO.raiseError(Submarine(e))`. The traced span therefore exits
-  // with `Resource.ExitCase.Errored` and otel4s's default
-  // `SpanFinalizer.Strategy.reportAbnormal` records it — as `Submarine`, which
-  // says nothing about the domain error. That is what the hook's
-  // `com.dwolla.raise.error.*` attributes exist to compensate for.
-  //
-  // The exact class name is asserted, not merely "contains Submarine": the
-  // scaladoc quotes it, so a cats-mtl rename should fail here and send someone
-  // back to the doc rather than leaving it quietly stale.
-  test("a raise crossing the traced wrapper is reported by otel4s as an opaque Submarine") {
+  // cats-mtl encodes `Handle.allowF`'s raise over `IO` as its private
+  // `Submarine` exception, so `R.raise` really is `IO.raiseError(Submarine(e))`
+  // and the traced span exits with `Resource.ExitCase.Errored`. Left to
+  // otel4s's default finalizer that would be reported as an opaque `Submarine`
+  // exception event; the interpreters' finalization strategy unwraps it and
+  // reports the domain error instead: status ERROR, `error.type`, no event.
+  // The raise-time `com.dwolla.raise.error.*` attributes are independent of
+  // that and still record every raise, including rescued ones.
+  test("a raise crossing the traced wrapper is reported as the domain error, not cats-mtl's Submarine") {
     resultAndSpansFrom { implicit tracer =>
       tracer.span("outer").surround {
         viaHandle(Foo[IO].traceWithInputsAndOutputs, -1)
@@ -173,15 +167,11 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
       val child = spanNamed(spans, "Foo.foo")
 
       assertEquals(child.getStatus.getStatusCode, StatusCode.ERROR)
-
-      val events = child.getEvents.asScala.toList
-      assertEquals(events.map(_.getName), List("exception"))
+      assertEquals(child.getEvents.asScala.toList.map(_.getName), List.empty[String])
       assertEquals(
-        events.head.getAttributes.toScala.get[String]("exception.type").map(_.value),
-        Some("cats.mtl.Handle.Submarine")
+        child.getAttributes.toScala.get[String]("error.type").map(_.value),
+        Some(expectedErrorType)
       )
-      // The domain error's own name appears nowhere in otel4s's report of it;
-      // only `com.dwolla.raise.error.type` carries it.
       assertEquals(
         child.getAttributes.toScala.get[String]("com.dwolla.raise.error.type").map(_.value),
         Some(expectedErrorType)
