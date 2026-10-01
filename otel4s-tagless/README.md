@@ -185,28 +185,72 @@ unrelated to either package and no mention of the ambiguity at all. If a
 method that plainly exists reports as missing on Scala 3, check for a stray
 import of the other backend's syntax first.
 
-A type with a circe `Encoder` resolves through `encodableToAnyValue`, ranked
-above the `Show` fallback: its `Json` is folded into a structured `AnyValue`
-tree — a `JsonObject` becomes an `AnyValue.map`, a JSON array an
-`AnyValue.seq`, and so on — not a JSON string. Only a type with neither an
-`Encoder` nor a `Show` fails to resolve. Write your own instance to override
-either fallback; it lives in your type's companion and outranks both.
+**There is no implicit fallback to a circe `Encoder` or a cats `Show`.** A
+type with no `ToAnyValue` is a compile error where the `Aspect` is derived.
+Built-in instances cover the primitives, `String`, `Char`, `Unit`,
+`BigDecimal`, `BigInt`, `UUID`, `URI`, circe's `Json` and `JsonObject`, and the
+collections, maps and tuples listed below. For a domain type, write an
+instance in its companion, or opt in to an existing encoding explicitly:
 
-Collections, maps and tuples never use the fallback, so an element's own
-instance, including a redacting one, is always honored inside them: `Seq`,
-`Set`, `Array`, `Chain` and the cats `NonEmpty*` types record as a sequence of
-their elements' encodings, a tuple as a sequence of its elements' encodings in
-position, and a `Map` (or `NonEmptyMap`) as a map whose values use the value's
-instance and whose keys are rendered from the key's instance — a string as-is,
-a number or boolean with `toString`. A `Set` records its iteration order, which
-for an unsorted `Set` is unspecified and can differ between two equal sets, so
-equal sets can record as differently ordered sequences.
+```scala
+implicit val moneyToAnyValue: ToAnyValue[Money] = ToAnyValue.fromEncoder[Money]
+implicit val distanceToAnyValue: ToAnyValue[Distance] = ToAnyValue.fromShow[Distance]
+```
+
+`fromEncoder` folds the type's `Json` into a structured `AnyValue` tree — a
+`JsonObject` becomes an `AnyValue.map`, a JSON array an `AnyValue.seq`, and so
+on — not a JSON string; `fromShow` records the rendering as a string. The
+same opt-in is the way to record `java.time` types, which have no built-in
+instance here: `ToAnyValue.fromEncoder[java.time.Instant]` uses circe's
+ISO-8601 encoding (on Scala.js that needs `scala-java-time`, as circe's
+`java.time` encoders always do).
 
 The `Float` widening (`ToAnyValue[Float]`) is exact in the IEEE-754 sense and
 inexact-looking in print — `0.1f` records as `0.10000000149011612`. The
 alternative, `_.toString.toDouble`, prints prettily by silently changing the
 value, which is worse in a library. Shadow the instance if you want the
 shorter rendering.
+
+### Redaction
+
+A value is recorded only through its own `ToAnyValue`. A hand-written
+redacting instance is therefore honored everywhere the type appears: bare, as
+a parameter or return value, and inside every container, map and tuple, which
+encode element-wise:
+
+- `Option`, recorded as the value itself or an empty value;
+- `Seq` (and so `List`, `Vector`, …), `Set` (including `SortedSet`), `Array`,
+  `Chain`, `OneAnd`, and the cats `NonEmptyList`, `NonEmptyVector`,
+  `NonEmptySeq`, `NonEmptyChain` and `NonEmptySet`, recorded as a sequence;
+- anything else that converts to an `Iterable` — `Iterable` itself, the
+  `scala.collection` supertypes, and the mutable collections — also recorded
+  as a sequence;
+- tuples of arity 1 to 22, recorded as a sequence of their elements in
+  position, with a sequence-valued element kept nested. (`ToAnyValue`'s
+  `product`, and so `(ta, tb).tupled`, flattens one level instead, so the two
+  differ when a component encodes to a sequence.)
+- `Map` and `NonEmptyMap`, recorded as a map whose values use the value's
+  instance. Keys are rendered from the key's own instance: a string as-is, a
+  number or boolean with `toString`, and anything else with otel4s's
+  `Show[AnyValue]`. Keys that render to the same string collapse to one
+  entry, and under a redacting key instance every key does:
+  `Map(a -> 1, b -> 2, c -> 3)` keyed by a redacted type records a single
+  `redacted` entry, and which value survives follows the map's iteration
+  order, which is unspecified for an unsorted `Map`.
+
+A container with no instance here (`Either`, `Validated`, `Ior`,
+`NonEmptyLazyList`, …) is a compile error rather than a leak.
+
+The one caveat is the opt-in: **a type given its instance with `fromEncoder`
+or `fromShow` records whatever that `Encoder` or `Show` reveals**, and they
+encode the whole value without consulting any field's or element's
+`ToAnyValue`. A case class opted in with `fromEncoder` records a sensitive
+field in the clear if its `Encoder` writes it, even when the field's own type
+redacts. Give such a type a hand-written instance instead.
+
+A `Set` records its iteration order, which for an unsorted `Set` is
+unspecified and can differ between two equal sets, so equal sets can record as
+differently ordered sequences.
 
 ## Error recording
 

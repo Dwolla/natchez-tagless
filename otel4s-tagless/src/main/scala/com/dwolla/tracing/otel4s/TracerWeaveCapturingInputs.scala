@@ -33,8 +33,12 @@ import org.typelevel.otel4s.trace.Tracer
  * }}}
  *
  * With that instance the span records `"redacted password value"` and never the
- * actual value. Similar functionality can be achieved with the newtype library
- * of your choice.
+ * actual value, wherever the newtype appears: a value is recorded only through
+ * its own `ToAnyValue`, and every container, map and tuple instance encodes
+ * element-wise. The one exception is a type you opt in with
+ * `ToAnyValue.fromEncoder` or `ToAnyValue.fromShow`, which records whatever
+ * that `Encoder` or `Show` reveals, including a field of the newtype. Similar
+ * functionality can be achieved with the newtype library of your choice.
  *
  */
 object TracerWeaveCapturingInputs {

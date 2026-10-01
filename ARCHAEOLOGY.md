@@ -143,23 +143,23 @@ differently without a compile error:
   `com.dwolla.raise.error.value` are shared through `RaiseRecorder` and are
   identical in both.
 
-- **JSON outranks `Show` in both libraries, but the shape still differs.**
+- **`ToAnyValue` has no implicit fallback; `TraceableValue` does.**
   `natchez-tagless`'s `nonPrimitiveTraceValueViaJson` (declared in
   `LowPriorityTraceableValueInstances`, which *extends* the trait holding the
-  `Show` fallback) prefers a circe `Encoder` over `Show` when both exist —
+  `Show` fallback) gives any type with a circe `Encoder` or a cats `Show` a
+  `TraceableValue` implicitly, preferring the `Encoder` —
   `ImplicitPrioritizationSpec` pins exactly that — so a `Money` with both
-  instances traces as the *string* `{"cents":150}` under natchez.
-  `ToAnyValue.encodableToAnyValue` ranks the same way — a type with both now
-  records its `Encoder` rendering here too — but it folds the `Json` into a
-  *structured* `AnyValue` tree rather than a string: the same `Money` traces
-  as `AnyValue.map(Map("cents" -> AnyValue.long(150)))`, not
-  `StringValue("{\"cents\":150}")`. The type that used to be the loud,
-  easy-to-notice case here — an `Encoder` with no `Show` — now compiles fine
-  under both libraries; a type with *neither* instance is the only remaining
-  compile error. What survives as the silent divergence is the shape, not
-  the priority: string under natchez, structured under otel4s, for exactly
-  the types that carry both instances. (This closes the open question of
-  whether `ToAnyValue` should gain a JSON fallback at all.)
+  instances traces as the *string* `{"cents":150}` under natchez. Under
+  otel4s the same `Money` is a compile error until it gets a `ToAnyValue`:
+  a value is recorded only through its own instance, so a redacting instance
+  cannot be bypassed by a container or case class that encodes the whole
+  value with its `Encoder` or `Show`. Opt in explicitly with
+  `ToAnyValue.fromEncoder` or `ToAnyValue.fromShow`. `fromEncoder` folds the
+  `Json` into a *structured* `AnyValue` tree rather than a string: `Money`
+  records as `AnyValue.map(Map("cents" -> AnyValue.long(150)))`, not
+  `StringValue("{\"cents\":150}")`. So a migration surfaces as compile
+  errors for every domain type without an instance, and, for a type you opt
+  in with `fromEncoder`, a string-vs-structured shape difference.
 - **Spans get marked errored that weren't before.** otel4s's `SpanBuilder`
   finalizes with `SpanFinalizer.Strategy.reportAbnormal` by default, so any
   `Throwable` escaping a traced method is recorded as an exception event and
@@ -173,20 +173,20 @@ differently without a compile error:
   neither your error type nor its value. Either way the domain error itself
   isn't in the trace unless something inspects the `Raise` channel
   explicitly — which is what `otel4s-tagless-mtl`'s `RaiseAspect` support
-  does; see its README. The same string-vs-structured divergence described
-  above for parameters and return values applies to `com.dwolla.raise.error.value`
-  too: an error ADT with both an `Encoder` and a `Show` records JSON text
-  under `natchez-tagless-mtl` and a structured `AnyValue` tree here — both
-  now rank the `Encoder` above `Show`, just in different shapes.
+  does; see its README. The same difference described above for parameters
+  and return values applies to `com.dwolla.raise.error.value` too: an error
+  type needs its own `ToAnyValue` here, and one opted in with `fromEncoder`
+  records a structured `AnyValue` tree where `natchez-tagless-mtl` records
+  JSON text.
 
 ### Other differences worth knowing if you've used natchez-tagless
 
 - `Float` widens to the exact `Double` bit pattern (`0.1f` records as
   `0.10000000149011612`) rather than `_.toString.toDouble`'s prettier but
   value-changing rendering.
-- `BigDecimal` and `BigInt` both have circe `Encoder` instances, so they now
-  fold to `AnyValue.long` or `AnyValue.double` (whichever the value's `Json`
-  folds to) via `encodableToAnyValue`, rather than to a string via `Show`.
+- `BigDecimal` and `BigInt` have built-in instances that record
+  `AnyValue.long` or `AnyValue.double` when that is exact, and the exact
+  decimal string otherwise, rather than a string via `Show`.
 - `()` and `None` both encode to `AnyValue.empty` (natchez records the
   strings `"()"` and `"None"`), and a top-level attribute whose value would
   be entirely empty is omitted rather than recorded empty — see the
