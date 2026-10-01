@@ -2,7 +2,7 @@ package com.dwolla.tagless
 
 /** The name recorded for an error's type: its runtime class name, except for
   * values whose class is anonymous. Every simple case of a Scala 3 `enum`
-  * shares one anonymous class (`com.example.FooError$$anon$1`), so those are
+  * shares one anonymous class (`com.example.FooError\$\$anon\$1`), so those are
   * named by the enclosing class plus their `productPrefix`
   * (`com.example.FooError.NotFound`). Anonymity is read from the class name
   * because `Class#isAnonymousClass` isn't available on every platform.
