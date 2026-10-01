@@ -47,8 +47,8 @@ package com.dwolla.tracing.otel4s
   *   sealed trait ValidationError { def i: Int }
   *   final class TooSmall(val i: Int) extends ValidationError
   *
-  *   // How the error renders into `com.dwolla.raise.error.value`. Write the instance you
-  *   // want: the `Show` fallback would otherwise supply one silently.
+  *   // How the error renders into `com.dwolla.raise.error.value`. Every error
+  *   // type needs one; there is no implicit `Encoder` or `Show` fallback.
   *   implicit val validationErrorToAnyValue: ToAnyValue[ValidationError] =
   *     ToAnyValue.instance(e => AnyValue.string("too small: " + e.i.toString))
   *

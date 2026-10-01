@@ -19,6 +19,15 @@ object Secret {
   implicit val secretToAnyValue: ToAnyValue[Secret] = ToAnyValue.instance(_ => AnyValue.string("redacted"))
 }
 
+/** A map key with a circe `KeyEncoder` and nothing else: no `ToAnyValue`,
+  * `Encoder` or `Show`.
+  */
+final case class KeyOnly(value: String)
+
+object KeyOnly {
+  implicit val keyOnlyKeyEncoder: KeyEncoder[KeyOnly] = KeyEncoder[String].contramap(_.value)
+}
+
 class ToAnyValueCollectionsSpec extends FunSuite {
   private val redacted: AnyValue = AnyValue.string("redacted")
   private def secret(value: String): Secret = new Secret(value)
@@ -137,6 +146,43 @@ class ToAnyValueCollectionsSpec extends FunSuite {
     assertEquals(
       ToAnyValue[Map[java.util.UUID, Int]].toAnyValue(Map(uuid -> 1)),
       AnyValue.map(Map(uuid.toString -> AnyValue.long(1L))),
+    )
+  }
+
+  test("a Map whose key has only a KeyEncoder has no instance, rather than leaking its values through circe") {
+    val errors = compileErrors("com.dwolla.tracing.otel4s.ToAnyValue[Map[com.dwolla.tracing.otel4s.KeyOnly, com.dwolla.tracing.otel4s.Secret]]")
+    assert(errors.contains("ToAnyValue["), errors)
+  }
+
+  test("a scala.collection.Seq encodes each element through the element's ToAnyValue, in order") {
+    assertEquals(
+      ToAnyValue[scala.collection.Seq[Secret]].toAnyValue(scala.collection.Seq(secret("a"), secret("b"))),
+      AnyValue.seq(Seq(redacted, redacted)),
+    )
+  }
+
+  test("an Iterable encodes each element through the element's ToAnyValue, in order") {
+    assertEquals(
+      ToAnyValue[Iterable[Secret]].toAnyValue(Iterable(secret("a"), secret("b"))),
+      AnyValue.seq(Seq(redacted, redacted)),
+    )
+  }
+
+  test("a scala.collection.Set encodes each element through the element's ToAnyValue") {
+    assertEquals(
+      ToAnyValue[scala.collection.Set[Secret]].toAnyValue(scala.collection.Set(secret("a"))),
+      AnyValue.seq(Seq(redacted)),
+    )
+  }
+
+  test("a OneAnd encodes its head and then its tail's elements through the element's ToAnyValue") {
+    assertEquals(
+      ToAnyValue[OneAnd[List, Secret]].toAnyValue(OneAnd(secret("a"), List(secret("b")))),
+      AnyValue.seq(Seq(redacted, redacted)),
+    )
+    assertEquals(
+      ToAnyValue[OneAnd[List, Int]].toAnyValue(OneAnd(1, List(2, 3))),
+      AnyValue.seq(Seq(AnyValue.long(1L), AnyValue.long(2L), AnyValue.long(3L))),
     )
   }
 

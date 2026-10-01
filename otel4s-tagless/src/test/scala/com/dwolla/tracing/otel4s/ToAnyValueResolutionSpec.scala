@@ -9,19 +9,18 @@ import munit.FunSuite
 import org.typelevel.otel4s.AnyValue
 import org.typelevel.otel4s.trace.Tracer
 
-/** Each `implicitly` here is a compile-time assertion: if the priority ladder
-  * did not work, the module would not build and this file is where the error lands.
+/** Each `implicitly` here is a compile-time assertion: if resolution were
+  * missing or ambiguous, the module would not build and this file is where the error lands.
   * The last test is the same kind of assertion aimed at the syntax package: the
   * bodies of its local methods are the claim, and the `assertEquals` calls only
   * exist so the methods are used.
   */
 class ToAnyValueResolutionSpec extends FunSuite {
-  test("a primitive resolves to its own instance, not to the Show fallback") {
-    // Show[String] exists, so without the priority ladder this is ambiguous.
+  test("a primitive resolves to its own instance") {
     assertEquals(implicitly[ToAnyValue[String]].toAnyValue("v"), AnyValue.string("v"))
   }
 
-  test("Show[Int] and Show[Boolean] do not shadow the primitive instances either") {
+  test("Int and Boolean resolve to their own instances") {
     assertEquals(implicitly[ToAnyValue[Int]].toAnyValue(3), AnyValue.long(3L))
     assertEquals(implicitly[ToAnyValue[Boolean]].toAnyValue(true), AnyValue.boolean(true))
   }
@@ -31,9 +30,7 @@ class ToAnyValueResolutionSpec extends FunSuite {
     assertEquals(implicitly[ToAnyValue[Vector[Long]]].toAnyValue(Vector(1L)), AnyValue.seq(Seq(AnyValue.long(1L))))
   }
 
-  test("Show[List[String]] does not shadow the generic Seq instance") {
-    // cats has Show[List[A]]; if the fallback outranked the companion, this
-    // would be StringValue("List(a)") instead.
+  test("a List[String] records as a sequence, not as cats' Show rendering") {
     assertEquals(implicitly[ToAnyValue[List[String]]].toAnyValue(List("a")).toString, "SeqValue([StringValue(a)])")
   }
 
@@ -45,7 +42,22 @@ class ToAnyValueResolutionSpec extends FunSuite {
     assertEquals(implicitly[ToAnyValue[Point]].toAnyValue(Point(1)), AnyValue.map(Map("x" -> AnyValue.long(1L))))
   }
 
-  test("an Encoder-only type resolves through the Encoder fallback inside a tuple and as a map key") {
+  test("types with their own instance keep it rather than the generic Iterable-shaped one") {
+    val one = AnyValue.seq(Seq(AnyValue.long(1L)))
+    assertEquals(implicitly[ToAnyValue[List[Int]]].toAnyValue(List(1)), one)
+    assertEquals(implicitly[ToAnyValue[Vector[Int]]].toAnyValue(Vector(1)), one)
+    assertEquals(implicitly[ToAnyValue[Seq[Int]]].toAnyValue(Seq(1)), one)
+    assertEquals(implicitly[ToAnyValue[Set[Int]]].toAnyValue(Set(1)), one)
+    assertEquals(implicitly[ToAnyValue[Array[Int]]].toAnyValue(Array(1)), one)
+    assertEquals(implicitly[ToAnyValue[cats.data.Chain[Int]]].toAnyValue(cats.data.Chain(1)), one)
+    assertEquals(implicitly[ToAnyValue[Map[Int, Int]]].toAnyValue(Map(1 -> 1)), AnyValue.map(Map("1" -> AnyValue.long(1L))))
+    // Option and Some convert to Iterable too; a sequence here would mean the
+    // Iterable-shaped instance had outranked optionToAnyValue.
+    assertEquals(implicitly[ToAnyValue[Option[Int]]].toAnyValue(Option(1)), AnyValue.long(1L))
+    assertEquals(implicitly[ToAnyValue[Some[Int]]].toAnyValue(Some(1)), AnyValue.long(1L))
+  }
+
+  test("a type that opts in with fromEncoder resolves inside a tuple and as a map key") {
     assertEquals(
       implicitly[ToAnyValue[(Point, Int)]].toAnyValue((Point(1), 2)),
       AnyValue.seq(Seq(AnyValue.map(Map("x" -> AnyValue.long(1L))), AnyValue.long(2L))),
@@ -82,5 +94,6 @@ object ToAnyValueResolutionSpec {
   final case class Point(x: Int)
   object Point {
     implicit val pointEncoder: Encoder[Point] = Encoder.forProduct1("x")(_.x)
+    implicit val pointToAnyValue: ToAnyValue[Point] = ToAnyValue.fromEncoder[Point]
   }
 }

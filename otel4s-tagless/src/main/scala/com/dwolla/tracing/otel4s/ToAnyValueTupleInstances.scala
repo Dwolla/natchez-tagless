@@ -2,22 +2,16 @@ package com.dwolla.tracing.otel4s
 
 import org.typelevel.otel4s.AnyValue
 
-/** Element-wise instances for every tuple arity circe has an `Encoder` for,
-  * 1 to 22; an arity without one would silently fall through to circe's
-  * tuple `Encoder`, which never consults the elements' `ToAnyValue`. A tuple
-  * records as a sequence of its elements' own encodings, in position, so a
-  * redacting element instance is honored.
+/** Element-wise instances for tuples of arity 1 to 22 (every arity circe
+  * and Scala 2 have). A tuple records as a sequence of its elements' own
+  * encodings, in position, so a redacting element instance is honored.
   *
-  * The shape matches circe's JSON array for a tuple: an element whose
-  * encoding is itself a sequence stays nested. `ToAnyValue`'s
-  * `ContravariantSemigroupal#product` flattens one level of sequence instead,
-  * to stay associative, so `(ta, tb).tupled` and `ToAnyValue[(A, B)]` differ
-  * when a component encodes to a sequence.
-  *
-  * Ranked below `ToAnyValue`'s companion and above the `Encoder` fallback in
-  * `LowPriorityToAnyValueInstances`, so a tuple never reaches the fallback.
+  * A sequence-valued element stays nested, as it does in circe's JSON array
+  * for a tuple. `ToAnyValue`'s `ContravariantSemigroupal#product` flattens
+  * one level of sequence instead, to stay associative, so `(ta, tb).tupled`
+  * and `ToAnyValue[(A, B)]` differ when a component encodes to a sequence.
   */
-trait ToAnyValueTupleInstances extends LowPriorityToAnyValueInstances {
+trait ToAnyValueTupleInstances extends GenericCollectionToAnyValueInstances {
   implicit def tuple1ToAnyValue[A1](implicit a1: ToAnyValue[A1]): ToAnyValue[Tuple1[A1]] =
     ToAnyValue.instance[Tuple1[A1]](t => AnyValue.seq(Seq(a1.toAnyValue(t._1))))
 
