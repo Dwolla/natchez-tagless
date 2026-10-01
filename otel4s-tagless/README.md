@@ -222,9 +222,13 @@ encode element-wise:
 - `Seq` (and so `List`, `Vector`, …), `Set` (including `SortedSet`), `Array`,
   `Chain`, `OneAnd`, and the cats `NonEmptyList`, `NonEmptyVector`,
   `NonEmptySeq`, `NonEmptyChain` and `NonEmptySet`, recorded as a sequence;
-- anything else that converts to an `Iterable` — `Iterable` itself, the
-  `scala.collection` supertypes, and the mutable collections — also recorded
-  as a sequence;
+- any other single-parameter `C[A]` that converts to an `Iterable[A]` —
+  `Iterable` itself, `scala.collection.Seq` and `scala.collection.Set`, and
+  the mutable sequences and sets — also recorded as a sequence.
+  `scala.collection.Map` and `mutable.Map` have no instance; convert them with
+  `.toMap`. On Scala 2, a type of your own that extends `Iterable`, `Seq` or
+  `Set` and has its own instance in its companion is ambiguous with this
+  generic one; bring your instance into lexical scope with an import;
 - tuples of arity 1 to 22, recorded as a sequence of their elements in
   position, with a sequence-valued element kept nested. (`ToAnyValue`'s
   `product`, and so `(ta, tb).tupled`, flattens one level instead, so the two
@@ -239,7 +243,28 @@ encode element-wise:
   order, which is unspecified for an unsorted `Map`.
 
 A container with no instance here (`Either`, `Validated`, `Ior`,
-`NonEmptyLazyList`, …) is a compile error rather than a leak.
+`NonEmptyLazyList`, …) is a compile error rather than a leak. Choosing its
+encoding is up to you; build it from the element instances so a redacting one
+is still honored. For example, as a tagged map:
+
+```scala
+import cats.data.Validated
+import cats.syntax.all._
+import com.dwolla.tracing.otel4s.ToAnyValue
+import org.typelevel.otel4s.AnyValue
+
+implicit def eitherToAnyValue[L: ToAnyValue, R: ToAnyValue]: ToAnyValue[Either[L, R]] =
+  ToAnyValue.instance(_.fold(
+    l => AnyValue.map(Map("left" -> ToAnyValue[L].toAnyValue(l))),
+    r => AnyValue.map(Map("right" -> ToAnyValue[R].toAnyValue(r))),
+  ))
+
+implicit def validatedToAnyValue[E: ToAnyValue, A: ToAnyValue]: ToAnyValue[Validated[E, A]] =
+  ToAnyValue[Either[E, A]].contramap(_.toEither)
+```
+
+`contramap` comes from `cats.syntax.all._` and `ToAnyValue`'s `Contravariant`
+instance. Both instances compile and redact on Scala 2.13 and 3.
 
 The one caveat is the opt-in: **a type given its instance with `fromEncoder`
 or `fromShow` records whatever that `Encoder` or `Show` reveals**, and they
