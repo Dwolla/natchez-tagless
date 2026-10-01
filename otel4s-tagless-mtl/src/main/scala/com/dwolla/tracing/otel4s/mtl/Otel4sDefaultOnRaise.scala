@@ -9,7 +9,7 @@ import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
 import org.typelevel.otel4s.trace.Tracer
 
 /** otel4s's fallback [[com.dwolla.tagless.mtl.DefaultOnRaise]]: records the
-  * typed error's runtime class name and its `ToAnyValue` rendering as
+  * typed error's runtime class name (Scala 3 enum cases: `<Enum>.<Case>`) and its `ToAnyValue` rendering as
   * attributes on the ''current'' span, the direct analogue of natchez's
   * `Trace[F].put`.
   *

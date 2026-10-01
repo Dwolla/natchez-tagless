@@ -100,7 +100,8 @@ package com.dwolla.tracing.otel4s
   * `com.dwolla.code.function.return_value` attributes. Not a span
   * event, and not the caller's span.
   *
-  *   - `com.dwolla.raise.error.type` — the error's runtime class name, always recorded.
+  *   - `com.dwolla.raise.error.type` — the error's runtime class name (Scala 3 enum
+  *     cases: `<Enum>.<Case>`), always recorded.
   *   - `com.dwolla.raise.error.value` — the error's `ToAnyValue` rendering, recorded
   *     unless it would encode to `AnyValue.empty`, in which case the attribute
   *     is omitted outright. That is the same omit-when-empty rule
@@ -208,7 +209,8 @@ package com.dwolla.tracing.otel4s
   * testkit in `RaiseSpanContentSpec`, with `Handle.allowF[IO, E]`):
   *
   *   - the method span's '''status is `ERROR`''',
-  *   - `error.type` is the domain error's runtime class name, and
+  *   - `error.type` is the domain error's runtime class name (Scala 3 enum cases:
+  *     `<Enum>.<Case>`), and
   *   - there is '''no `exception` span event'''.
   *
   * An enclosing span is unaffected as long as the rescue happens inside it: it
@@ -231,7 +233,7 @@ package com.dwolla.tracing.otel4s
   * to error values too. An error ADT carrying a token or a card number should
   * declare a `ToAnyValue` that omits or masks it, exactly as a sensitive
   * parameter type would. Note that `com.dwolla.raise.error.type` still records the error's
-  * runtime class name unconditionally.
+  * runtime class name (Scala 3 enum cases: `<Enum>.<Case>`) unconditionally.
   *
   * ==Overriding the default recording==
   *
