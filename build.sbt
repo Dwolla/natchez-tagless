@@ -454,7 +454,8 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
 // application that only traces never pulls in otel4s-core-metrics and one that
 // only measures never pulls in otel4s-core-trace. Main scope is
 // otel4s-core-metrics plus the stable otel4s-semconv (which depends only on
-// otel4s-core-common): no backend, no experimental semconv, nothing of ours.
+// otel4s-core-common): no backend, no experimental semconv, and of our modules
+// only tagless-core (cats + cats-tagless-core).
 //
 // 2.12 is contained exactly as in otel4sTagless, for the identical reason — see
 // the comment on that project. Every `isOtel4sScalaVersion` gate below is
@@ -532,7 +533,7 @@ lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
   .settings(doctestSettings *)
   // Test only: WithMetricsSyntaxSpec and the doctest pin that `withMetrics(...)`
   // stacks with otel4s-tagless's `instrumentAndTrace`. Never a Compile dependency.
-  .dependsOn(otel4sTagless % Test)
+  .dependsOn(taglessCore, otel4sTagless % Test)
 
 // sbt-buildinfo can't be enabled only for the test scope, so this is the workaround to use it only in tests
 lazy val buildInfoForTests = crossProject(JVMPlatform, JSPlatform)

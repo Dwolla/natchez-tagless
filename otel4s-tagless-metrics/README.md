@@ -31,9 +31,13 @@ yields the wrapped algebra. Errors and cancellation propagate unchanged.
 | Unit | `s` | `s` |
 | Buckets | 5 ms – 10 s (tune with an SDK View) | 5 ms – 10 s (the RPC recommendation) |
 | Attributes | `code.function.name = Alg.method` | `rpc.system.name`, `rpc.method = <service>/<method>` |
-| On failure | `error.type` = the error's class name, or `canceled` | same |
+| On failure | `error.type` = the error's class name (for an escaped cats-mtl raise, the domain error's class, not cats-mtl's internal wrapper; Scala 3 enum cases named `<Enum>.<Case>`), or `canceled` | same |
 
 There is no call counter: a histogram's count is the call count.
+
+On Scala.js, recognizing an escaped cats-mtl raise relies on runtime class
+names, which Scala.js keeps by default; an application whose linker strips them
+(`runtimeClassNameMapper`) falls back to recording the raw exception's class.
 
 ## Stacking with tracing
 
@@ -73,6 +77,8 @@ excludes the span's own overhead.
   module has its own `RpcRole`, so `import com.dwolla.metrics.otel4s._` and
   `import com.dwolla.metrics.smithy._` together make `RpcRole` ambiguous.
   Import `com.dwolla.metrics.otel4s.{RpcRole, RpcService, RpcSystem}` (or
-  rename one, e.g. `RpcRole => TaglessRpcRole`) instead.
+  rename one, e.g. `RpcRole => TaglessRpcRole`) instead. With the `RpcRole` types
+  imported by name, the two libraries' `withMetrics` syntaxes coexist in one file
+  on Scala 2.13 and 3.
 - **`code.function.name` is not fully qualified.** cats-tagless knows only an
   algebra's simple name, so it records `FooService.greet`.

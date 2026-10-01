@@ -2,6 +2,7 @@ package com.dwolla.metrics.otel4s
 
 import cats.effect.kernel.Resource
 import cats.syntax.all._
+import com.dwolla.tagless.{ErrorTypeName, RaisedError}
 import org.typelevel.otel4s.Attribute
 import org.typelevel.otel4s.metrics.{BucketBoundaries, Histogram, Meter, MeterProvider}
 import org.typelevel.otel4s.semconv.attributes.ErrorAttributes
@@ -40,13 +41,17 @@ private[otel4s] object CallDuration {
     */
   val CanceledErrorType: String = "canceled"
 
-  /** Absent on success, as the semantic conventions require; the error's
-    * fully-qualified class name on failure; `"canceled"` on cancellation.
+  /** Absent on success, as the semantic conventions require; on failure, the
+    * class of error the call ended with — for a cats-mtl raise that escaped the
+    * call, the domain error rather than cats-mtl's `Submarine` wrapper — named by
+    * `ErrorTypeName` (so Scala 3 enum cases stay distinct); and `"canceled"` on
+    * cancellation.
     */
   def errorType(exitCase: Resource.ExitCase): Option[Attribute[String]] =
     exitCase match {
       case Resource.ExitCase.Succeeded => None
-      case Resource.ExitCase.Errored(e) => Attribute(ErrorAttributes.ErrorType, e.getClass.getName).some
+      case Resource.ExitCase.Errored(RaisedError(error)) => Attribute(ErrorAttributes.ErrorType, ErrorTypeName(error)).some
+      case Resource.ExitCase.Errored(e) => Attribute(ErrorAttributes.ErrorType, ErrorTypeName(e)).some
       case Resource.ExitCase.Canceled => Attribute(ErrorAttributes.ErrorType, CanceledErrorType).some
     }
 

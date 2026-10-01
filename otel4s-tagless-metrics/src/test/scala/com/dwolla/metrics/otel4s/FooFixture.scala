@@ -17,6 +17,9 @@ trait Foo[F[_]] {
   */
 final class FooFailure extends RuntimeException("boom")
 
+/** A domain error for raise tests; deliberately not a `Throwable`. */
+final class NotFound(val id: Int)
+
 object Foo {
   def apply[F[_]](greetWith: String => F[String], pingWith: F[Unit]): Foo[F] =
     new Foo[F] {
