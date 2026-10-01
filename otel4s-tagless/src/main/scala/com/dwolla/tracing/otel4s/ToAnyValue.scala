@@ -1,6 +1,7 @@
 package com.dwolla.tracing.otel4s
 
 import cats.*
+import cats.data.NonEmptyList
 import cats.syntax.all.*
 import io.circe.{Encoder, Json, JsonNumber, JsonObject}
 import org.typelevel.otel4s.AnyValue
@@ -150,6 +151,17 @@ object ToAnyValue extends LowPriorityToAnyValueInstances {
 
   implicit def mapToAnyValue[A](implicit ev: ToAnyValue[A]): ToAnyValue[Map[String, A]] =
     instance[Map[String, A]](m => AnyValue.map(m.map { case (k, v) => k -> ev.toAnyValue(v) }))
+
+  /** Element-wise, like `seqToAnyValue`, so each element's own `ToAnyValue` —
+    * including a redacting one — is used. Without this, a `Set` falls through
+    * to circe's `Encoder`, which never consults the element's `ToAnyValue`.
+    */
+  implicit def setToAnyValue[A](implicit ev: ToAnyValue[A]): ToAnyValue[Set[A]] =
+    instance[Set[A]](as => AnyValue.seq(as.toSeq.map(ev.toAnyValue)))
+
+  /** Element-wise and in order; see `setToAnyValue` for why. */
+  implicit def nonEmptyListToAnyValue[A](implicit ev: ToAnyValue[A]): ToAnyValue[NonEmptyList[A]] =
+    instance[NonEmptyList[A]](as => AnyValue.seq(as.toList.map(ev.toAnyValue)))
 
   /** Concatenates rather than nests, which is what makes this lawful.
    * `ContravariantSemigroupal`'s associativity law demands that
