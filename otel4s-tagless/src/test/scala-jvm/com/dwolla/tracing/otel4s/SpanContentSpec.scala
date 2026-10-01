@@ -138,6 +138,37 @@ class SpanContentSpec extends CatsEffectSuite {
     }.map { case (result, spans) => assertReportedAsDomainError(result, spans) }
   }
 
+  test("an escaped raise of null is still rescued by the caller and ends the span with error.type = null") {
+    resultAndSpansFrom { implicit tracer =>
+      Handle.allowF[IO, NotFound] { h =>
+        new Foo[IO] {
+          override def greet(name: String, times: Int): IO[String] = h.raise[NotFound, String](null)
+          override def ping(): IO[Unit] = IO.unit
+        }.instrumentAndTrace.greet("world", 1).as(false)
+      }.rescue(e => IO.pure(e == null))
+    }.map { case (rescuedNull, spans) =>
+      assert(rescuedNull, "expected the raised null back from rescue")
+      val span = onlySpan(spans)
+      assertEquals(span.getStatus.getStatusCode, StatusCode.ERROR)
+      assertEquals(attributesOf(span).get(ErrorAttributes.ErrorType).map(_.value), Some("null"))
+    }
+  }
+
+  test("a canceled call keeps otel4s's reportAbnormal: status ERROR described as canceled, with no error.type") {
+    resultAndSpansFrom { implicit tracer =>
+      new Foo[IO] {
+        override def greet(name: String, times: Int): IO[String] = IO.canceled.as("unreachable")
+        override def ping(): IO[Unit] = IO.unit
+      }.instrumentAndTrace.greet("world", 1).start.flatMap(_.join)
+    }.map { case (outcome, spans) =>
+      assert(outcome.isCanceled, s"expected a canceled outcome, got $outcome")
+      val span = onlySpan(spans)
+      assertEquals(span.getStatus.getStatusCode, StatusCode.ERROR)
+      assertEquals(span.getStatus.getDescription, "canceled")
+      assertEquals(attributesOf(span).get(ErrorAttributes.ErrorType), None)
+    }
+  }
+
   test("a raise rescued inside the method leaves the span OK, with no error.type") {
     resultAndSpansFrom { implicit tracer =>
       Handle.allowF[IO, NotFound] { h =>

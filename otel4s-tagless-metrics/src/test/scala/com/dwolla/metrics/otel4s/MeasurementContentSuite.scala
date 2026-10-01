@@ -181,6 +181,18 @@ abstract class MeasurementContentSuite extends CatsEffectSuite with ScalaCheckEf
     }
   }
 
+  test("an escaped raise of null is still rescued and records error.type = null") {
+    measured { implicit meterProvider =>
+      Handle.allowF[IO, NotFound] { h =>
+        generic(Foo[IO](_ => h.raise[NotFound, String](null), IO.unit)).flatMap(_.greet("world")).as(false)
+      }.rescue(e => IO.pure(e == null))
+    }.map { case (rescuedNull, histograms) =>
+      assert(rescuedNull, "expected the raised null back from rescue")
+      val point = pointFor(ErrorAttributes.ErrorType, "null", histogramNamed(functionDuration, histograms))
+      assertEquals(point.count, 1L)
+    }
+  }
+
   test("an escaped raise on an RPC-instrumented algebra records the domain error's class as error.type") {
     measured { implicit meterProvider =>
       Handle.allowF[IO, NotFound] { h =>

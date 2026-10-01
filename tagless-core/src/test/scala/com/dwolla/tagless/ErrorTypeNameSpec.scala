@@ -35,6 +35,10 @@ class ErrorTypeNameSpec extends FunSuite {
     assertEquals(ErrorTypeName(Gone), "com.dwolla.tagless.Gone$")
   }
 
+  test("null is named \"null\" rather than failing") {
+    assertEquals(ErrorTypeName(null), "null")
+  }
+
   test("an anonymous Product with an empty productPrefix keeps its runtime class name") {
     val anonymous: FooError = new FooError {
       override def productArity: Int = 0
