@@ -18,7 +18,7 @@ class WeaveAttributesOpsSpec extends munit.CatsEffectSuite {
   // typed at AnyValue.MapValue and KeySelect is invariant, so without a
   // widening somewhere this line does not compile.
   private def expected(entries: (String, AnyValue)*): Attributes =
-    Attributes(Attribute[AnyValue]("Foo.greet.parameters", AnyValue.map(entries.toMap)))
+    Attributes(Attribute[AnyValue]("com.dwolla.code.function.arguments", AnyValue.map(entries.toMap)))
 
   test("every parameter of every parameter list lands in one `parameters` map") {
     val weave = weaveOf(List(

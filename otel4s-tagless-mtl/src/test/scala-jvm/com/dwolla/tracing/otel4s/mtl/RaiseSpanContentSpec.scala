@@ -71,8 +71,9 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
       assertEquals(
         attributesOf(spans.head),
         Attributes(
+          Attribute("code.function.name", "Foo.foo"),
           Attribute[AnyValue](
-            "Foo.foo.parameters",
+            "com.dwolla.code.function.arguments",
             AnyValue.map(Map("i" -> AnyValue.long(-1L))),
           ),
           Attribute(RaiseRecorder.ErrorTypeKey, expectedErrorType),
@@ -135,8 +136,9 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
       assertEquals(
         attributesOf(spans.head),
         Attributes(
+          Attribute("code.function.name", "Quiet.hush"),
           Attribute[AnyValue](
-            "Quiet.hush.parameters",
+            "com.dwolla.code.function.arguments",
             AnyValue.map(Map("i" -> AnyValue.long(-1L))),
           ),
           Attribute(RaiseRecorder.ErrorTypeKey, QuietError.Silent.getClass.getName),

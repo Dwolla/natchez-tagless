@@ -51,8 +51,9 @@ class DerivesFooSpanContentSpec extends CatsEffectSuite {
       assertEquals(
         spans.head.getAttributes.toScala,
         Attributes(
+          Attribute("code.function.name", "DerivesFoo.foo"),
           Attribute[AnyValue](
-            "DerivesFoo.foo.parameters",
+            "com.dwolla.code.function.arguments",
             AnyValue.map(Map("i" -> AnyValue.long(-1L))),
           ),
           Attribute(RaiseRecorder.ErrorTypeKey, classOf[FooError.Negative].getName),
@@ -73,11 +74,12 @@ class DerivesFooSpanContentSpec extends CatsEffectSuite {
       assertEquals(
         spans.head.getAttributes.toScala,
         Attributes(
+          Attribute("code.function.name", "DerivesFoo.foo"),
           Attribute[AnyValue](
-            "DerivesFoo.foo.parameters",
+            "com.dwolla.code.function.arguments",
             AnyValue.map(Map("i" -> AnyValue.long(5L))),
           ),
-          Attribute("DerivesFoo.foo.returnValue", "foo:5"),
+          Attribute("com.dwolla.code.function.return_value", "foo:5"),
         )
       )
     }

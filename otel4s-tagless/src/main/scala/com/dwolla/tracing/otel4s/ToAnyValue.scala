@@ -17,9 +17,9 @@ import org.typelevel.scalaccompat.annotation.nowarn213
   *
   * The name does not appear in this signature at all, and that is the design:
   * a method's parameters are recorded as '''one''' attribute,
-  * `<algebraName>.<methodName>.parameters`, whose value is an `AnyValue` map
+  * `com.dwolla.code.function.arguments`, whose value is an `AnyValue` map
   * keyed by parameter name; the return value is recorded as
-  * `<algebraName>.<methodName>.returnValue`. Names come from the `Aspect`'s
+  * `com.dwolla.code.function.return_value`. Names come from the `Aspect`'s
   * `Advice`, at the call site, where they belong.
   *
   * '''The result type is `AnyValue`, never one of its subtypes.'''

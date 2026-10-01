@@ -294,7 +294,12 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
       // AttributeKey and Attributes, so this one coordinate brings both the
       // tracing API and the attribute model. otel4s-core is an umbrella that
       // would also drag in logs+metrics.
-      if (isOtel4sScalaVersion.value) Seq("org.typelevel" %%% "otel4s-core-trace" % otel4sVersion)
+      if (isOtel4sScalaVersion.value)
+        Seq(
+          "org.typelevel" %%% "otel4s-core-trace" % otel4sVersion,
+          // stable semconv (depends only on otel4s-core-common): code.function.name
+          "org.typelevel" %%% "otel4s-semconv" % otel4sVersion,
+        )
       else Seq.empty
     },
     Compile / unmanagedSourceDirectories := {

@@ -37,11 +37,12 @@ class AnyValueAspectTracingSpec extends CatsEffectSuite {
 
   private def expectedAttributes(alg: String): Attributes =
     Attributes(
+      Attribute("code.function.name", s"$alg.get"),
       Attribute[AnyValue](
-        s"$alg.get.parameters",
+        "com.dwolla.code.function.arguments",
         AnyValue.map(Map("key" -> AnyValue.string("k"))),
       ),
-      Attribute(s"$alg.get.returnValue", "v:k"),
+      Attribute("com.dwolla.code.function.return_value", "v:k"),
     )
 
   test("an algebra deriving AnyValueAspect captures span, input, and output") {

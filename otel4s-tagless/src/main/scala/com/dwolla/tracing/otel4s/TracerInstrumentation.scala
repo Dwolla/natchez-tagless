@@ -14,10 +14,13 @@ object TracerInstrumentation {
  * ambient `Tracer[F]`. Each child span will be named using the algebra name and
  * method name as captured in the `Instrumentation[F, A]`.
  */
-class TracerInstrumentation[F[_]: Tracer] extends (Instrumentation[F, *] ~> F) {
-  override def apply[A](fa: Instrumentation[F, A]): F[A] =
+final class TracerInstrumentation[F[_]: Tracer] private[otel4s] () extends (Instrumentation[F, *] ~> F) {
+  override def apply[A](fa: Instrumentation[F, A]): F[A] = {
+    val name = s"${fa.algebraName}.${fa.methodName}"
     Tracer[F]
-      .spanBuilder(s"${fa.algebraName}.${fa.methodName}")
+      .spanBuilder(name)
+      .modifyState(_.addAttributes(FunctionCallAttributes.codeFunctionName(name)))
       .build
       .surround(fa.value)
+  }
 }
