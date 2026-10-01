@@ -277,6 +277,17 @@ On line 5: error: exception during macro expansion:
 
 then implement `TraceableValue` for the type describe in the error (in this case, `Foo`). You may have to do this several times until instances are available for all the input types.
 
+natchez provides `TraceableValue` instances for `String`, `Boolean`, `Int`, `Long`, `Float`, and `Double`. `import com.dwolla.tracing.LowPriorityTraceableValueInstances._` adds instances for `Unit`, `Option`, `List`, `Seq`, `Vector`, `Set`, `Chain`, `NonEmptyList`, `NonEmptyVector`, `NonEmptySet`, `NonEmptyChain`, `Map`, and tuples of two to five elements. Each of those records every element, map key, and map value through its own `TraceableValue`, so a redacting instance is honored wherever the type appears. natchez's `TraceValue` has no list or map type, so a container records a string of compact JSON; for primitive elements it's the same JSON their circe `Encoder` would produce (`List(1, 2)` records `[1,2]`). These imported instances outrank a container instance in an element's companion object (a `TraceableValue[List[Foo]]` in `Foo`'s companion loses to the imported `List` instance, which still records each `Foo` through `Foo`'s own instance), so define a custom container instance locally or import it explicitly if you want it to win.
+
+There is deliberately no implicit fallback to a type's circe `Encoder` or cats `Show`. An `Encoder` or `Show` renders the whole value without consulting `TraceableValue`, so a fallback to one would reveal anything a redacting instance hides. To record a type through its `Encoder` or `Show`, opt in explicitly:
+
+```scala
+implicit val moneyTraceableValue: TraceableValue[Money] = LowPriorityTraceableValueInstances.fromEncoder[Money]
+implicit val distanceTraceableValue: TraceableValue[Distance] = LowPriorityTraceableValueInstances.fromShow[Distance]
+```
+
+`fromEncoder` records the type's compact JSON, and `fromShow` its `Show` rendering. The attribute records whatever that `Encoder` or `Show` reveals, so only opt in for types whose encoding can't contain anything sensitive.
+
 Once an `Aspect[DeepThought, TraceableValue, TraceableValue]` is available, the `traceWithInputs` and `traceWithInputsAndOutputs` extension methods should also be available:
 
 ```scala
