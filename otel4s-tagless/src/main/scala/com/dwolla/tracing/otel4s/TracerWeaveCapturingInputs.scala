@@ -43,13 +43,16 @@ object TracerWeaveCapturingInputs {
 }
 
 private[otel4s] final class TracerWeaveCapturingInputs[F[_]: Tracer, Cod[_]] extends (Weave[F, ToAnyValue, Cod, *] ~> F) {
-  override def apply[A](fa: Weave[F, ToAnyValue, Cod, A]): F[A] =
+  override def apply[A](fa: Weave[F, ToAnyValue, Cod, A]): F[A] = {
+    val name = fa.qualifiedMethodName
+
     Tracer[F]
-      .spanBuilder(fa.qualifiedMethodName)
+      .spanBuilder(name)
       // asAttributes stays *inside* this lambda. Tracer.noop's modifyState
       // never applies the function, so a disabled tracer pays nothing for
       // encoding — and by-name parameters are never forced.
-      .modifyState(_.addAttributes(FunctionCallAttributes.codeFunctionName(fa.qualifiedMethodName) ++ fa.asAttributes))
+      .modifyState(_.addAttributes(FunctionCallAttributes.codeFunctionName(name) ++ fa.asAttributes))
       .build
       .surround(fa.codomain.target)
+  }
 }

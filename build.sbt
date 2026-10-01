@@ -69,6 +69,9 @@ val catsVersion = "2.13.0"
 val catsEffectVersion = "3.7.1"
 val catsMtlVersion = "1.7.0"
 val catsTaglessVersion = "0.16.5"
+// The discipline-core version discipline-munit depends on, so the laws
+// module's Compile dependency never disagrees with its Test framework.
+val disciplineCoreVersion = "1.7.0"
 val disciplineMunitVersion = "2.0.0"
 val munitVersion = "1.3.1"
 val otel4sVersion = "1.1.0"
@@ -206,8 +209,8 @@ lazy val raiseAspectLaws = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-laws" % catsVersion,
       // Main code needs only `org.typelevel.discipline.Laws`; users pick their
-      // own test framework. 1.7.0 is the discipline-core discipline-munit 2.0.0 uses.
-      "org.typelevel" %%% "discipline-core" % "1.7.0",
+      // own test framework.
+      "org.typelevel" %%% "discipline-core" % disciplineCoreVersion,
       "org.typelevel" %%% "discipline-munit" % disciplineMunitVersion % Test,
       "org.typelevel" %%% "cats-effect" % catsEffectVersion % Test,
       "org.typelevel" %%% "cats-effect-testkit" % catsEffectVersion % Test,
