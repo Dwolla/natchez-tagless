@@ -40,7 +40,7 @@ trait ToWithMetricsOps {
   *
   *   def thriftServer[Alg[_[_]]: Instrument](impl: Alg[IO])(implicit M: MeterProvider[IO], T: Tracer[IO]): IO[Alg[IO]] =
   *     impl
-  *       .withMetrics(RpcRole.Server, RpcSystem("thrift"), RpcService("com.dwolla.crypto.EncryptionService"))
+  *       .withMetrics(RpcRole.Server, RpcSystem("thrift"), RpcService("com.example.FooService"))
   *       .map(_.instrumentAndTrace)
   * }}}
   */

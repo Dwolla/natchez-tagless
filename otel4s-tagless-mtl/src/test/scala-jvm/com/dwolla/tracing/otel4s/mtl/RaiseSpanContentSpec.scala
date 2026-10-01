@@ -66,8 +66,8 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
 
       // com.dwolla.raise.error.value arrives as a plain STRING attribute, not an AnyValue
       // one: the Java SDK narrows an AttributeType.VALUE whose Value has a
-      // simple equivalent, exactly as it does for returnValue in
-      // otel4s-tagless's SpanContentSpec.
+      // simple equivalent, exactly as it does for
+      // com.dwolla.code.function.return_value in otel4s-tagless's SpanContentSpec.
       assertEquals(
         attributesOf(spans.head),
         Attributes(

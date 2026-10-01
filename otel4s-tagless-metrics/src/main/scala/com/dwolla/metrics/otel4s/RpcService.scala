@@ -1,7 +1,7 @@
 package com.dwolla.metrics.otel4s
 
 /** The fully-qualified name of the RPC service an algebra implements or calls,
-  * e.g. `RpcService("com.dwolla.crypto.EncryptionService")`. Recorded as the
+  * e.g. `RpcService("com.example.FooService")`. Recorded as the
   * part of `rpc.method` before the `/`; the method name after it comes from
   * the algebra. Supplied by the caller because cats-tagless only knows an
   * algebra's simple name, and the semantic conventions want the qualified one.

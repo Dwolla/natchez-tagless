@@ -21,8 +21,10 @@ object TracerWeaveCapturingInputsAndOutputs {
  * child span is named using the algebra name and method name captured in the
  * `Weave`, and both the parameters given to the method call and its return
  * value are attached to the span, as `com.dwolla.code.function.arguments`
- * and `com.dwolla.code.function.return_value`, alongside `code.function.name`. Either attribute is omitted outright when its value
- * would carry nothing, rather than recorded empty. See this module's README
+ * and `com.dwolla.code.function.return_value`, alongside `code.function.name`.
+ * `code.function.name` is always recorded; the arguments and return-value
+ * attributes are each omitted outright when their value would carry nothing,
+ * rather than recorded empty. See this module's README
  * for the full attribute layout, the omission rule, and how the
  * `otel4s-oteljava` backend narrows these values on the way out.
  *

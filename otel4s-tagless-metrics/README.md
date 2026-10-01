@@ -17,7 +17,7 @@ import com.dwolla.metrics.otel4s._
 import com.dwolla.metrics.otel4s.syntax._
 
 internal.withMetrics()                  // F[Alg[F]], in-process calls
-thriftImpl.withMetrics(RpcRole.Server, RpcSystem("thrift"), RpcService("com.dwolla.crypto.EncryptionService"))
+thriftImpl.withMetrics(RpcRole.Server, RpcSystem("thrift"), RpcService("com.example.FooService"))
 ```
 
 Every form returns `F[Alg[F]]`: running it sets up the interpreter once and
@@ -73,7 +73,6 @@ excludes the span's own overhead.
   module has its own `RpcRole`, so `import com.dwolla.metrics.otel4s._` and
   `import com.dwolla.metrics.smithy._` together make `RpcRole` ambiguous.
   Import `com.dwolla.metrics.otel4s.{RpcRole, RpcService, RpcSystem}` (or
-  rename one, e.g. `RpcRole => TaglessRpcRole`) instead; the two `withMetrics`
-  syntaxes coexist.
+  rename one, e.g. `RpcRole => TaglessRpcRole`) instead.
 - **`code.function.name` is not fully qualified.** cats-tagless knows only an
-  algebra's simple name, so it records `EncryptionService.encrypt`.
+  algebra's simple name, so it records `FooService.greet`.

@@ -29,7 +29,7 @@ cross-platform. This module depends on `otel4s-core-trace` only, and the one
 
 ## The attribute layout
 
-A traced call records **at most two** attributes. Given
+A traced call records **at most three** attributes. Given
 
 ```scala
 trait Foo[F[_]] {
@@ -42,15 +42,23 @@ span named `Foo.greet` carrying
 
 | key | value |
 | --- | --- |
-| `Foo.greet.parameters` | a map, `{"name": "world", "times": 2}` |
-| `Foo.greet.returnValue` | the encoded return value |
+| `code.function.name` | `Foo.greet` (stable semantic convention) |
+| `com.dwolla.code.function.arguments` | a map, `{"name": "world", "times": 2}` |
+| `com.dwolla.code.function.return_value` | the encoded return value |
+
+The keys follow the OpenTelemetry naming conventions (lowercase, snake_case,
+and an owned `com.dwolla` prefix where the semantic conventions define
+nothing). They never vary by algebra or method; the method is identified by
+`code.function.name` and the span name. `core` (natchez) keeps its 0.2.6 keys
+(`<Alg>.<method>.<param>` and `<Alg>.<method>.returnValue`), so the two
+backends' attribute keys differ deliberately.
 
 Parameter names come from the `Aspect`'s `Advice`, and every parameter list is
 flattened into the one map — which cannot lose a parameter, because Scala
 rejects duplicate parameter names within a signature, including across
 parameter lists.
 
-**`parameters` is a real OTLP `kvlistValue`, not a JSON string.** It reaches the
+**`com.dwolla.code.function.arguments` is a real OTLP `kvlistValue`, not a JSON string.** It reaches the
 wire as nested `kvlistValue`/`arrayValue`/`intValue`/…, and on the
 `otel4s-oteljava` backend it is an `io.opentelemetry.api.common.KeyValueList`
 whose entries are typed `Value`s. The JSON-looking text you may see in a log is
@@ -61,7 +69,8 @@ one slot against `SpanLimits.maxNumberOfAttributes` (default 128) where twenty
 flat attributes would cost twenty, and `maxAttributeValueLength` still recurses
 into the tree, so nothing escapes truncation by being nested.
 
-`TracerInstrumentation` records neither attribute; it only names the span.
+`TracerInstrumentation` records neither the arguments nor the return value; it
+only names the span (and records `code.function.name`).
 
 ## An empty attribute is omitted, not recorded empty
 
@@ -71,23 +80,23 @@ Totality lives in the type class; absence lives in the interpreter.
 `AnyValue.empty`. It has no channel for "nothing" and will not get one, because
 `Seq(Some("a"), None)` has to encode as `SeqValue([StringValue(a), EmptyValue])`
 — an `Option[AnyValue]` result would shrink the sequence and destroy the
-positions a sequence exists to preserve. Inside the `parameters` map, an empty
+positions a sequence exists to preserve. Inside the arguments map, an empty
 entry is likewise **kept**: `{"name": "world", "note": null}` records all three
 of key, position and absence for one slot.
 
 A **top-level attribute**, though, is **omitted entirely** when its whole value
 would be empty:
 
-- a zero-parameter method records **no** `parameters` attribute — not one
+- a zero-parameter method records **no** `com.dwolla.code.function.arguments` attribute — not one
   holding an empty map;
-- a `Unit`-returning method records **no** `returnValue` attribute — not one
+- a `Unit`-returning method records **no** `com.dwolla.code.function.return_value` attribute — not one
   holding `EmptyValue`;
-- `def ping(): F[Unit]` therefore produces a span with **no attributes at all**.
+- `def ping(): F[Unit]` therefore produces a span with **no attributes beyond `code.function.name`**.
 
 Both omissions are verified end to end against the real SDK, and the guards are
 what produce them: with the guards removed the SDK happily round-trips an empty
 map and an `EmptyValue`, so the zero comes from this library, not from SDK
-tolerance. The span's own name already says the method ran, and two slots per
+tolerance. The span's own name already says the method ran, and two extra slots per
 span is a real cost on algebras full of `close()` and `ping()`.
 
 ## `opentelemetry-api` 1.59.0 is a hard floor
@@ -117,7 +126,7 @@ type to narrower type when possible"*.
 | `SeqValue`, non-empty and homogeneous in one of those four scalars | the matching `*_ARRAY` |
 | `SeqValue`, empty | `VALUE` |
 | `SeqValue`, heterogeneous, or of nested seqs/maps/byte arrays/empties | `VALUE` |
-| `MapValue`, empty or not — always, including every `parameters` attribute | `VALUE` |
+| `MapValue`, empty or not — always, including every arguments attribute | `VALUE` |
 | `ByteArrayValue` | `VALUE` |
 | `EmptyValue` | `VALUE` — but a top-level attribute is omitted before it gets there |
 
@@ -138,7 +147,7 @@ backend has not been checked.
 
 ## Whether your backend *renders* structured attributes is unverified
 
-The OTLP wire format is confirmed: a `parameters` attribute leaves the exporter
+The OTLP wire format is confirmed: a `com.dwolla.code.function.arguments` attribute leaves the exporter
 as a native `kvlistValue`, end to end. What was **not** tested is whether
 Jaeger, Tempo, Honeycomb, Datadog, or whatever collector sits in the path
 renders `kvlistValue` span attributes rather than flattening or dropping them on
@@ -303,7 +312,7 @@ reintroduces the ambiguity the split exists to avoid. The mtl syntax resolves
 parameters still traces.
 
 **What a raise records.** Two attributes, on the **method's own span** — the
-same child span that carries `parameters` and `returnValue`, not the caller's:
+same child span that carries the arguments and return value, not the caller's:
 
 | key | value |
 | --- | --- |

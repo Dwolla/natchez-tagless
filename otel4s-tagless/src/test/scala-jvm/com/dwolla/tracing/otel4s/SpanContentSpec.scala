@@ -221,7 +221,7 @@ class SpanContentSpec extends CatsEffectSuite {
       // The decoded tree, not the rendered text: `times` is a LongValue, and
       // an AnyValue map does not preserve key order.
       //
-      // returnValue comes back as a plain String attribute, not an AnyValue
+      // com.dwolla.code.function.return_value comes back as a plain String attribute, not an AnyValue
       // one, and that is the Java SDK doing what it documents:
       // AttributesBuilder#put(AttributeKey, Object) automatically narrows an
       // AttributeType.VALUE whose Value has a simple equivalent, so

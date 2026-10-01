@@ -96,7 +96,8 @@ package com.dwolla.tracing.otel4s
   *
   * A raise adds '''span attributes''' to the '''method's own span''' — the
   * child span `traceWithInputs`/`traceWithInputsAndOutputs` opened for that
-  * call, alongside its `parameters` and `returnValue` attributes. Not a span
+  * call, alongside its `com.dwolla.code.function.arguments` and
+  * `com.dwolla.code.function.return_value` attributes. Not a span
   * event, and not the caller's span.
   *
   *   - `com.dwolla.raise.error.type` — the error's runtime class name, always recorded.
