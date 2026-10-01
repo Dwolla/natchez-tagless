@@ -2,13 +2,11 @@ package com.dwolla.tracing.visibility
 
 import munit.FunSuite
 
-/** The interpreters' constructors are not API: users go through the companion
-  * `apply`s, so adding a capability later is not a binary break.
-  *
-  * Scala 2 only: Scala 3's `compileErrors` does not report `private[otel4s]`
-  * access violations (the snippet compiles clean), although the same code in
-  * ordinary source is rejected by the Scala 3 compiler. The constructors are
-  * declared once for all versions, so the Scala 2 check covers them.
+/** The interpreter classes are `private[otel4s]`, like
+  * `MeterInstrumentation`, and the companion `apply` is the fixed public
+  * entry point. A private class lets its implementation change freely, but
+  * adding a capability to `apply` later would still be breaking, so a new
+  * capability needs a new entry point.
   */
 class InterpreterConstructorVisibilitySpec extends FunSuite {
   test("TracerInstrumentation can only be built through its companion") {

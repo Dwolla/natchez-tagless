@@ -9,11 +9,6 @@ import com.dwolla.tracing.otel4s.syntax._
 import org.typelevel.otel4s.trace.Tracer
 import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
 
-object TracerWeaveCapturingInputsAndOutputs {
-  def apply[F[_]: FlatMap: Tracer]: Weave[F, ToAnyValue, ToAnyValue, *] ~> F =
-    new TracerWeaveCapturingInputsAndOutputs[F]
-}
-
 /**
  * Use this `FunctionK` when you have an algebra in
  * `Weave[F, ToAnyValue, ToAnyValue, *]` and you want each method call on the
@@ -163,7 +158,12 @@ object TracerWeaveCapturingInputsAndOutputs {
  * disappears, with no error and no warning. Pick one. See
  * `com.dwolla.tracing.otel4s.AnyValueAspect` for the full note.
  */
-final class TracerWeaveCapturingInputsAndOutputs[F[_]: FlatMap: Tracer] private[otel4s] ()
+object TracerWeaveCapturingInputsAndOutputs {
+  def apply[F[_]: FlatMap: Tracer]: Weave[F, ToAnyValue, ToAnyValue, *] ~> F =
+    new TracerWeaveCapturingInputsAndOutputs[F]
+}
+
+private[otel4s] final class TracerWeaveCapturingInputsAndOutputs[F[_]: FlatMap: Tracer]
   extends (Weave[F, ToAnyValue, ToAnyValue, *] ~> F) {
 
   override def apply[A](fa: Weave[F, ToAnyValue, ToAnyValue, A]): F[A] = {
