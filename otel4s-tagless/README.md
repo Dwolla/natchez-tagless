@@ -291,12 +291,13 @@ puts the error.
   submarine encoding makes `R.raise(e)` really *be*
   `F.raiseError(Submarine(e))`. If that escapes the traced method, the span is
   reported as the domain error: status `ERROR`, `error.type` set to the error's
-  runtime class name (Scala 3 enum cases are named `<Enum>.<Case>`), and no
+  type name (computed by `ErrorTypeName`), and no
   exception event. The module recognizes cats-mtl's
   private `Submarine` for this; see `com.dwolla.tagless.RaisedError`. On
   Scala.js that recognition relies on runtime class names, which Scala.js keeps
   by default; an application whose linker strips them
-  (`runtimeClassNameMapper`) falls back to reporting the raw exception.
+  (`runtimeClassNameMapper`), or renames them, also disables Submarine
+  unwrapping and falls back to reporting the raw exception.
 - When `Raise` lives in the effect's **success** channel — `EitherT`, say — the
   effect *succeeds* carrying a value that describes a failure, so the span is
   finalized as OK.
@@ -402,7 +403,7 @@ same child span that carries the arguments and return value, not the caller's:
 
 | key | value |
 | --- | --- |
-| `com.dwolla.raise.error.type` | the error's runtime class name (Scala 3 enum cases: `<Enum>.<Case>`); always recorded |
+| `com.dwolla.raise.error.type` | the error's type name (computed by `ErrorTypeName`); always recorded |
 | `com.dwolla.raise.error.value` | the error's `ToAnyValue` rendering; **omitted** when it would encode to `AnyValue.empty` |
 
 The omission is the same omit-when-empty rule described above for parameters

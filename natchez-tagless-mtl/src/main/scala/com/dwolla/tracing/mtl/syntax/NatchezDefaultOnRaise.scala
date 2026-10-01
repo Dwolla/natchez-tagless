@@ -7,7 +7,7 @@ import natchez.{Trace, TraceableValue}
 
 /** Natchez's fallback [[com.dwolla.tagless.mtl.DefaultOnRaise]] instance:
   * records the typed error's type name (`ErrorTypeName`; Scala 3 enum cases:
-  * `<Enum>.<Case>`) and its `TraceableValue`
+  * `<Enum>\$<Case>`) and its `TraceableValue`
   * rendering as span fields, under a `raise.*` key prefix deliberately
   * distinct from the `exception.*` fields a backend derives from
   * `attachError` — those still receive cats-mtl's opaque `Submarine` wrapper

@@ -2,6 +2,7 @@ package com.dwolla.tracing.otel4s
 
 import cats.effect.IO
 import cats.mtl.Handle
+import cats.syntax.all._
 import cats.tagless.aop.Aspect
 import cats.~>
 import com.dwolla.tagless.WeaveKnot
@@ -145,7 +146,7 @@ class SpanContentSpec extends CatsEffectSuite {
           override def greet(name: String, times: Int): IO[String] = h.raise[NotFound, String](null)
           override def ping(): IO[Unit] = IO.unit
         }.instrumentAndTrace.greet("world", 1).as(false)
-      }.rescue(e => IO.pure(e == null))
+      }.rescue(e => (e == null).pure[IO])
     }.map { case (rescuedNull, spans) =>
       assert(rescuedNull, "expected the raised null back from rescue")
       val span = onlySpan(spans)
@@ -174,7 +175,7 @@ class SpanContentSpec extends CatsEffectSuite {
       Handle.allowF[IO, NotFound] { h =>
         val rescuing = new Foo[IO] {
           override def greet(name: String, times: Int): IO[String] =
-            h.handleWith(h.raise[NotFound, String](new NotFound(1)))(_ => IO.pure("recovered"))
+            h.handleWith(h.raise[NotFound, String](new NotFound(1)))(_ => "recovered".pure[IO])
           override def ping(): IO[Unit] = IO.unit
         }
         rescuing.traceWithInputsAndOutputs.greet("world", 1)

@@ -173,7 +173,7 @@ abstract class MeasurementContentSuite extends CatsEffectSuite with ScalaCheckEf
     measured { implicit meterProvider =>
       Handle.allowF[IO, NotFound] { h =>
         generic(Foo[IO](_ => h.raise(new NotFound(42)), IO.unit)).flatMap(_.greet("world")).as(Option.empty[NotFound])
-      }.rescue(e => IO.pure(e.some))
+      }.rescue(e => e.some.pure[IO])
     }.map { case (result, histograms) =>
       assert(result.exists(_.id == 42), s"expected the raised NotFound(42) back, got $result")
       val point = pointFor(ErrorAttributes.ErrorType, classOf[NotFound].getName, histogramNamed(functionDuration, histograms))
@@ -185,7 +185,7 @@ abstract class MeasurementContentSuite extends CatsEffectSuite with ScalaCheckEf
     measured { implicit meterProvider =>
       Handle.allowF[IO, NotFound] { h =>
         generic(Foo[IO](_ => h.raise[NotFound, String](null), IO.unit)).flatMap(_.greet("world")).as(false)
-      }.rescue(e => IO.pure(e == null))
+      }.rescue(e => (e == null).pure[IO])
     }.map { case (rescuedNull, histograms) =>
       assert(rescuedNull, "expected the raised null back from rescue")
       val point = pointFor(ErrorAttributes.ErrorType, "null", histogramNamed(functionDuration, histograms))
@@ -197,7 +197,7 @@ abstract class MeasurementContentSuite extends CatsEffectSuite with ScalaCheckEf
     measured { implicit meterProvider =>
       Handle.allowF[IO, NotFound] { h =>
         rpc(Foo[IO](_ => h.raise(new NotFound(42)), IO.unit), RpcRole.Server).flatMap(_.greet("world")).as(Option.empty[NotFound])
-      }.rescue(e => IO.pure(e.some))
+      }.rescue(e => e.some.pure[IO])
     }.map { case (_, histograms) =>
       val histogram = histogramNamed("rpc.server.call.duration", histograms)
       assertEquals(pointFor(ErrorAttributes.ErrorType, classOf[NotFound].getName, histogram).count, 1L)

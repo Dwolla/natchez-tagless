@@ -123,7 +123,7 @@ package com.dwolla.tracing
   * `com.dwolla.raise.error.value`, named as `RaiseRecorder.ErrorTypeKey` and
   * `RaiseRecorder.ErrorValueKey` on `com.dwolla.tagless.mtl.RaiseRecorder`'s
   * companion — giving the domain error's type name (computed by `ErrorTypeName`; Scala 3 enum
-  * cases: `<Enum>.<Case>`) and its
+  * cases: `<Enum>\$<Case>`) and its
   * `TraceableValue` rendering, even though the `Throwable` channel above
   * still only shows `Submarine`. This
   * happens with no action required from the caller: both syntax methods
@@ -139,7 +139,7 @@ package com.dwolla.tracing
   * declare a `TraceableValue` that omits or masks it, exactly as a sensitive
   * parameter type would. Note that `com.dwolla.raise.error.type` still records the
   * error's type name (computed by `ErrorTypeName`; Scala 3 enum cases:
-  * `<Enum>.<Case>`) unconditionally.
+  * `<Enum>\$<Case>`) unconditionally.
   *
   * ==Overriding the default recording==
   *

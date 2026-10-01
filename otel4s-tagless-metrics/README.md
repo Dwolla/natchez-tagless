@@ -31,13 +31,14 @@ yields the wrapped algebra. Errors and cancellation propagate unchanged.
 | Unit | `s` | `s` |
 | Buckets | 5 ms – 10 s (tune with an SDK View) | 5 ms – 10 s (the RPC recommendation) |
 | Attributes | `code.function.name = Alg.method` | `rpc.system.name`, `rpc.method = <service>/<method>` |
-| On failure | `error.type` = the error's class name (for an escaped cats-mtl raise, the domain error's class, not cats-mtl's internal wrapper; Scala 3 enum cases named `<Enum>.<Case>`), or `canceled` | same |
+| On failure | `error.type` = the error's class name (for an escaped cats-mtl raise, the domain error's class, not cats-mtl's internal wrapper; Scala 3 enum cases named `<Enum>$<Case>`), or `canceled` | same |
 
 There is no call counter: a histogram's count is the call count.
 
 On Scala.js, recognizing an escaped cats-mtl raise relies on runtime class
 names, which Scala.js keeps by default; an application whose linker strips them
-(`runtimeClassNameMapper`) falls back to recording the raw exception's class.
+(`runtimeClassNameMapper`), or renames them, also disables Submarine unwrapping
+and falls back to recording the raw exception's class.
 
 ## Stacking with tracing
 
