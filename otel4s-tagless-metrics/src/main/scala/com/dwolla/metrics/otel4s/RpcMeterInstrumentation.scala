@@ -5,7 +5,7 @@ import cats.syntax.all._
 import cats.tagless.aop.Instrumentation
 import cats.~>
 import org.typelevel.otel4s.Attribute
-import org.typelevel.otel4s.metrics.{Histogram, Meter}
+import org.typelevel.otel4s.metrics.{Histogram, MeterProvider}
 
 import scala.concurrent.duration.SECONDS
 
@@ -13,10 +13,12 @@ private[otel4s] object RpcMeterInstrumentation {
   /** The RPC metric's name is fixed by `role`, so its histogram is created here,
     * once, and every call only records into it.
     */
-  def apply[F[_]: MonadCancelThrow: Meter](role: RpcRole, system: RpcSystem, service: RpcService): F[RpcMeterInstrumentation[F]] =
-    CallDuration
-      .histogram[F](role.callDurationMetricName, role.callDurationDescription, CallDuration.DefaultBucketBoundaries)
-      .map(new RpcMeterInstrumentation[F](system, service, _))
+  def apply[F[_]: MonadCancelThrow: MeterProvider](role: RpcRole, system: RpcSystem, service: RpcService): F[RpcMeterInstrumentation[F]] =
+    CallDuration.meter[F].flatMap { implicit meter =>
+      CallDuration
+        .histogram[F](role.callDurationMetricName, role.callDurationDescription, CallDuration.DefaultBucketBoundaries)
+        .map(new RpcMeterInstrumentation[F](system, service, _))
+    }
 }
 
 /** Records each call's duration, in seconds, to the RPC call-duration histogram

@@ -457,8 +457,14 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
 lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("otel4s-tagless-metrics"))
+  .enablePlugins(BuildInfoPlugin)
   .settings(
     name := "otel4s-tagless-metrics",
+    // The library names its own instrumentation scope and version (see
+    // CallDuration.meter); BuildInfo supplies the version and isn't published API.
+    buildInfoKeys := Seq[BuildInfoKey](version),
+    buildInfoPackage := "com.dwolla.metrics.otel4s",
+    buildInfoOptions += BuildInfoOption.PackagePrivate,
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % catsVersion,
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,

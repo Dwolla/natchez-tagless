@@ -4,20 +4,20 @@ import cats.effect.{IO, Outcome}
 import cats.tagless.aop.Instrumentation
 import cats.~>
 import munit.CatsEffectSuite
-import org.typelevel.otel4s.metrics.Meter
+import org.typelevel.otel4s.metrics.MeterProvider
 
 /** What can be checked without an SDK, on every platform.
   *
-  * Checks transparency under `Meter.noop`: `recordDuration` is `Resource.unit`,
+  * Checks transparency under `MeterProvider.noop`: `recordDuration` is `Resource.unit`,
   * so these pin that wrapping a call changes nothing observable about it even
   * when metrics are disabled. The SDK-backed suites don't exercise that
   * disabled-meter path.
   */
 class MeterTransparencySpec extends CatsEffectSuite {
-  private implicit val meter: Meter[IO] = Meter.noop[IO]
+  private implicit val meterProvider: MeterProvider[IO] = MeterProvider.noop[IO]
 
   private val interpreters: List[(String, IO[Instrumentation[IO, *] ~> IO])] = List(
-    "MeterInstrumentation" -> MeterInstrumentation[IO](CallDuration.DefaultBucketBoundaries),
+    "MeterInstrumentation" -> MeterInstrumentation[IO](),
     "RpcMeterInstrumentation" ->
       RpcMeterInstrumentation[IO](RpcRole.Server, RpcSystem("thrift"), RpcService("com.example.FooService")),
   )

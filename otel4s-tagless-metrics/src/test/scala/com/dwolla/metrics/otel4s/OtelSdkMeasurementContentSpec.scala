@@ -1,17 +1,16 @@
 package com.dwolla.metrics.otel4s
 
 import cats.effect.IO
-import org.typelevel.otel4s.metrics.Meter
+import org.typelevel.otel4s.metrics.MeterProvider
 import org.typelevel.otel4s.sdk.metrics.data.{MetricData, MetricPoints, PointData}
 import org.typelevel.otel4s.sdk.testkit.metrics.MetricsTestkit
 
 /** `MeasurementContentSuite` on the otel4s-sdk SDK. Cross-platform, so it is the metric-content coverage on Scala.js. */
 class OtelSdkMeasurementContentSpec extends MeasurementContentSuite {
-  override protected def histogramsFrom[A](f: Meter[IO] => IO[A]): IO[(A, List[RecordedHistogram])] =
+  override protected def histogramsFrom[A](f: MeterProvider[IO] => IO[A]): IO[(A, List[RecordedHistogram])] =
     MetricsTestkit.inMemory[IO]().use { testkit =>
       for {
-        meter <- testkit.meterProvider.get("otel4s-tagless-metrics-test")
-        a <- f(meter)
+        a <- f(testkit.meterProvider)
         metrics <- testkit.collectMetrics
       } yield (a, metrics.flatMap(recorded))
     }
@@ -24,6 +23,8 @@ class OtelSdkMeasurementContentSpec extends MeasurementContentSuite {
             name = metric.name,
             unit = metric.unit.getOrElse(""),
             description = metric.description.getOrElse(""),
+            scopeName = metric.instrumentationScope.name,
+            scopeVersion = metric.instrumentationScope.version,
             points = histogram.points.toVector.toList.map(recordedPoint),
           )
         )
