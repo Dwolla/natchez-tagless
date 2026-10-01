@@ -1,5 +1,7 @@
 package com.dwolla.tagless
 
+import cats.syntax.all._
+
 /** Extracts the domain error from a `Throwable` that is really a cats-mtl
   * raise in transit.
   *
@@ -18,7 +20,7 @@ object RaisedError {
   def unapply(throwable: Throwable): Option[Any] =
     throwable match {
       case submarine: Product if throwable.getClass.getName == SubmarineClassName && submarine.productArity > 0 =>
-        Some(submarine.productElement(0))
+        submarine.productElement(0).some
       case _ => None
     }
 }

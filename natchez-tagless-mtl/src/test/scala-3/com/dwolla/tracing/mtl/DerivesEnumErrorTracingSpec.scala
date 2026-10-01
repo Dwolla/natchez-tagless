@@ -61,8 +61,8 @@ class DerivesEnumErrorTracingSpec extends InMemorySuite {
 
   test("raise-time error type names each Scala 3 enum case distinctly") {
     (recordedErrorType(raiseBlue = false), recordedErrorType(raiseBlue = true)).mapN { (red, blue) =>
-      assertEquals(red, Some(TraceValue.StringValue("com.dwolla.tracing.mtl.ColorError.Red")))
-      assertEquals(blue, Some(TraceValue.StringValue("com.dwolla.tracing.mtl.ColorError.Blue")))
+      assertEquals(red, Some(TraceValue.StringValue("com.dwolla.tracing.mtl.ColorError$Red")))
+      assertEquals(blue, Some(TraceValue.StringValue("com.dwolla.tracing.mtl.ColorError$Blue")))
       assertNotEquals(red, blue)
     }
   }

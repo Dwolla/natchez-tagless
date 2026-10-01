@@ -48,8 +48,8 @@ class DerivesEnumErrorSpanContentSpec extends CatsEffectSuite {
 
   test("raise-time error type names each Scala 3 enum case distinctly") {
     (raiseErrorType(raiseBlue = false), raiseErrorType(raiseBlue = true)).mapN { (red, blue) =>
-      assertEquals(red, Some("com.dwolla.tracing.otel4s.mtl.ColorError.Red"))
-      assertEquals(blue, Some("com.dwolla.tracing.otel4s.mtl.ColorError.Blue"))
+      assertEquals(red, Some("com.dwolla.tracing.otel4s.mtl.ColorError$Red"))
+      assertEquals(blue, Some("com.dwolla.tracing.otel4s.mtl.ColorError$Blue"))
       assertNotEquals(red, blue)
     }
   }
