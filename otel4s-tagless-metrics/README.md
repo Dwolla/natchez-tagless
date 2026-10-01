@@ -6,7 +6,7 @@ instance, recorded through an otel4s `MeterProvider`; the module obtains its own
 in `com.dwolla.metrics.otel4s`.
 
 This module depends on `otel4s-core-metrics`, the stable `otel4s-semconv`,
-cats, and cats-tagless — never on natchez, `otel4s-core-trace`, or an otel4s
+cats, cats-tagless, and `tagless-core` — never on natchez, `otel4s-core-trace`, or an otel4s
 backend. A `MeterProvider[F]` comes from a backend
 (`otel4s-oteljava` on the JVM, `otel4s-sdk` cross-platform).
 

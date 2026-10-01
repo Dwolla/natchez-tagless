@@ -15,7 +15,8 @@ sealed trait RaiseRecorder[F[_], Err[_]] {
 }
 
 object RaiseRecorder extends LowPriorityRaiseRecorder {
-  /** The raised error's runtime class name, recorded when `raise` is called.
+  /** The raised error's type name (computed by `ErrorTypeName`; Scala 3 enum
+    * cases: `<Enum>.<Case>`), recorded when `raise` is called.
     * Deliberately not semconv's `error.type`, which describes how an operation
     * ''ended'': a raise rescued inside the method must not leave a successful
     * span claiming failure.
