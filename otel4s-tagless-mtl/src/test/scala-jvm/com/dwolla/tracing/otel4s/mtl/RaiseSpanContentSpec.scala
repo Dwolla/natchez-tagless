@@ -23,8 +23,8 @@ import scala.jdk.CollectionConverters._
   * JVM-only for the reason `otel4s-tagless`'s `SpanContentSpec` documents:
   * every otel4s span type is sealed with a `private[otel4s]` `Unsealed`
   * variant, so a recording `Tracer` cannot be hand-rolled, and the
-  * cross-platform testkit (`otel4s-sdk-trace-testkit`) has not been released at
-  * 1.0.x. Transparency is covered on every platform by
+  * JVM oteljava testkit is used because the cross-platform
+  * `otel4s-sdk-trace-testkit` would add an otel4s-sdk backend. Transparency is covered on every platform by
   * `RaiseTracerTransparencySpec`, and resolution by `RaiseRecorderPrioritySpec`.
   */
 class RaiseSpanContentSpec extends CatsEffectSuite {

@@ -104,7 +104,7 @@ abstract class MeasurementContentSuite extends CatsEffectSuite with ScalaCheckEf
     }
   }
 
-  test("the generic histogram is in seconds, described, and uses the default bucket boundaries") {
+  test("the in-process histogram is in seconds, described, and uses the default bucket boundaries") {
     measured { implicit meterProvider =>
       generic(sleepingFoo(1.milli, 1.milli)).flatMap(_.ping())
     }.map { case (_, histograms) =>
@@ -115,10 +115,10 @@ abstract class MeasurementContentSuite extends CatsEffectSuite with ScalaCheckEf
     }
   }
 
-  test("different algebras share the one in-process metric, told apart by code.function.name") {
+  test("separately wrapped algebras share one in-process metric, told apart by code.function.name") {
     measured { implicit meterProvider =>
-      MeterInstrumentation[IO]().flatMap { interpreter =>
-        interpreter(Instrumentation(IO.unit, "Foo", "ping")) >> interpreter(Instrumentation(IO.unit, "Bar", "baz"))
+      (MeterInstrumentation[IO](), MeterInstrumentation[IO]()).flatMapN { (fooInterpreter, barInterpreter) =>
+        fooInterpreter(Instrumentation(IO.unit, "Foo", "ping")) >> barInterpreter(Instrumentation(IO.unit, "Bar", "baz"))
       }
     }.map { case (_, histograms) =>
       val duration = histogramNamed(functionDuration, histograms)

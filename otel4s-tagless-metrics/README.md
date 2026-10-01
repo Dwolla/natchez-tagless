@@ -1,9 +1,9 @@
 # otel4s-tagless-metrics
 
 Call-duration metrics for any cats-tagless algebra with an `Instrument`
-instance, recorded through an otel4s `MeterProvider`; the module obtains its own `Meter`. Syntax in
-`com.dwolla.metrics.otel4s.syntax`; the RPC parameter types in
-`com.dwolla.metrics.otel4s`.
+instance, recorded through an otel4s `MeterProvider`; the module obtains its own
+`Meter`. Syntax in `com.dwolla.metrics.otel4s.syntax`; the RPC parameter types
+in `com.dwolla.metrics.otel4s`.
 
 This module depends on `otel4s-core-metrics`, the stable `otel4s-semconv`,
 cats, and cats-tagless — never on natchez, `otel4s-core-trace`, or an otel4s

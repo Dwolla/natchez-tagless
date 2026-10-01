@@ -108,7 +108,8 @@ through the capability they're observing.
 
 `otel4s-tagless` and `otel4s-tagless-mtl` are otel4s counterparts of
 `natchez-tagless` and `natchez-tagless-mtl`, built so a call site's import
-line is usually the only thing that changes:
+line is usually the only change to the *code* (the recorded span data changes
+too; see below):
 
 | natchez, in `natchez-tagless` / `natchez-tagless-mtl` | otel4s counterpart |
 | --- | --- |
@@ -130,8 +131,17 @@ of the other backend's syntax first.
 
 ### What silently changes value when you migrate
 
-Swapping the import is usually a no-op, but two things record differently
-without a compile error:
+Swapping the import is usually a no-op for the code, but three things record
+differently without a compile error:
+
+- **Span attribute keys change.** natchez records one attribute per parameter,
+  named `<Alg>.<method>.<param>`, plus `<Alg>.<method>.returnValue`. otel4s
+  records a single `com.dwolla.code.function.arguments` map, a
+  `com.dwolla.code.function.return_value`, and `code.function.name`. Dashboards
+  and queries keyed on the natchez names must change. The exception is the
+  raise-time attributes: `com.dwolla.raise.error.type` and
+  `com.dwolla.raise.error.value` are shared through `RaiseRecorder` and are
+  identical in both.
 
 - **JSON outranks `Show` in both libraries, but the shape still differs.**
   `natchez-tagless`'s `nonPrimitiveTraceValueViaJson` (declared in

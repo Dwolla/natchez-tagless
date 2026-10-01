@@ -21,7 +21,7 @@ class RpcIdentifiersSpec extends ScalaCheckSuite {
     }
   }
 
-  property("different names are not equal") {
+  property("values are equal iff their names are equal") {
     forAll(names, names) { (a, b) =>
       assertEquals(RpcSystem(a) == RpcSystem(b), a == b)
       assertEquals(RpcService(a) == RpcService(b), a == b)

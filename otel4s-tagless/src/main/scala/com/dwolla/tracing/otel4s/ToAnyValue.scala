@@ -34,7 +34,7 @@ import org.typelevel.scalaccompat.annotation.nowarn213
   * '''Requires `opentelemetry-api` 1.59.0 or newer on the `otel4s-oteljava`
   * backend.''' Structured attribute values reach the OpenTelemetry Java SDK
   * through `io.opentelemetry.api.common.AttributeType.VALUE`, which was added
-  * in release 1.59.0. otel4s 1.0.1 pulls a newer version transitively, so the
+  * in release 1.59.0. otel4s 1.1.0 pulls a newer version transitively, so the
   * default is fine; an application that pins an older SDK will fail to link
   * `AttributeKey.valueKey` inside otel4s's own converter. This module declares
   * no dependency on the Java SDK and cannot enforce the floor for you.

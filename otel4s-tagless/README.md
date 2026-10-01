@@ -108,8 +108,8 @@ values reach the OpenTelemetry Java SDK through
 application that pins an older SDK will fail to link
 `AttributeKey.valueKey` inside otel4s's own converter.
 
-otel4s 1.0.1 pulls a new enough version transitively, so the default is fine; a
-downstream pin is what breaks. This module declares no dependency on the Java
+otel4s 1.1.0 pulls `opentelemetry-api` 1.64.0 transitively, which satisfies
+that floor, so the default is fine; a downstream pin is what breaks. This module declares no dependency on the Java
 SDK and cannot enforce the floor for you.
 
 ## What the `otel4s-oteljava` backend does to the value on the way out
@@ -237,16 +237,18 @@ against a real SDK through `otel4s-oteljava-trace-testkit`.
 The reason is availability, not preference. Every otel4s span type is sealed
 with a `private[otel4s]` `Unsealed` variant, so a recording `Tracer` cannot be
 hand-rolled the way this repo hand-rolls a `natchez.Trace`; a testkit is
-required. At otel4s 1.0.1 there is no testkit that works on Scala.js:
-`otel4s-oteljava-trace-testkit` publishes no `_sjs1_` artifact at any version,
-and the cross-platform `otel4s-sdk-trace-testkit` stops at 0.19.0. Revisit when
-`otel4s-sdk-trace-testkit` reaches 1.0.x.
+required. `otel4s-oteljava-trace-testkit` publishes no `_sjs1_` artifact at any
+version, but a cross-platform testkit does exist: `otel4s-sdk-trace-testkit`
+(otel4s-sdk is pre-1.0 and versioned separately; 0.19.4 is built against
+otel4s-core 1.1.0). Using it would add an otel4s-sdk backend, so these modules
+assert span content with the JVM oteljava testkit instead; adopting the sdk
+testkit is a possible follow-up.
 
 ## Scala 2.12
 
 **This module compiles nothing and ships nothing on 2.12.** No
 `otel4s-tagless_2.12` or `otel4s-tagless_sjs1_2.12` artifact is published, and
-none ever will be at otel4s 1.0.x.
+none ever will be, because otel4s itself publishes none.
 
 otel4s has never published a `_2.12` artifact, at any version — its own build
 sets `crossScalaVersions := Seq("2.13.18", "3.3.8")`, and Maven Central 404s for

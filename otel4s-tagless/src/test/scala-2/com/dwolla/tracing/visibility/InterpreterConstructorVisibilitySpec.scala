@@ -34,6 +34,13 @@ class InterpreterConstructorVisibilitySpec extends FunSuite {
       implicit val tracer: Tracer[IO] = Tracer.noop[IO]
       new com.dwolla.tracing.otel4s.TracerWeaveCapturingInputs[IO, ToAnyValue]
     """), "")
+    assertEquals(compileErrors("""
+      import cats.effect.IO
+      import org.typelevel.otel4s.trace.Tracer
+      import com.dwolla.tracing.otel4s.ToAnyValue
+      implicit val tracer: Tracer[IO] = Tracer.noop[IO]
+      com.dwolla.tracing.otel4s.TracerWeaveCapturingInputs[IO, ToAnyValue]
+    """), "")
   }
 
   test("TracerWeaveCapturingInputsAndOutputs can only be built through its companion") {
@@ -42,6 +49,12 @@ class InterpreterConstructorVisibilitySpec extends FunSuite {
       import org.typelevel.otel4s.trace.Tracer
       implicit val tracer: Tracer[IO] = Tracer.noop[IO]
       new com.dwolla.tracing.otel4s.TracerWeaveCapturingInputsAndOutputs[IO]
+    """), "")
+    assertEquals(compileErrors("""
+      import cats.effect.IO
+      import org.typelevel.otel4s.trace.Tracer
+      implicit val tracer: Tracer[IO] = Tracer.noop[IO]
+      com.dwolla.tracing.otel4s.TracerWeaveCapturingInputsAndOutputs[IO]
     """), "")
   }
 }

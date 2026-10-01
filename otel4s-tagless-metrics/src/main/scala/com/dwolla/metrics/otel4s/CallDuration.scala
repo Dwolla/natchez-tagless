@@ -10,10 +10,11 @@ import org.typelevel.otel4s.semconv.attributes.ErrorAttributes
   * and is created the same way.
   *
   * The SDK returns the existing instrument for an identical descriptor (name,
-  * unit, description), so creating the same histogram again — from a second
-  * interpreter for the same algebra, say — aggregates into the same metric.
-  * Bucket boundaries are advice, not part of that identity: whichever creation
-  * of a name comes first fixes its buckets.
+  * unit, description), so creating the same histogram again aggregates into
+  * the same metric, whether it comes from another interpreter or from the other
+  * flavor. Bucket
+  * boundaries are advice, not part of that identity, and the advice is the same
+  * everywhere; a View overrides it.
   */
 private[otel4s] object CallDuration {
   val DurationUnit: String = "s"
