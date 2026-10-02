@@ -48,7 +48,7 @@ class WithMetricsOps[Alg[_[_]], F[_]](val alg: Alg[F]) extends AnyVal {
   /** For in-process calls: records every call's duration, in seconds, to
     * `com.dwolla.code.function.duration`, with
     * `code.function.name = <algebraName>.<methodName>` and, for a failed call,
-    * `error.type` (the error's class name, or `"canceled"`). Every algebra
+    * `error.type` (the error's type name, computed by `ErrorTypeName`; Scala 3 enum cases as `<Enum>\$<Case>`, or `"canceled"`). Every algebra
     * wrapped this way shares that one metric. The histogram is created once,
     * when the returned `F` runs, under this library's own instrumentation
     * scope (`com.dwolla.metrics.otel4s`, versioned). To change its bucket

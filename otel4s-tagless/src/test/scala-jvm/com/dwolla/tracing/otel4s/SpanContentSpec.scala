@@ -1,17 +1,25 @@
 package com.dwolla.tracing.otel4s
 
 import cats.effect.IO
+import cats.mtl.Handle
+import cats.syntax.all._
 import cats.tagless.aop.Aspect
 import cats.~>
 import com.dwolla.tagless.WeaveKnot
 import com.dwolla.tracing.otel4s.syntax._
+import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.sdk.trace.data.SpanData
 import munit.CatsEffectSuite
 import org.typelevel.otel4s.oteljava.AttributeConverters._
 import org.typelevel.otel4s.oteljava.testkit.trace.TracesTestkit
-import org.typelevel.otel4s.semconv.attributes.CodeAttributes
+import org.typelevel.otel4s.semconv.attributes.{CodeAttributes, ErrorAttributes}
 import org.typelevel.otel4s.trace.Tracer
 import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
+
+import scala.jdk.CollectionConverters._
+
+/** A domain error for the raise tests; deliberately not a `Throwable`. */
+final class NotFound(val id: Int)
 
 /** Span ''content'', asserted against a real SDK.
   *
@@ -92,6 +100,108 @@ class SpanContentSpec extends CatsEffectSuite {
 
   private def codeFunctionNames(spans: List[SpanData]): List[Option[String]] =
     spans.map(attributesOf(_).get(CodeAttributes.CodeFunctionName).map(_.value))
+
+  private def raisingFoo(h: Handle[IO, NotFound]): Foo[IO] =
+    new Foo[IO] {
+      override def greet(name: String, times: Int): IO[String] = h.raise(new NotFound(42))
+      override def ping(): IO[Unit] = IO.unit
+    }
+
+  private def onlySpan(spans: List[SpanData]): SpanData =
+    spans match {
+      case List(span) => span
+      case other => fail(s"expected exactly one span, got ${other.map(_.getName)}")
+    }
+
+  private def assertReportedAsDomainError(result: Either[NotFound, String], spans: List[SpanData]): Unit = {
+    assert(result.left.exists(_.id == 42), s"expected the raised NotFound(42) back, got $result")
+    val span = onlySpan(spans)
+    assertEquals(span.getStatus.getStatusCode, StatusCode.ERROR)
+    assertEquals(span.getEvents.asScala.toList.map(_.getName), Nil)
+    assertEquals(attributesOf(span).get(ErrorAttributes.ErrorType).map(_.value), Some(classOf[NotFound].getName))
+  }
+
+  test("instrumentAndTrace reports an escaped raise as the domain error, not cats-mtl's Submarine") {
+    resultAndSpansFrom { implicit tracer =>
+      Handle.allowF[IO, NotFound](h => raisingFoo(h).instrumentAndTrace.greet("world", 1)).attempt
+    }.map { case (result, spans) => assertReportedAsDomainError(result, spans) }
+  }
+
+  test("traceWithInputs reports an escaped raise as the domain error, not cats-mtl's Submarine") {
+    resultAndSpansFrom { implicit tracer =>
+      Handle.allowF[IO, NotFound](h => raisingFoo(h).traceWithInputs[ToAnyValue].greet("world", 1)).attempt
+    }.map { case (result, spans) => assertReportedAsDomainError(result, spans) }
+  }
+
+  test("traceWithInputsAndOutputs reports an escaped raise as the domain error, not cats-mtl's Submarine") {
+    resultAndSpansFrom { implicit tracer =>
+      Handle.allowF[IO, NotFound](h => raisingFoo(h).traceWithInputsAndOutputs.greet("world", 1)).attempt
+    }.map { case (result, spans) => assertReportedAsDomainError(result, spans) }
+  }
+
+  test("an escaped raise of null is still rescued by the caller and ends the span with error.type = null") {
+    resultAndSpansFrom { implicit tracer =>
+      Handle.allowF[IO, NotFound] { h =>
+        new Foo[IO] {
+          override def greet(name: String, times: Int): IO[String] = h.raise[NotFound, String](null)
+          override def ping(): IO[Unit] = IO.unit
+        }.instrumentAndTrace.greet("world", 1).as(false)
+      }.rescue(e => (e == null).pure[IO])
+    }.map { case (rescuedNull, spans) =>
+      assert(rescuedNull, "expected the raised null back from rescue")
+      val span = onlySpan(spans)
+      assertEquals(span.getStatus.getStatusCode, StatusCode.ERROR)
+      assertEquals(attributesOf(span).get(ErrorAttributes.ErrorType).map(_.value), Some("null"))
+    }
+  }
+
+  test("a canceled call keeps otel4s's reportAbnormal: status ERROR described as canceled, with no error.type") {
+    resultAndSpansFrom { implicit tracer =>
+      new Foo[IO] {
+        override def greet(name: String, times: Int): IO[String] = IO.canceled.as("unreachable")
+        override def ping(): IO[Unit] = IO.unit
+      }.instrumentAndTrace.greet("world", 1).start.flatMap(_.join)
+    }.map { case (outcome, spans) =>
+      assert(outcome.isCanceled, s"expected a canceled outcome, got $outcome")
+      val span = onlySpan(spans)
+      assertEquals(span.getStatus.getStatusCode, StatusCode.ERROR)
+      assertEquals(span.getStatus.getDescription, "canceled")
+      assertEquals(attributesOf(span).get(ErrorAttributes.ErrorType), None)
+    }
+  }
+
+  test("a raise rescued inside the method leaves the span OK, with no error.type") {
+    resultAndSpansFrom { implicit tracer =>
+      Handle.allowF[IO, NotFound] { h =>
+        val rescuing = new Foo[IO] {
+          override def greet(name: String, times: Int): IO[String] =
+            h.handleWith(h.raise[NotFound, String](new NotFound(1)))(_ => "recovered".pure[IO])
+          override def ping(): IO[Unit] = IO.unit
+        }
+        rescuing.traceWithInputsAndOutputs.greet("world", 1)
+      }.attempt
+    }.map { case (result, spans) =>
+      assertEquals(result, Right("recovered"))
+      val span = onlySpan(spans)
+      assertEquals(span.getStatus.getStatusCode, StatusCode.UNSET)
+      assertEquals(attributesOf(span).get(ErrorAttributes.ErrorType), None)
+    }
+  }
+
+  test("an ordinary thrown exception is still recorded by otel4s as an exception event with status ERROR") {
+    val boom = new IllegalStateException("boom")
+    resultAndSpansFrom { implicit tracer =>
+      new Foo[IO] {
+        override def greet(name: String, times: Int): IO[String] = IO.raiseError(boom)
+        override def ping(): IO[Unit] = IO.unit
+      }.instrumentAndTrace.greet("world", 1).attempt
+    }.map { case (result, spans) =>
+      assertEquals(result, Left(boom))
+      val span = onlySpan(spans)
+      assertEquals(span.getStatus.getStatusCode, StatusCode.ERROR)
+      assertEquals(span.getEvents.asScala.toList.map(_.getName), List("exception"))
+    }
+  }
 
   test("instrumentAndTrace records code.function.name = <Algebra>.<method>, even for a zero-parameter method") {
     spansFrom { implicit tracer => Foo.plain[IO].instrumentAndTrace.ping() }

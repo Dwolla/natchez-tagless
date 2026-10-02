@@ -178,7 +178,7 @@ private[otel4s] final class TracerWeaveCapturingInputsAndOutputs[F[_]: FlatMap: 
       // asAttributes stays *inside* this lambda. Tracer.noop's modifyState
       // never applies the function, so a disabled tracer pays nothing for
       // encoding the parameters — and by-name parameters are never forced.
-      .modifyState(_.addAttributes(FunctionCallAttributes.codeFunctionName(name) ++ fa.asAttributes))
+      .modifyState(_.withFinalizationStrategy(SpanFinalization.strategy).addAttributes(FunctionCallAttributes.codeFunctionName(name) ++ fa.asAttributes))
       .build
       // `use`, not `surround`: otel4s has no ambient `Tracer[F].put`, so the
       // only way to attach an attribute after the call is to hold the Span.

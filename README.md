@@ -4,7 +4,7 @@ Semi-automatically derive [Natchez](http://tpolecat.github.io/natchez/) trace in
 
 ## Modules
 
-- `tagless-core`: cats-tagless weaving utilities (`WeaveKnot`, `WeaveNaming`) shared by the natchez and otel4s backends.
+- `tagless-core`: cats-tagless weaving utilities (`WeaveKnot`, `WeaveNaming`) and cats-mtl raise helpers (`RaisedError`, `ErrorTypeName`) shared by the natchez and otel4s backends and the otel4s metrics module.
 - `natchez-tagless`: the [Natchez](http://tpolecat.github.io/natchez/) backend — `Trace`-based instrumentation for plain `cats-tagless` `Aspect` algebras, in `com.dwolla.tracing` (see `TraceInstrumentation`'s scaladoc for the worked example).
 - `natchez-tagless-mtl`: tracing for algebras whose methods take `cats.mtl.Raise` parameters (see the `com.dwolla.tracing.mtl` package scaladoc).
 - `natchez-tagless-scalacache`: cats-tagless instances for ScalaCache's `Cache` trait, built on `natchez-tagless`.

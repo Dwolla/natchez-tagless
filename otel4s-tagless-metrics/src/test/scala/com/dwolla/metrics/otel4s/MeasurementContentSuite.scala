@@ -2,6 +2,7 @@ package com.dwolla.metrics.otel4s
 
 import cats.effect.IO
 import cats.effect.testkit.TestControl
+import cats.mtl.Handle
 import cats.syntax.all._
 import cats.tagless.aop.Instrumentation
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
@@ -165,6 +166,41 @@ abstract class MeasurementContentSuite extends CatsEffectSuite with ScalaCheckEf
         assertEqualsDouble(point.sum, callDuration.toUnit(SECONDS), 1e-9)
         assertEquals(attributeKeys(point), Set("code.function.name", "error.type"))
       }
+    }
+  }
+
+  test("a raise that escapes the call records the domain error's class as error.type, not cats-mtl's Submarine") {
+    measured { implicit meterProvider =>
+      Handle.allowF[IO, NotFound] { h =>
+        generic(Foo[IO](_ => h.raise(new NotFound(42)), IO.unit)).flatMap(_.greet("world")).as(Option.empty[NotFound])
+      }.rescue(e => e.some.pure[IO])
+    }.map { case (result, histograms) =>
+      assert(result.exists(_.id == 42), s"expected the raised NotFound(42) back, got $result")
+      val point = pointFor(ErrorAttributes.ErrorType, classOf[NotFound].getName, histogramNamed(functionDuration, histograms))
+      assertEquals(point.count, 1L)
+    }
+  }
+
+  test("an escaped raise of null is still rescued and records error.type = null") {
+    measured { implicit meterProvider =>
+      Handle.allowF[IO, NotFound] { h =>
+        generic(Foo[IO](_ => h.raise[NotFound, String](null), IO.unit)).flatMap(_.greet("world")).as(false)
+      }.rescue(e => (e == null).pure[IO])
+    }.map { case (rescuedNull, histograms) =>
+      assert(rescuedNull, "expected the raised null back from rescue")
+      val point = pointFor(ErrorAttributes.ErrorType, "null", histogramNamed(functionDuration, histograms))
+      assertEquals(point.count, 1L)
+    }
+  }
+
+  test("an escaped raise on an RPC-instrumented algebra records the domain error's class as error.type") {
+    measured { implicit meterProvider =>
+      Handle.allowF[IO, NotFound] { h =>
+        rpc(Foo[IO](_ => h.raise(new NotFound(42)), IO.unit), RpcRole.Server).flatMap(_.greet("world")).as(Option.empty[NotFound])
+      }.rescue(e => e.some.pure[IO])
+    }.map { case (_, histograms) =>
+      val histogram = histogramNamed("rpc.server.call.duration", histograms)
+      assertEquals(pointFor(ErrorAttributes.ErrorType, classOf[NotFound].getName, histogram).count, 1L)
     }
   }
 

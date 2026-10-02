@@ -170,14 +170,15 @@ error:
   finalizes with `SpanFinalizer.Strategy.reportAbnormal` by default, so any
   `Throwable` escaping a traced method is recorded as an exception event and
   the span status set to `Error` — natchez's three interpreters never call
-  `Trace[F].attachError`. A `cats.mtl.Raise` error usually does *not* get
-  this treatment: when `Raise` lives in the effect's success channel
-  (`EitherT`), the effect *succeeds*, and otel4s can't see into it; when
-  `Raise` comes from `Handle.allowF` over a `MonadThrow`, cats-mtl's
-  submarine encoding does trigger `reportAbnormal`, but the resulting
-  exception event's type is the opaque `cats.mtl.Handle.Submarine`, naming
-  neither your error type nor its value. Either way the domain error itself
-  isn't in the trace unless something inspects the `Raise` channel
+  `Trace[F].attachError`. A `cats.mtl.Raise` error never gets the exception
+  event. When `Raise` lives in the effect's success channel (`EitherT`), the
+  effect *succeeds*, so the span is OK and otel4s can't see into it. When
+  `Raise` comes from `Handle.allowF` over a `MonadThrow`, cats-mtl's submarine
+  encoding triggers a finalization strategy that recognizes the `Submarine`
+  and reports the domain error instead: status `ERROR`, `error.type` set to
+  its type name (computed by `ErrorTypeName`; Scala 3 enum cases:
+  `<Enum>$<Case>`), and no exception event. The domain error's *value* is
+  in the trace only if something inspects the `Raise` channel
   explicitly — which is what `otel4s-tagless-mtl`'s `RaiseAspect` support
   does; see its README. The string-vs-structured difference described above
   applies to `com.dwolla.raise.error.value` too: an error type opted in with
