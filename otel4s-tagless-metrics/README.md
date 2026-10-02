@@ -42,10 +42,12 @@ renames them (`runtimeClassNameMapper`), Submarine unwrapping stops working and
 
 ## Stacking with tracing
 
-Apply tracing last:
+Apply tracing last. otel4s-tagless's tracing syntax takes a `TracerProvider[F]`
+and, like `withMetrics`, returns `F[Alg[F]]`, so the two compose with
+`flatMap`:
 
 ```scala
-alg.withMetrics().map(_.instrumentAndTrace)
+alg.withMetrics().flatMap(_.instrumentAndTrace)
 ```
 
 Each measurement is then recorded while its span is active, so a backend that

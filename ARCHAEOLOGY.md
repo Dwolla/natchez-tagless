@@ -107,11 +107,13 @@ through the capability they're observing.
 ## Migrating from `natchez-tagless` to the otel4s modules
 
 `otel4s-tagless` and `otel4s-tagless-mtl` are otel4s counterparts of
-`natchez-tagless` and `natchez-tagless-mtl`, built so a call site's import
-line is the only change at the call site. Your types are another matter:
-every type that natchez traced through its `Encoder`/`Show` fallback needs a
-`ToAnyValue` (see "What needs new code" below), and the recorded span data
-changes too:
+`natchez-tagless` and `natchez-tagless-mtl`, with the same method names, but a
+call site changes in two ways besides its import line: it supplies a
+`TracerProvider[F]` instead of a `Trace[F]`, and it gets back an `F[Alg[F]]`
+instead of an `Alg[F]` (see "You now pass a `TracerProvider`" below). Your
+types are another matter: every type that natchez traced through its
+`Encoder`/`Show` fallback needs a `ToAnyValue` (see "What needs new code"
+below), and the recorded span data changes too:
 
 | natchez, in `natchez-tagless` / `natchez-tagless-mtl` | otel4s counterpart |
 | --- | --- |
@@ -119,7 +121,7 @@ changes too:
 | `TraceWeaveCapturingInputs` | `TracerWeaveCapturingInputs` |
 | `TraceWeaveCapturingInputsAndOutputs` | `TracerWeaveCapturingInputsAndOutputs` |
 | `natchez.TraceableValue` | `ToAnyValue` (project-owned, no bridge between the two) |
-| `syntax.traceWithInputs` / `traceWithInputsAndOutputs` / `instrumentAndTrace` | same names |
+| `syntax.traceWithInputs` / `traceWithInputsAndOutputs` / `instrumentAndTrace` | same names; take a `TracerProvider[F]` and return `F[Alg[F]]` |
 | `syntax.asTraceParams` | `syntax.asAttributes` |
 
 The method names matching is deliberate, but it means a single file cannot
@@ -130,6 +132,39 @@ Scala 2 reports that plainly; Scala 3 instead says
 unrelated to either package, and never mentions the ambiguity. If a method
 that plainly exists reports as missing on Scala 3, check for a stray import
 of the other backend's syntax first.
+
+### You now pass a `TracerProvider`
+
+natchez's syntax takes the ambient `Trace[F]` and returns the traced `Alg[F]`.
+The otel4s syntax takes the application's `TracerProvider[F]` and returns
+`F[Alg[F]]`: running it obtains this library's own tracer, under the
+instrumentation scope `com.dwolla.tracing.otel4s` with the library's version,
+which is how OpenTelemetry expects an instrumentation library to identify its
+spans. So
+
+```scala
+// natchez-tagless
+implicit val trace: Trace[IO] = ???
+val traced: Foo[IO] = Foo[IO].traceWithInputsAndOutputs
+```
+
+becomes
+
+```scala
+// otel4s-tagless
+implicit val tracerProvider: TracerProvider[IO] = ??? // e.g. from OtelJava
+val traced: IO[Foo[IO]] = Foo[IO].traceWithInputsAndOutputs
+```
+
+and the traced algebra is built inside `IO`, typically once, while the
+application's resources are wired. Pass the same provider the application's own
+tracer comes from: tracers from one provider share the current-span context,
+so the application's spans still parent this library's. The constraint each
+method needs grows by at most a `Functor[F]`, for the map after obtaining the
+tracer.
+
+`withMetrics` from `otel4s-tagless-metrics` has the same shape, so the two
+compose with `flatMap`: `alg.withMetrics().flatMap(_.instrumentAndTrace)`.
 
 ### What needs new code
 
