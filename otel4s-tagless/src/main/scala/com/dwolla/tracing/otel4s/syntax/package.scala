@@ -7,9 +7,9 @@ package com.dwolla.tracing.otel4s
   * library's tracer from the ambient `TracerProvider[F]`, under the
   * instrumentation scope `com.dwolla.tracing.otel4s` (versioned), and yields
   * the traced algebra. Their examples live on the interpreters they delegate
-  * to. `asAttributes` is the odd one out — it is the pure
-  * function underneath the other two, and it is the shortest way to see exactly
-  * what a traced call records.
+  * to. `asAttributes` is the odd one out — it is the pure function underneath
+  * `traceWithInputs` and `traceWithInputsAndOutputs`, and it is the shortest
+  * way to see exactly what a traced call records.
   */
 package object syntax
   extends ToTracerWeaveOps
