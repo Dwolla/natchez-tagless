@@ -98,7 +98,7 @@ lazy val isOtel4sScalaVersion: Def.Initialize[Boolean] = Def.setting {
 lazy val doctestSettings: Seq[Def.Setting[?]] = Seq(
   libraryDependencies ++= Seq(
     "org.scalacheck" %%% "scalacheck" % "1.19.0" % Test,
-    "io.monix" %%% "newtypes-core" % "0.2.3" % Test,
+    "io.monix" %%% "newtypes-core" % "0.4.1" % Test,
   ),
   doctestOnlyCodeBlocksMode := true,
   Test / scalacOptions ~= {
