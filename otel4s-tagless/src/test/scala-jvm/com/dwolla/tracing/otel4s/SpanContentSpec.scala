@@ -9,6 +9,7 @@ import io.opentelemetry.sdk.trace.data.SpanData
 import munit.CatsEffectSuite
 import org.typelevel.otel4s.oteljava.AttributeConverters._
 import org.typelevel.otel4s.oteljava.testkit.trace.TracesTestkit
+import org.typelevel.otel4s.semconv.attributes.CodeAttributes
 import org.typelevel.otel4s.trace.Tracer
 import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
 
@@ -16,8 +17,8 @@ import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
   *
   * JVM-only: every otel4s span type is sealed with a `private[otel4s]`
   * `Unsealed` variant, so a recording `Tracer` cannot be hand-rolled, and the
-  * cross-platform testkit (`otel4s-sdk-trace-testkit`) has not been released at
-  * 1.0.x. Transparency is covered on every platform by `TracerTransparencySpec`.
+  * JVM oteljava testkit is used because the cross-platform
+  * `otel4s-sdk-trace-testkit` would add an otel4s-sdk backend. Transparency is covered on every platform by `TracerTransparencySpec`.
   *
   * `TracesTestkit.inMemory[IO]()` needs no extra wiring: its
   * `LocalContextProvider[IO]` — i.e. `LocalProvider[IO, oteljava.Context]` —
@@ -89,6 +90,32 @@ class SpanContentSpec extends CatsEffectSuite {
       TracerWeaveCapturingInputsAndOutputs[IO]
     )
 
+  private def codeFunctionNames(spans: List[SpanData]): List[Option[String]] =
+    spans.map(attributesOf(_).get(CodeAttributes.CodeFunctionName).map(_.value))
+
+  test("instrumentAndTrace records code.function.name = <Algebra>.<method>, even for a zero-parameter method") {
+    spansFrom { implicit tracer => Foo.plain[IO].instrumentAndTrace.ping() }
+      .map(spans => assertEquals(codeFunctionNames(spans), List(Some("Foo.ping"))))
+  }
+
+  test("traceWithInputs records code.function.name = <Algebra>.<method>, even for a zero-parameter method") {
+    spansFrom { implicit tracer => Foo.plain[IO].traceWithInputs[ToAnyValue].ping() }
+      .map(spans => assertEquals(codeFunctionNames(spans), List(Some("Foo.ping"))))
+  }
+
+  test("traceWithInputsAndOutputs records code.function.name = <Algebra>.<method>, even for a zero-parameter method") {
+    spansFrom { implicit tracer => Foo.plain[IO].traceWithInputsAndOutputs.ping() }
+      .map(spans => assertEquals(codeFunctionNames(spans), List(Some("Foo.ping"))))
+  }
+
+  test("parameters and the return value are recorded under fixed, OTel-style keys") {
+    spansFrom { implicit tracer => Foo.plain[IO].traceWithInputsAndOutputs.greet("world", 2) }
+      .map { spans =>
+        val keys = spans.flatMap(attributesOf(_).map(_.key.name)).toSet
+        assertEquals(keys, Set("code.function.name", "com.dwolla.code.function.arguments", "com.dwolla.code.function.return_value"))
+      }
+  }
+
   test("each method call opens one span named algebraName.methodName") {
     for {
       counts <- FooCallCounts.of[IO]
@@ -103,19 +130,19 @@ class SpanContentSpec extends CatsEffectSuite {
     } yield ()
   }
 
-  test("TracerInstrumentation records no attributes of its own") {
+  test("TracerInstrumentation records only code.function.name") {
     for {
       counts <- FooCallCounts.of[IO]
       spans <- spansFrom { implicit tracer =>
         underlyingFoo(counts).instrumentAndTrace.greet("world", 2)
       }
-      _ = assertEquals(spans.map(attributesOf(_).size), List(0))
+      _ = assertEquals(spans.map(attributesOf), List(Attributes(Attribute("code.function.name", "Foo.greet"))))
     } yield ()
   }
 
   // ping() is the empty-parameter-list, Unit-returning edge. Under
-  // TracerInstrumentation it is unremarkable — the interpreter records no
-  // attributes for any method — but it is the baseline the
+  // TracerInstrumentation it is unremarkable — the interpreter records only
+  // code.function.name for any method — but it is the baseline the
   // TracerWeaveCapturingInputs case below has to match.
   test("a zero-parameter, Unit-returning method is spanned like any other") {
     for {
@@ -128,7 +155,7 @@ class SpanContentSpec extends CatsEffectSuite {
       p <- counts.ping
       _ = assertEquals(p, 1)
       _ = assertEquals(spans.map(_.getName), List("Foo.ping"))
-      _ = assertEquals(spans.map(attributesOf(_).size), List(0))
+      _ = assertEquals(spans.map(attributesOf), List(Attributes(Attribute("code.function.name", "Foo.ping"))))
     } yield ()
   }
 
@@ -147,18 +174,21 @@ class SpanContentSpec extends CatsEffectSuite {
       // an AnyValue map does not preserve key order.
       _ = assertEquals(
         spans.map(attributesOf(_)),
-        List(Attributes(Attribute[AnyValue](
-          "Foo.greet.parameters",
+        List(Attributes(
+          Attribute("code.function.name", "Foo.greet"),
+          Attribute[AnyValue](
+          "com.dwolla.code.function.arguments",
           AnyValue.map(Map(
             "name" -> AnyValue.string("world"),
             "times" -> AnyValue.long(2L),
           )),
-        )))
+        ))
+        )
       )
     } yield ()
   }
 
-  test("TracerWeaveCapturingInputs records no parameters attribute for a method with no parameters") {
+  test("TracerWeaveCapturingInputs records only code.function.name for a method with no parameters") {
     for {
       counts <- FooCallCounts.of[IO]
       result <- resultAndSpansFrom { implicit tracer =>
@@ -169,8 +199,7 @@ class SpanContentSpec extends CatsEffectSuite {
       p <- counts.ping
       _ = assertEquals(p, 1)
       _ = assertEquals(spans.map(_.getName), List("Foo.ping"))
-      _ = assertEquals(spans.map(attributesOf(_).size), List(0))
-      _ = assertEquals(spans.map(attributesOf), List(Attributes.empty))
+      _ = assertEquals(spans.map(attributesOf), List(Attributes(Attribute("code.function.name", "Foo.ping"))))
     } yield ()
   }
 
@@ -192,7 +221,7 @@ class SpanContentSpec extends CatsEffectSuite {
       // The decoded tree, not the rendered text: `times` is a LongValue, and
       // an AnyValue map does not preserve key order.
       //
-      // returnValue comes back as a plain String attribute, not an AnyValue
+      // com.dwolla.code.function.return_value comes back as a plain String attribute, not an AnyValue
       // one, and that is the Java SDK doing what it documents:
       // AttributesBuilder#put(AttributeKey, Object) automatically narrows an
       // AttributeType.VALUE whose Value has a simple equivalent, so
@@ -203,14 +232,15 @@ class SpanContentSpec extends CatsEffectSuite {
       _ = assertEquals(
         spans.map(attributesOf(_)),
         List(Attributes(
+          Attribute("code.function.name", "Foo.greet"),
           Attribute[AnyValue](
-            "Foo.greet.parameters",
+            "com.dwolla.code.function.arguments",
             AnyValue.map(Map(
               "name" -> AnyValue.string("world"),
               "times" -> AnyValue.long(2L),
             )),
           ),
-          Attribute("Foo.greet.returnValue", "hello worldhello world"),
+          Attribute("com.dwolla.code.function.return_value", "hello worldhello world"),
         ))
       )
     } yield ()
@@ -222,7 +252,7 @@ class SpanContentSpec extends CatsEffectSuite {
   // recorded as `MapValue({})`/`EmptyValue`. ToAnyValue[Unit] still encodes
   // `()` to AnyValue.empty; the omission is the interpreter's decision not to
   // spend an attribute slot on it.
-  test("TracerWeaveCapturingInputsAndOutputs records no attributes at all for ping()") {
+  test("TracerWeaveCapturingInputsAndOutputs records only code.function.name for ping()") {
     for {
       counts <- FooCallCounts.of[IO]
       result <- resultAndSpansFrom { implicit tracer =>
@@ -233,8 +263,7 @@ class SpanContentSpec extends CatsEffectSuite {
       p <- counts.ping
       _ = assertEquals(p, 1)
       _ = assertEquals(spans.map(_.getName), List("Foo.ping"))
-      _ = assertEquals(spans.map(attributesOf(_).size), List(0))
-      _ = assertEquals(spans.map(attributesOf(_)), List(Attributes.empty))
+      _ = assertEquals(spans.map(attributesOf), List(Attributes(Attribute("code.function.name", "Foo.ping"))))
     } yield ()
   }
 

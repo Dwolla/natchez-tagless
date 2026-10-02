@@ -5,7 +5,7 @@ import cats.mtl.{Handle, Raise}
 import cats.syntax.all._
 import cats.tagless.aop.Aspect
 import cats.{Applicative, Apply, ~>}
-import com.dwolla.tagless.mtl.{OnRaise, RaiseAspect, RaiseRecorder}
+import com.dwolla.tagless.mtl.{OnRaise, RaiseAspect}
 import com.dwolla.tracing.otel4s.ToAnyValue
 import com.dwolla.tracing.otel4s.mtl.syntax._
 import io.opentelemetry.api.trace.StatusCode
@@ -23,8 +23,8 @@ import scala.jdk.CollectionConverters._
   * JVM-only for the reason `otel4s-tagless`'s `SpanContentSpec` documents:
   * every otel4s span type is sealed with a `private[otel4s]` `Unsealed`
   * variant, so a recording `Tracer` cannot be hand-rolled, and the
-  * cross-platform testkit (`otel4s-sdk-trace-testkit`) has not been released at
-  * 1.0.x. Transparency is covered on every platform by
+  * JVM oteljava testkit is used because the cross-platform
+  * `otel4s-sdk-trace-testkit` would add an otel4s-sdk backend. Transparency is covered on every platform by
   * `RaiseTracerTransparencySpec`, and resolution by `RaiseRecorderPrioritySpec`.
   */
 class RaiseSpanContentSpec extends CatsEffectSuite {
@@ -57,26 +57,27 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
 
   private val expectedErrorType: String = classOf[FooError.Negative].getName
 
-  test("a raise records raise.error.type and raise.error.value on the method's span") {
+  test("a raise records com.dwolla.raise.error.type and com.dwolla.raise.error.value on the method's span") {
     resultAndSpansFrom { implicit tracer =>
       viaHandle(Foo[IO].traceWithInputsAndOutputs, -1)
     }.map { case (result, spans) =>
       assertEquals(result, "rescued:-1")
       assertEquals(spans.map(_.getName), List("Foo.foo"))
 
-      // raise.error.value arrives as a plain STRING attribute, not an AnyValue
+      // com.dwolla.raise.error.value arrives as a plain STRING attribute, not an AnyValue
       // one: the Java SDK narrows an AttributeType.VALUE whose Value has a
-      // simple equivalent, exactly as it does for returnValue in
-      // otel4s-tagless's SpanContentSpec.
+      // simple equivalent, exactly as it does for
+      // com.dwolla.code.function.return_value in otel4s-tagless's SpanContentSpec.
       assertEquals(
         attributesOf(spans.head),
         Attributes(
+          Attribute("code.function.name", "Foo.foo"),
           Attribute[AnyValue](
-            "Foo.foo.parameters",
+            "com.dwolla.code.function.arguments",
             AnyValue.map(Map("i" -> AnyValue.long(-1L))),
           ),
-          Attribute(RaiseRecorder.ErrorTypeKey, expectedErrorType),
-          Attribute(RaiseRecorder.ErrorValueKey, "negative:-1"),
+          Attribute("com.dwolla.raise.error.type", expectedErrorType),
+          Attribute("com.dwolla.raise.error.value", "negative:-1"),
         )
       )
     }
@@ -108,17 +109,17 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
 
       val childAttributes = attributesOf(child)
       assertEquals(
-        childAttributes.get[String](RaiseRecorder.ErrorTypeKey).map(_.value),
+        childAttributes.get[String]("com.dwolla.raise.error.type").map(_.value),
         Some(expectedErrorType)
       )
       assertEquals(
-        childAttributes.get[String](RaiseRecorder.ErrorValueKey).map(_.value),
+        childAttributes.get[String]("com.dwolla.raise.error.value").map(_.value),
         Some("negative:-1")
       )
 
       val parentAttributes = attributesOf(parent)
-      assertEquals(parentAttributes.get[String](RaiseRecorder.ErrorTypeKey), None)
-      assertEquals(parentAttributes.get[String](RaiseRecorder.ErrorValueKey), None)
+      assertEquals(parentAttributes.get[String]("com.dwolla.raise.error.type"), None)
+      assertEquals(parentAttributes.get[String]("com.dwolla.raise.error.value"), None)
       assertEquals(parentAttributes, Attributes.empty)
     }
   }
@@ -135,14 +136,15 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
       assertEquals(
         attributesOf(spans.head),
         Attributes(
+          Attribute("code.function.name", "Quiet.hush"),
           Attribute[AnyValue](
-            "Quiet.hush.parameters",
+            "com.dwolla.code.function.arguments",
             AnyValue.map(Map("i" -> AnyValue.long(-1L))),
           ),
-          Attribute(RaiseRecorder.ErrorTypeKey, QuietError.Silent.getClass.getName),
+          Attribute("com.dwolla.raise.error.type", QuietError.Silent.getClass.getName),
         )
       )
-      assertEquals(attributesOf(spans.head).get[String](RaiseRecorder.ErrorValueKey), None)
+      assertEquals(attributesOf(spans.head).get[String]("com.dwolla.raise.error.value"), None)
     }
   }
 
@@ -157,7 +159,7 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
   // with `Resource.ExitCase.Errored` and otel4s's default
   // `SpanFinalizer.Strategy.reportAbnormal` records it — as `Submarine`, which
   // says nothing about the domain error. That is what the hook's
-  // `raise.error.*` attributes exist to compensate for.
+  // `com.dwolla.raise.error.*` attributes exist to compensate for.
   //
   // The exact class name is asserted, not merely "contains Submarine": the
   // scaladoc quotes it, so a cats-mtl rename should fail here and send someone
@@ -179,9 +181,9 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
         Some("cats.mtl.Handle.Submarine")
       )
       // The domain error's own name appears nowhere in otel4s's report of it;
-      // only `raise.error.type` carries it.
+      // only `com.dwolla.raise.error.type` carries it.
       assertEquals(
-        child.getAttributes.toScala.get[String](RaiseRecorder.ErrorTypeKey).map(_.value),
+        child.getAttributes.toScala.get[String]("com.dwolla.raise.error.type").map(_.value),
         Some(expectedErrorType)
       )
 
@@ -201,8 +203,8 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
       val span = spanNamed(spans, "Foo.foo")
       assertEquals(span.getStatus.getStatusCode, StatusCode.UNSET)
       assertEquals(span.getEvents.asScala.toList.map(_.getName), List.empty[String])
-      // and no raise.error.* either — the hook only fires on a raise
-      assertEquals(attributesOf(span).get[String](RaiseRecorder.ErrorTypeKey), None)
+      // and no com.dwolla.raise.error.* either — the hook only fires on a raise
+      assertEquals(attributesOf(span).get[String]("com.dwolla.raise.error.type"), None)
     }
   }
 }

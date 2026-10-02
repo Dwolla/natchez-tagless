@@ -6,11 +6,6 @@ import com.dwolla.tagless.WeaveNaming._
 import com.dwolla.tracing.otel4s.syntax._
 import org.typelevel.otel4s.trace.Tracer
 
-object TracerWeaveCapturingInputs {
-  def apply[F[_]: Tracer, Cod[_]]: Weave[F, ToAnyValue, Cod, *] ~> F =
-    new TracerWeaveCapturingInputs[F, Cod]
-}
-
 /**
  * Use this `FunctionK` when you have an algebra in
  * `Weave[F, ToAnyValue, Cod, *]` and you want each method call on the algebra
@@ -38,18 +33,30 @@ object TracerWeaveCapturingInputs {
  * }}}
  *
  * With that instance the span records `"redacted password value"` and never the
- * actual value. Similar functionality can be achieved with the newtype library
- * of your choice.
+ * actual value, wherever the newtype appears: a value is recorded only through
+ * its own `ToAnyValue`, and every container, map and tuple instance encodes
+ * element-wise. The one exception is a type you opt in with
+ * `ToAnyValue.fromEncoder` or `ToAnyValue.fromShow`, which records whatever
+ * that `Encoder` or `Show` reveals, including a field of the newtype. Similar
+ * functionality can be achieved with the newtype library of your choice.
  *
  */
-class TracerWeaveCapturingInputs[F[_]: Tracer, Cod[_]] extends (Weave[F, ToAnyValue, Cod, *] ~> F) {
-  override def apply[A](fa: Weave[F, ToAnyValue, Cod, A]): F[A] =
+object TracerWeaveCapturingInputs {
+  def apply[F[_]: Tracer, Cod[_]]: Weave[F, ToAnyValue, Cod, *] ~> F =
+    new TracerWeaveCapturingInputs[F, Cod]
+}
+
+private[otel4s] final class TracerWeaveCapturingInputs[F[_]: Tracer, Cod[_]] extends (Weave[F, ToAnyValue, Cod, *] ~> F) {
+  override def apply[A](fa: Weave[F, ToAnyValue, Cod, A]): F[A] = {
+    val name = fa.qualifiedMethodName
+
     Tracer[F]
-      .spanBuilder(fa.qualifiedMethodName)
+      .spanBuilder(name)
       // asAttributes stays *inside* this lambda. Tracer.noop's modifyState
       // never applies the function, so a disabled tracer pays nothing for
       // encoding — and by-name parameters are never forced.
-      .modifyState(_.addAttributes(fa.asAttributes))
+      .modifyState(_.addAttributes(FunctionCallAttributes.codeFunctionName(name) ++ fa.asAttributes))
       .build
       .surround(fa.codomain.target)
+  }
 }

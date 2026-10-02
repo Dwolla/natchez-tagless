@@ -3,8 +3,8 @@
 otel4s versions of `natchez-tagless`'s three tracing interpreters, in package
 `com.dwolla.tracing.otel4s`, with syntax in `com.dwolla.tracing.otel4s.syntax`.
 
-This module depends on `otel4s-core-trace`, cats, cats-tagless, circe-core and
-`tagless-core` — it must never depend on natchez.
+This module depends on `otel4s-core-trace`, `otel4s-semconv`, cats,
+cats-tagless, circe-core and `tagless-core` — it must never depend on natchez.
 
 ## What is here
 
@@ -24,12 +24,13 @@ This module depends on `otel4s-core-trace`, cats, cats-tagless, circe-core and
 
 Not from here. An application gets one from `TracerProvider[F].get(name)`,
 supplied by a backend module — `otel4s-oteljava` on the JVM, `otel4s-sdk`
-cross-platform. This module depends on `otel4s-core-trace` only, and the one
-`Tracer` it can construct itself is `Tracer.noop`, which the tests use.
+cross-platform. This module depends on `otel4s-core-trace` and `otel4s-semconv`
+(for the stable `code.function.name` key), neither of which is a backend, and
+the one `Tracer` it can construct itself is `Tracer.noop`, which the tests use.
 
 ## The attribute layout
 
-A traced call records **at most two** attributes. Given
+A traced call records **at most three** attributes. Given
 
 ```scala
 trait Foo[F[_]] {
@@ -42,15 +43,23 @@ span named `Foo.greet` carrying
 
 | key | value |
 | --- | --- |
-| `Foo.greet.parameters` | a map, `{"name": "world", "times": 2}` |
-| `Foo.greet.returnValue` | the encoded return value |
+| `code.function.name` | `Foo.greet` (stable semantic convention) |
+| `com.dwolla.code.function.arguments` | a map, `{"name": "world", "times": 2}` |
+| `com.dwolla.code.function.return_value` | the encoded return value |
+
+The keys follow the OpenTelemetry naming conventions (lowercase, snake_case,
+and an owned `com.dwolla` prefix where the semantic conventions define
+nothing). They never vary by algebra or method; the method is identified by
+`code.function.name` and the span name. `core` (natchez) keeps its 0.2.6 keys
+(`<Alg>.<method>.<param>` and `<Alg>.<method>.returnValue`), so the two
+backends' attribute keys differ deliberately.
 
 Parameter names come from the `Aspect`'s `Advice`, and every parameter list is
 flattened into the one map — which cannot lose a parameter, because Scala
 rejects duplicate parameter names within a signature, including across
 parameter lists.
 
-**`parameters` is a real OTLP `kvlistValue`, not a JSON string.** It reaches the
+**`com.dwolla.code.function.arguments` is a real OTLP `kvlistValue`, not a JSON string.** It reaches the
 wire as nested `kvlistValue`/`arrayValue`/`intValue`/…, and on the
 `otel4s-oteljava` backend it is an `io.opentelemetry.api.common.KeyValueList`
 whose entries are typed `Value`s. The JSON-looking text you may see in a log is
@@ -61,7 +70,14 @@ one slot against `SpanLimits.maxNumberOfAttributes` (default 128) where twenty
 flat attributes would cost twenty, and `maxAttributeValueLength` still recurses
 into the tree, so nothing escapes truncation by being nested.
 
-`TracerInstrumentation` records neither attribute; it only names the span.
+`code.function.name` repeats the span name, and it spends a slot anyway
+because it is the join key between spans and metrics: `otel4s-tagless-metrics`
+records the same attribute on `com.dwolla.code.function.duration`, and a
+metric data point has no span name, so this attribute is what lets a query
+line a call's span up with its duration measurements.
+
+`TracerInstrumentation` records neither the arguments nor the return value; it
+only names the span (and records `code.function.name`).
 
 ## An empty attribute is omitted, not recorded empty
 
@@ -71,23 +87,23 @@ Totality lives in the type class; absence lives in the interpreter.
 `AnyValue.empty`. It has no channel for "nothing" and will not get one, because
 `Seq(Some("a"), None)` has to encode as `SeqValue([StringValue(a), EmptyValue])`
 — an `Option[AnyValue]` result would shrink the sequence and destroy the
-positions a sequence exists to preserve. Inside the `parameters` map, an empty
+positions a sequence exists to preserve. Inside the arguments map, an empty
 entry is likewise **kept**: `{"name": "world", "note": null}` records all three
 of key, position and absence for one slot.
 
 A **top-level attribute**, though, is **omitted entirely** when its whole value
 would be empty:
 
-- a zero-parameter method records **no** `parameters` attribute — not one
+- a zero-parameter method records **no** `com.dwolla.code.function.arguments` attribute — not one
   holding an empty map;
-- a `Unit`-returning method records **no** `returnValue` attribute — not one
+- a `Unit`-returning method records **no** `com.dwolla.code.function.return_value` attribute — not one
   holding `EmptyValue`;
-- `def ping(): F[Unit]` therefore produces a span with **no attributes at all**.
+- `def ping(): F[Unit]` therefore produces a span with **no attributes beyond `code.function.name`**.
 
 Both omissions are verified end to end against the real SDK, and the guards are
 what produce them: with the guards removed the SDK happily round-trips an empty
 map and an `EmptyValue`, so the zero comes from this library, not from SDK
-tolerance. The span's own name already says the method ran, and two slots per
+tolerance. The span's own name already says the method ran, and two extra slots per
 span is a real cost on algebras full of `close()` and `ping()`.
 
 ## `opentelemetry-api` 1.59.0 is a hard floor
@@ -99,8 +115,8 @@ values reach the OpenTelemetry Java SDK through
 application that pins an older SDK will fail to link
 `AttributeKey.valueKey` inside otel4s's own converter.
 
-otel4s 1.0.1 pulls a new enough version transitively, so the default is fine; a
-downstream pin is what breaks. This module declares no dependency on the Java
+otel4s 1.1.0 pulls `opentelemetry-api` 1.64.0 transitively, which satisfies
+that floor, so the default is fine; a downstream pin is what breaks. This module declares no dependency on the Java
 SDK and cannot enforce the floor for you.
 
 ## What the `otel4s-oteljava` backend does to the value on the way out
@@ -117,7 +133,7 @@ type to narrower type when possible"*.
 | `SeqValue`, non-empty and homogeneous in one of those four scalars | the matching `*_ARRAY` |
 | `SeqValue`, empty | `VALUE` |
 | `SeqValue`, heterogeneous, or of nested seqs/maps/byte arrays/empties | `VALUE` |
-| `MapValue`, empty or not — always, including every `parameters` attribute | `VALUE` |
+| `MapValue`, empty or not — always, including every arguments attribute | `VALUE` |
 | `ByteArrayValue` | `VALUE` |
 | `EmptyValue` | `VALUE` — but a top-level attribute is omitted before it gets there |
 
@@ -138,7 +154,7 @@ backend has not been checked.
 
 ## Whether your backend *renders* structured attributes is unverified
 
-The OTLP wire format is confirmed: a `parameters` attribute leaves the exporter
+The OTLP wire format is confirmed: a `com.dwolla.code.function.arguments` attribute leaves the exporter
 as a native `kvlistValue`, end to end. What was **not** tested is whether
 Jaeger, Tempo, Honeycomb, Datadog, or whatever collector sits in the path
 renders `kvlistValue` span attributes rather than flattening or dropping them on
@@ -169,18 +185,97 @@ unrelated to either package and no mention of the ambiguity at all. If a
 method that plainly exists reports as missing on Scala 3, check for a stray
 import of the other backend's syntax first.
 
-A type with a circe `Encoder` resolves through `encodableToAnyValue`, ranked
-above the `Show` fallback: its `Json` is folded into a structured `AnyValue`
-tree — a `JsonObject` becomes an `AnyValue.map`, a JSON array an
-`AnyValue.seq`, and so on — not a JSON string. Only a type with neither an
-`Encoder` nor a `Show` fails to resolve. Write your own instance to override
-either fallback; it lives in your type's companion and outranks both.
+**There is no implicit fallback to a circe `Encoder` or a cats `Show`.** A
+type with no `ToAnyValue` is a compile error where the `Aspect` is derived.
+Built-in instances cover the primitives, `String`, `Char`, `Unit`,
+`BigDecimal`, `BigInt`, `UUID`, `URI`, circe's `Json` and `JsonObject`, and the
+collections, maps and tuples listed below. For a domain type, write an
+instance in its companion, or opt in to an existing encoding explicitly:
+
+```scala
+implicit val moneyToAnyValue: ToAnyValue[Money] = ToAnyValue.fromEncoder[Money]
+implicit val distanceToAnyValue: ToAnyValue[Distance] = ToAnyValue.fromShow[Distance]
+```
+
+`fromEncoder` folds the type's `Json` into a structured `AnyValue` tree — a
+`JsonObject` becomes an `AnyValue.map`, a JSON array an `AnyValue.seq`, and so
+on — not a JSON string; `fromShow` records the rendering as a string. The
+same opt-in is the way to record `java.time` types, which have no built-in
+instance here: `ToAnyValue.fromEncoder[java.time.Instant]` uses circe's
+ISO-8601 encoding (on Scala.js that needs `scala-java-time`, as circe's
+`java.time` encoders always do).
 
 The `Float` widening (`ToAnyValue[Float]`) is exact in the IEEE-754 sense and
 inexact-looking in print — `0.1f` records as `0.10000000149011612`. The
 alternative, `_.toString.toDouble`, prints prettily by silently changing the
 value, which is worse in a library. Shadow the instance if you want the
 shorter rendering.
+
+### Redaction
+
+A value is recorded only through its own `ToAnyValue`. A hand-written
+redacting instance is therefore honored everywhere the type appears: bare, as
+a parameter or return value, and inside every container, map and tuple, which
+encode element-wise:
+
+- `Option`, recorded as the value itself or an empty value;
+- `Seq` (and so `List`, `Vector`, …), `Set` (including `SortedSet`), `Array`,
+  `Chain`, `OneAnd`, and the cats `NonEmptyList`, `NonEmptyVector`,
+  `NonEmptySeq`, `NonEmptyChain` and `NonEmptySet`, recorded as a sequence;
+- any other single-parameter `C[A]` that converts to an `Iterable[A]` —
+  `Iterable` itself, `scala.collection.Seq` and `scala.collection.Set`, and
+  the mutable sequences and sets — also recorded as a sequence.
+  `scala.collection.Map` and `mutable.Map` have no instance; convert them with
+  `.toMap`. On Scala 2, a type of your own that extends `Iterable`, `Seq` or
+  `Set` and has its own instance in its companion is ambiguous with this
+  generic one; bring your instance into lexical scope with an import;
+- tuples of arity 1 to 22, recorded as a sequence of their elements in
+  position, with a sequence-valued element kept nested. (`ToAnyValue`'s
+  `product`, and so `(ta, tb).tupled`, flattens one level instead, so the two
+  differ when a component encodes to a sequence.)
+- `Map` and `NonEmptyMap`, recorded as a map whose values use the value's
+  instance. Keys are rendered from the key's own instance: a string as-is, a
+  number or boolean with `toString`, and anything else with otel4s's
+  `Show[AnyValue]`. Keys that render to the same string collapse to one
+  entry, and under a redacting key instance every key does:
+  `Map(a -> 1, b -> 2, c -> 3)` keyed by a redacted type records a single
+  `redacted` entry, and which value survives follows the map's iteration
+  order, which is unspecified for an unsorted `Map`.
+
+A container with no instance here (`Either`, `Validated`, `Ior`,
+`NonEmptyLazyList`, …) is a compile error rather than a leak. Choosing its
+encoding is up to you; build it from the element instances so a redacting one
+is still honored. For example, as a tagged map:
+
+```scala
+import cats.data.Validated
+import cats.syntax.all._
+import com.dwolla.tracing.otel4s.ToAnyValue
+import org.typelevel.otel4s.AnyValue
+
+implicit def eitherToAnyValue[L: ToAnyValue, R: ToAnyValue]: ToAnyValue[Either[L, R]] =
+  ToAnyValue.instance(_.fold(
+    l => AnyValue.map(Map("left" -> ToAnyValue[L].toAnyValue(l))),
+    r => AnyValue.map(Map("right" -> ToAnyValue[R].toAnyValue(r))),
+  ))
+
+implicit def validatedToAnyValue[E: ToAnyValue, A: ToAnyValue]: ToAnyValue[Validated[E, A]] =
+  ToAnyValue[Either[E, A]].contramap(_.toEither)
+```
+
+`contramap` comes from `cats.syntax.all._` and `ToAnyValue`'s `Contravariant`
+instance. Both instances compile and redact on Scala 2.13 and 3.
+
+The one caveat is the opt-in: **a type given its instance with `fromEncoder`
+or `fromShow` records whatever that `Encoder` or `Show` reveals**, and they
+encode the whole value without consulting any field's or element's
+`ToAnyValue`. A case class opted in with `fromEncoder` records a sensitive
+field in the clear if its `Encoder` writes it, even when the field's own type
+redacts. Give such a type a hand-written instance instead.
+
+A `Set` records its iteration order, which for an unsorted `Set` is
+unspecified and can differ between two equal sets, so equal sets can record as
+differently ordered sequences.
 
 ## Error recording
 
@@ -228,16 +323,18 @@ against a real SDK through `otel4s-oteljava-trace-testkit`.
 The reason is availability, not preference. Every otel4s span type is sealed
 with a `private[otel4s]` `Unsealed` variant, so a recording `Tracer` cannot be
 hand-rolled the way this repo hand-rolls a `natchez.Trace`; a testkit is
-required. At otel4s 1.0.1 there is no testkit that works on Scala.js:
-`otel4s-oteljava-trace-testkit` publishes no `_sjs1_` artifact at any version,
-and the cross-platform `otel4s-sdk-trace-testkit` stops at 0.19.0. Revisit when
-`otel4s-sdk-trace-testkit` reaches 1.0.x.
+required. `otel4s-oteljava-trace-testkit` publishes no `_sjs1_` artifact at any
+version, but a cross-platform testkit does exist: `otel4s-sdk-trace-testkit`
+(otel4s-sdk is pre-1.0 and versioned separately; 0.19.4 is built against
+otel4s-core 1.1.0). Using it would add an otel4s-sdk backend, so these modules
+assert span content with the JVM oteljava testkit instead; adopting the sdk
+testkit is a possible follow-up.
 
 ## Scala 2.12
 
 **This module compiles nothing and ships nothing on 2.12.** No
 `otel4s-tagless_2.12` or `otel4s-tagless_sjs1_2.12` artifact is published, and
-none ever will be at otel4s 1.0.x.
+none ever will be, because otel4s itself publishes none.
 
 otel4s has never published a `_2.12` artifact, at any version — its own build
 sets `crossScalaVersions := Seq("2.13.18", "3.3.8")`, and Maven Central 404s for
@@ -303,12 +400,12 @@ reintroduces the ambiguity the split exists to avoid. The mtl syntax resolves
 parameters still traces.
 
 **What a raise records.** Two attributes, on the **method's own span** — the
-same child span that carries `parameters` and `returnValue`, not the caller's:
+same child span that carries the arguments and return value, not the caller's:
 
 | key | value |
 | --- | --- |
-| `raise.error.type` | the error's runtime class name; always recorded |
-| `raise.error.value` | the error's `ToAnyValue` rendering; **omitted** when it would encode to `AnyValue.empty` |
+| `com.dwolla.raise.error.type` | the error's runtime class name; always recorded |
+| `com.dwolla.raise.error.value` | the error's `ToAnyValue` rendering; **omitted** when it would encode to `AnyValue.empty` |
 
 The omission is the same omit-when-empty rule described above for parameters
 and return values, and it keeps `ToAnyValue` total. Both keys are constants on

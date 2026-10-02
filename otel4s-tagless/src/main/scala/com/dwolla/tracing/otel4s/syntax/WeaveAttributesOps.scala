@@ -2,7 +2,6 @@ package com.dwolla.tracing.otel4s
 package syntax
 
 import cats.tagless.aop.Aspect.Weave
-import com.dwolla.tagless.WeaveNaming._
 import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
 
 trait ToWeaveAttributesOps {
@@ -12,7 +11,7 @@ trait ToWeaveAttributesOps {
 
 class WeaveAttributesOps[F[_], Cod[_], A](val fa: Weave[F, ToAnyValue, Cod, A]) extends AnyVal {
   /** All of the call's parameters, from every parameter list, as exactly one
-    * attribute named `algebraName.methodName.parameters` whose value is an
+    * attribute, `com.dwolla.code.function.arguments`, whose value is an
     * `AnyValue` map keyed by parameter name — '''or no attribute at all''' if
     * the method takes no parameters. `ToAnyValue` itself stays a total
     * `A => AnyValue`: a parameter that encodes to nothing is still a kept
@@ -42,16 +41,13 @@ class WeaveAttributesOps[F[_], Cod[_], A](val fa: Weave[F, ToAnyValue, Cod, A]) 
   def asAttributes: Attributes = {
     val entries: Map[String, AnyValue] =
       fa.domain.flatten.map { advice =>
-        // Verbose keys, but the OpenTelemetry attribute-naming spec says to
-        // namespace everything:
-        // https://opentelemetry.io/docs/specs/semconv/general/attribute-naming/
         advice.name -> advice.instance.toAnyValue(advice.target.value)
       }.toMap
 
     if (entries.isEmpty) Attributes.empty
     else {
       val parameters: AnyValue = AnyValue.map(entries)
-      Attributes(Attribute(s"${fa.qualifiedMethodName}.parameters", parameters))
+      Attributes(Attribute(FunctionCallAttributes.ArgumentsKey, parameters))
     }
   }
 }

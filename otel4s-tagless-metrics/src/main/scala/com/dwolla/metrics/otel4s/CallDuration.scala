@@ -3,20 +3,30 @@ package com.dwolla.metrics.otel4s
 import cats.effect.kernel.Resource
 import cats.syntax.all._
 import org.typelevel.otel4s.Attribute
-import org.typelevel.otel4s.metrics.{BucketBoundaries, Histogram, Meter}
+import org.typelevel.otel4s.metrics.{BucketBoundaries, Histogram, Meter, MeterProvider}
 import org.typelevel.otel4s.semconv.attributes.ErrorAttributes
 
 /** What both interpreters share: every call-duration histogram is in seconds,
   * and is created the same way.
   *
   * The SDK returns the existing instrument for an identical descriptor (name,
-  * unit, description), so creating the same histogram again — from a second
-  * interpreter for the same algebra, say — aggregates into the same metric.
-  * Bucket boundaries are advice, not part of that identity: whichever creation
-  * of a name comes first fixes its buckets.
+  * unit, description), so creating the same histogram again aggregates into
+  * the same metric, whether it comes from another interpreter or from the other
+  * flavor. Bucket
+  * boundaries are advice, not part of that identity, and the advice is the same
+  * everywhere; a View overrides it.
   */
 private[otel4s] object CallDuration {
   val DurationUnit: String = "s"
+
+  /** This library's instrumentation scope. A stream's identity includes its
+    * scope, and the scope names the instrumenting library, so the module obtains
+    * its own `Meter` rather than recording through an application-wide one.
+    */
+  val ScopeName: String = "com.dwolla.metrics.otel4s"
+
+  def meter[F[_]: MeterProvider]: F[Meter[F]] =
+    MeterProvider[F].meter(ScopeName).withVersion(BuildInfo.version).get
 
   /** The OpenTelemetry-recommended boundaries for RPC call durations, in
     * seconds: 5 ms to 10 s. The SDK's own default boundaries are shaped for

@@ -4,7 +4,7 @@ import cats.effect.IO
 import com.dwolla.metrics.otel4s.syntax._
 import com.dwolla.tracing.otel4s.syntax._
 import munit.CatsEffectSuite
-import org.typelevel.otel4s.metrics.{BucketBoundaries, Meter}
+import org.typelevel.otel4s.metrics.MeterProvider
 import org.typelevel.otel4s.trace.Tracer
 
 /** Pins, on every platform and Scala version, that each `withMetrics` overload
@@ -14,17 +14,13 @@ import org.typelevel.otel4s.trace.Tracer
   * build, by `MeasurementContentSuite`.
   */
 class WithMetricsSyntaxSpec extends CatsEffectSuite {
-  private implicit val meter: Meter[IO] = Meter.noop[IO]
+  private implicit val meterProvider: MeterProvider[IO] = MeterProvider.noop[IO]
   private implicit val tracer: Tracer[IO] = Tracer.noop[IO]
 
   private val foo: Foo[IO] = Foo[IO](name => IO.pure(s"hello $name"), IO.unit)
 
   test("withMetrics() yields the wrapped algebra") {
     foo.withMetrics().flatMap(_.greet("world")).assertEquals("hello world")
-  }
-
-  test("withMetrics(buckets) yields the wrapped algebra") {
-    foo.withMetrics(BucketBoundaries(0.001, 0.01)).flatMap(_.greet("world")).assertEquals("hello world")
   }
 
   test("withMetrics(role, system, service) yields the wrapped algebra") {

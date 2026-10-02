@@ -1,13 +1,13 @@
 # otel4s-tagless-metrics
 
 Call-duration metrics for any cats-tagless algebra with an `Instrument`
-instance, recorded through an otel4s `Meter`. Syntax in
-`com.dwolla.metrics.otel4s.syntax`; the RPC parameter types in
-`com.dwolla.metrics.otel4s`.
+instance, recorded through an otel4s `MeterProvider`; the module obtains its own
+`Meter`. Syntax in `com.dwolla.metrics.otel4s.syntax`; the RPC parameter types
+in `com.dwolla.metrics.otel4s`.
 
 This module depends on `otel4s-core-metrics`, the stable `otel4s-semconv`,
 cats, and cats-tagless — never on natchez, `otel4s-core-trace`, or an otel4s
-backend. A `Meter[F]` comes from a backend's `MeterProvider[F]`
+backend. A `MeterProvider[F]` comes from a backend
 (`otel4s-oteljava` on the JVM, `otel4s-sdk` cross-platform).
 
 ## Two flavors, one method
@@ -17,20 +17,19 @@ import com.dwolla.metrics.otel4s._
 import com.dwolla.metrics.otel4s.syntax._
 
 internal.withMetrics()                  // F[Alg[F]], in-process calls
-internal.withMetrics(buckets)           // …with your own bucket boundaries
-thriftImpl.withMetrics(RpcRole.Server, RpcSystem("thrift"), RpcService("com.dwolla.crypto.EncryptionService"))
+thriftImpl.withMetrics(RpcRole.Server, RpcSystem("thrift"), RpcService("com.example.FooService"))
 ```
 
 Every form returns `F[Alg[F]]`: running it sets up the interpreter once and
 yields the wrapped algebra. Errors and cancellation propagate unchanged.
 
-| | `withMetrics()` / `withMetrics(buckets)` | `withMetrics(role, system, service)` |
+| | `withMetrics()` | `withMetrics(role, system, service)` |
 | --- | --- | --- |
 | For | in-process calls | an RPC server implementation or client |
-| Needs | `Instrument[Alg]`, `MonadCancelThrow[F]`, `Ref.Make[F]`, `Meter[F]` | `Instrument[Alg]`, `MonadCancelThrow[F]`, `Meter[F]` |
-| Metric | `<algebraName>.duration` | `rpc.server.call.duration` / `rpc.client.call.duration` |
+| Needs | `Instrument[Alg]`, `MonadCancelThrow[F]`, `MeterProvider[F]` | `Instrument[Alg]`, `MonadCancelThrow[F]`, `MeterProvider[F]` |
+| Metric | `com.dwolla.code.function.duration` (shared by every in-process algebra) | `rpc.server.call.duration` / `rpc.client.call.duration` |
 | Unit | `s` | `s` |
-| Buckets | 5 ms – 10 s, or yours | 5 ms – 10 s (the RPC recommendation) |
+| Buckets | 5 ms – 10 s (tune with an SDK View) | 5 ms – 10 s (the RPC recommendation) |
 | Attributes | `code.function.name = Alg.method` | `rpc.system.name`, `rpc.method = <service>/<method>` |
 | On failure | `error.type` = the error's class name, or `canceled` | same |
 
@@ -50,31 +49,30 @@ excludes the span's own overhead.
 
 ## Things to know
 
-- **The generic histogram is created on the first call.** Its name comes from
-  the algebra name cats-tagless reports with each call, so it can't be created
-  sooner; the wrapped algebra keeps it after that. The RPC histogram is created
-  when the returned `F` runs.
-- **Buckets are fixed by the first creation of a metric name.** Bucket
-  boundaries are instrument *advice*, not identity, so wrapping another instance
-  of the same algebra with different boundaries records into the first one's
-  buckets. Tune buckets centrally with an SDK View.
+- **Every in-process algebra shares one metric.** `withMetrics()` records to
+  `com.dwolla.code.function.duration` and puts the operation in
+  `code.function.name`, OpenTelemetry's fixed-name-plus-attributes pattern.
+  To change bucket boundaries, configure an SDK View on that instrument name;
+  Views select instruments by name, type, unit, or meter, not by attribute, so
+  every algebra shares the boundaries. SDK-wide base-2 exponential histograms
+  are an alternative where your backend supports querying them.
+- **One cardinality budget.** Series are methods × error types across all
+  wrapped algebras. The OpenTelemetry Java SDK's default limit is 2000 series
+  per metric stream; beyond it, points collapse into `otel.metric.overflow`.
+  Raise it with a View if a very large service needs more.
 - **The RPC metric is comparable across libraries.** natchez-smithy4s's
   `withMetrics` records the same OpenTelemetry RPC metric with an identical
   name, unit, description, and buckets, so thrift and smithy4s calls in one
   service can be compared directly, told apart by `rpc.system.name`.
-- **Give each library its own `Meter`.** A metric stream is identified by its
-  instrumentation scope as well as its name, and the scope is meant to name
-  the instrumenting library, so pass a `Meter` from
-  `MeterProvider[F].get("otel4s-tagless-metrics")` rather than one shared
-  application-wide `Meter`. Separate scopes keep the two libraries from
-  conflicting if their metric descriptions ever drift apart; a query that
-  aggregates by `rpc.system.name` still combines both. Share one `Meter` only
-  if your metrics backend can't aggregate across instrumentation scopes.
+- **Instrumentation scope.** The module obtains its own meter from the
+  `MeterProvider`, named `com.dwolla.metrics.otel4s` and versioned with the
+  library, so its streams never collide with other instrumentation's. Some
+  backends turn the scope version into a series label, which starts new series
+  when you upgrade the library; aggregating queries are unaffected.
 - **Import the RPC types by name next to natchez-smithy4s.** Its metrics
   module has its own `RpcRole`, so `import com.dwolla.metrics.otel4s._` and
   `import com.dwolla.metrics.smithy._` together make `RpcRole` ambiguous.
   Import `com.dwolla.metrics.otel4s.{RpcRole, RpcService, RpcSystem}` (or
-  rename one, e.g. `RpcRole => TaglessRpcRole`) instead; the two `withMetrics`
-  syntaxes coexist.
+  rename one, e.g. `RpcRole => TaglessRpcRole`) instead.
 - **`code.function.name` is not fully qualified.** cats-tagless knows only an
-  algebra's simple name, so it records `EncryptionService.encrypt`.
+  algebra's simple name, so it records `FooService.greet`.

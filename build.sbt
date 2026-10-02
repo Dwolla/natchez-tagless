@@ -69,6 +69,8 @@ val catsVersion = "2.13.0"
 val catsEffectVersion = "3.7.1"
 val catsMtlVersion = "1.7.0"
 val catsTaglessVersion = "0.16.5"
+// Must track discipline-munit's discipline-core dependency; bump them together.
+val disciplineCoreVersion = "1.7.0"
 val disciplineMunitVersion = "2.0.0"
 val munitVersion = "1.3.1"
 val otel4sVersion = "1.1.0"
@@ -205,7 +207,10 @@ lazy val raiseAspectLaws = crossProject(JVMPlatform, JSPlatform)
     name := "raise-aspect-laws",
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-laws" % catsVersion,
-      "org.typelevel" %%% "discipline-munit" % disciplineMunitVersion,
+      // Main code needs only `org.typelevel.discipline.Laws`; users pick their
+      // own test framework.
+      "org.typelevel" %%% "discipline-core" % disciplineCoreVersion,
+      "org.typelevel" %%% "discipline-munit" % disciplineMunitVersion % Test,
       "org.typelevel" %%% "cats-effect" % catsEffectVersion % Test,
       "org.typelevel" %%% "cats-effect-testkit" % catsEffectVersion % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
@@ -291,7 +296,12 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
       // AttributeKey and Attributes, so this one coordinate brings both the
       // tracing API and the attribute model. otel4s-core is an umbrella that
       // would also drag in logs+metrics.
-      if (isOtel4sScalaVersion.value) Seq("org.typelevel" %%% "otel4s-core-trace" % otel4sVersion)
+      if (isOtel4sScalaVersion.value)
+        Seq(
+          "org.typelevel" %%% "otel4s-core-trace" % otel4sVersion,
+          // stable semconv (depends only on otel4s-core-common): code.function.name
+          "org.typelevel" %%% "otel4s-semconv" % otel4sVersion,
+        )
       else Seq.empty
     },
     Compile / unmanagedSourceDirectories := {
@@ -301,14 +311,21 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
       if (isOtel4sScalaVersion.value) (Test / unmanagedSourceDirectories).value else Seq.empty
     },
     publish / skip := !isOtel4sScalaVersion.value,
+    // sbt-typelevel-mima decides whether to check previous artifacts from
+    // `publishArtifact`, not `publish / skip`; without this, 2.12 would look
+    // for `_2.12` artifacts that were never published once a release is tagged.
+    publishArtifact := isOtel4sScalaVersion.value,
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
   // Span *content* can only be asserted with a testkit: every otel4s span type
   // is sealed and its Unsealed variant is private[otel4s], so a recording
-  // Tracer cannot be hand-rolled. The cross-platform testkit
-  // (otel4s-sdk-trace-testkit) has not been released at 1.0.x — it stops at
-  // 0.19.0 — so at otel4s 1.0.1 the only option is the JVM one. Cross-platform
-  // coverage lives in TracerTransparencySpec, which needs no testkit.
+  // Tracer cannot be hand-rolled. A cross-platform testkit exists
+  // (otel4s-sdk-trace-testkit; otel4s-sdk is pre-1.0 and versioned separately,
+  // and 0.19.4 is built against otel4s-core-trace 1.1.0), but using it would add
+  // an otel4s-sdk backend, so these modules assert span content with the JVM
+  // oteljava testkit instead; adopting the sdk testkit is a possible follow-up.
+  // Cross-platform coverage lives in TracerTransparencySpec, which needs no
+  // testkit.
   //
   // `%%` is correct for both coordinates below: neither `otel4s-oteljava-*`
   // artifact is published for JS, so `.jvmSettings` is the only place they can
@@ -392,6 +409,10 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
       if (isOtel4sScalaVersion.value) (Test / unmanagedSourceDirectories).value else Seq.empty
     },
     publish / skip := !isOtel4sScalaVersion.value,
+    // sbt-typelevel-mima decides whether to check previous artifacts from
+    // `publishArtifact`, not `publish / skip`; without this, 2.12 would look
+    // for `_2.12` artifacts that were never published once a release is tagged.
+    publishArtifact := isOtel4sScalaVersion.value,
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
   .jvmSettings(
@@ -438,8 +459,14 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
 lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("otel4s-tagless-metrics"))
+  .enablePlugins(BuildInfoPlugin)
   .settings(
     name := "otel4s-tagless-metrics",
+    // The library names its own instrumentation scope and version (see
+    // CallDuration.meter); BuildInfo supplies the version and isn't published API.
+    buildInfoKeys := Seq[BuildInfoKey](version),
+    buildInfoPackage := "com.dwolla.metrics.otel4s",
+    buildInfoOptions += BuildInfoOption.PackagePrivate,
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % catsVersion,
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
@@ -458,9 +485,9 @@ lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
           // code inlines the RPC names it needs; RpcSemanticConventionsSpec
           // checks them against this.
           "org.typelevel" %%% "otel4s-semconv-metrics-experimental" % otel4sVersion % Test,
-          // 0.19.0 is the last otel4s-sdk built against otel4s-core 1.0.x; 0.19.1+
-          // need core 1.1.0. Move it together with `otel4sVersion` (0.19.4 pairs
-          // with otel4s 1.1.0).
+          // otel4s-sdk is pre-1.0 and versioned separately: 0.19.4 is the
+          // release built against otel4s-core 1.1.0. Move it together with
+          // `otel4sVersion`.
           "org.typelevel" %%% "otel4s-sdk-metrics-testkit" % "0.19.4" % Test,
         )
       else Seq.empty
@@ -472,6 +499,10 @@ lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
       if (isOtel4sScalaVersion.value) (Test / unmanagedSourceDirectories).value else Seq.empty
     },
     publish / skip := !isOtel4sScalaVersion.value,
+    // sbt-typelevel-mima decides whether to check previous artifacts from
+    // `publishArtifact`, not `publish / skip`; without this, 2.12 would look
+    // for `_2.12` artifacts that were never published once a release is tagged.
+    publishArtifact := isOtel4sScalaVersion.value,
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
   // Metric *content* needs an SDK. The content properties live in the shared,

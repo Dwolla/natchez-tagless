@@ -6,15 +6,15 @@ import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
 import org.typelevel.otel4s.AnyValue
 
-/** Property tests for `ToAnyValue.encodableToAnyValue`, which folds a circe
-  * `Json` tree into `AnyValue`. `expected` below is a second, independent
+/** Property tests for `ToAnyValue[Json]`, which `fromEncoder` also uses, and
+  * which folds a circe `Json` tree into `AnyValue`. `expected` below is a second, independent
   * recursive walk of the same tree — via `Json#fold` and `JsonObject#toMap`
   * rather than `Json.Folder` and `JsonObject#toIterable` — so the property
   * isn't just the implementation checking itself.
   */
-class EncodableToAnyValueSpec extends ScalaCheckSuite with ArbitraryInstances {
+class JsonToAnyValueSpec extends ScalaCheckSuite with ArbitraryInstances {
 
-  /** Independent of `jsonToAnyValue.onNumber`'s own round-trip check, but
+  /** Independent of `jsonFolder.onNumber`'s own round-trip check, but
     * must agree with it: a `Double` that doesn't reproduce the original
     * number exactly loses precision silently, so both sides fall back to
     * the number's exact string form instead.

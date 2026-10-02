@@ -108,7 +108,10 @@ through the capability they're observing.
 
 `otel4s-tagless` and `otel4s-tagless-mtl` are otel4s counterparts of
 `natchez-tagless` and `natchez-tagless-mtl`, built so a call site's import
-line is usually the only thing that changes:
+line is the only change at the call site. Your types are another matter:
+every type that natchez traced through its `Encoder`/`Show` fallback needs a
+`ToAnyValue` (see "What needs new code" below), and the recorded span data
+changes too:
 
 | natchez, in `natchez-tagless` / `natchez-tagless-mtl` | otel4s counterpart |
 | --- | --- |
@@ -128,28 +131,41 @@ unrelated to either package, and never mentions the ambiguity. If a method
 that plainly exists reports as missing on Scala 3, check for a stray import
 of the other backend's syntax first.
 
+### What needs new code
+
+**`ToAnyValue` has no implicit fallback; `TraceableValue` does.**
+`natchez-tagless`'s `nonPrimitiveTraceValueViaJson` (declared in
+`LowPriorityTraceableValueInstances`, which *extends* the trait holding the
+`Show` fallback) gives any type with a circe `Encoder` or a cats `Show` a
+`TraceableValue` implicitly, preferring the `Encoder` —
+`ImplicitPrioritizationSpec` pins exactly that. Under otel4s such a type is a
+compile error until it gets a `ToAnyValue`: a value is recorded only through
+its own instance, so a redacting instance cannot be bypassed by a container
+or case class that encodes the whole value with its `Encoder` or `Show`. Write
+an instance, or opt in explicitly with `ToAnyValue.fromEncoder` or
+`ToAnyValue.fromShow`. This applies to raised error types recorded by
+`otel4s-tagless-mtl` too.
+
 ### What silently changes value when you migrate
 
-Swapping the import is usually a no-op, but two things record differently
-without a compile error:
+Once everything compiles, three things record differently without a compile
+error:
 
-- **JSON outranks `Show` in both libraries, but the shape still differs.**
-  `natchez-tagless`'s `nonPrimitiveTraceValueViaJson` (declared in
-  `LowPriorityTraceableValueInstances`, which *extends* the trait holding the
-  `Show` fallback) prefers a circe `Encoder` over `Show` when both exist —
-  `ImplicitPrioritizationSpec` pins exactly that — so a `Money` with both
-  instances traces as the *string* `{"cents":150}` under natchez.
-  `ToAnyValue.encodableToAnyValue` ranks the same way — a type with both now
-  records its `Encoder` rendering here too — but it folds the `Json` into a
-  *structured* `AnyValue` tree rather than a string: the same `Money` traces
-  as `AnyValue.map(Map("cents" -> AnyValue.long(150)))`, not
-  `StringValue("{\"cents\":150}")`. The type that used to be the loud,
-  easy-to-notice case here — an `Encoder` with no `Show` — now compiles fine
-  under both libraries; a type with *neither* instance is the only remaining
-  compile error. What survives as the silent divergence is the shape, not
-  the priority: string under natchez, structured under otel4s, for exactly
-  the types that carry both instances. (This closes the open question of
-  whether `ToAnyValue` should gain a JSON fallback at all.)
+- **Span attribute keys change.** natchez records one attribute per parameter,
+  named `<Alg>.<method>.<param>`, plus `<Alg>.<method>.returnValue`. otel4s
+  records a single `com.dwolla.code.function.arguments` map, a
+  `com.dwolla.code.function.return_value`, and `code.function.name`. Dashboards
+  and queries keyed on the natchez names must change. The exception is the
+  raise-time attributes: `com.dwolla.raise.error.type` and
+  `com.dwolla.raise.error.value` are shared through `RaiseRecorder` and are
+  identical in both.
+
+- **An `Encoder`-backed type records structured data, not a JSON string.**
+  natchez traces a type through its circe `Encoder` as the *string*
+  `{"cents":150}`. A type opted in here with `ToAnyValue.fromEncoder` folds
+  the same `Json` into a structured `AnyValue` tree:
+  `AnyValue.map(Map("cents" -> AnyValue.long(150)))`, not
+  `StringValue("{\"cents\":150}")`.
 - **Spans get marked errored that weren't before.** otel4s's `SpanBuilder`
   finalizes with `SpanFinalizer.Strategy.reportAbnormal` by default, so any
   `Throwable` escaping a traced method is recorded as an exception event and
@@ -163,20 +179,19 @@ without a compile error:
   neither your error type nor its value. Either way the domain error itself
   isn't in the trace unless something inspects the `Raise` channel
   explicitly — which is what `otel4s-tagless-mtl`'s `RaiseAspect` support
-  does; see its README. The same string-vs-structured divergence described
-  above for parameters and return values applies to `raise.error.value`
-  too: an error ADT with both an `Encoder` and a `Show` records JSON text
-  under `natchez-tagless-mtl` and a structured `AnyValue` tree here — both
-  now rank the `Encoder` above `Show`, just in different shapes.
+  does; see its README. The string-vs-structured difference described above
+  applies to `com.dwolla.raise.error.value` too: an error type opted in with
+  `fromEncoder` records a structured `AnyValue` tree where
+  `natchez-tagless-mtl` records JSON text.
 
 ### Other differences worth knowing if you've used natchez-tagless
 
 - `Float` widens to the exact `Double` bit pattern (`0.1f` records as
   `0.10000000149011612`) rather than `_.toString.toDouble`'s prettier but
   value-changing rendering.
-- `BigDecimal` and `BigInt` both have circe `Encoder` instances, so they now
-  fold to `AnyValue.long` or `AnyValue.double` (whichever the value's `Json`
-  folds to) via `encodableToAnyValue`, rather than to a string via `Show`.
+- `BigDecimal` and `BigInt` have built-in instances that record
+  `AnyValue.long` or `AnyValue.double` when that is exact, and the exact
+  decimal string otherwise, rather than a string via `Show`.
 - `()` and `None` both encode to `AnyValue.empty` (natchez records the
   strings `"()"` and `"None"`), and a top-level attribute whose value would
   be entirely empty is omitted rather than recorded empty — see the

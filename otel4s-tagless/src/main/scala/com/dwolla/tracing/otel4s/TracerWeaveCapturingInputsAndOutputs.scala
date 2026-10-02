@@ -9,20 +9,17 @@ import com.dwolla.tracing.otel4s.syntax._
 import org.typelevel.otel4s.trace.Tracer
 import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
 
-object TracerWeaveCapturingInputsAndOutputs {
-  def apply[F[_]: FlatMap: Tracer]: Weave[F, ToAnyValue, ToAnyValue, *] ~> F =
-    new TracerWeaveCapturingInputsAndOutputs[F]
-}
-
 /**
  * Use this `FunctionK` when you have an algebra in
  * `Weave[F, ToAnyValue, ToAnyValue, *]` and you want each method call on the
  * algebra to introduce a new child span, using the ambient `Tracer[F]`. Each
  * child span is named using the algebra name and method name captured in the
  * `Weave`, and both the parameters given to the method call and its return
- * value are attached to the span, as `<algebraName>.<methodName>.parameters`
- * and `.returnValue`. Either attribute is omitted outright when its value
- * would carry nothing, rather than recorded empty. See this module's README
+ * value are attached to the span, as `com.dwolla.code.function.arguments`
+ * and `com.dwolla.code.function.return_value`, alongside `code.function.name`.
+ * `code.function.name` is always recorded; the arguments and return-value
+ * attributes are each omitted outright when their value would carry nothing,
+ * rather than recorded empty. See this module's README
  * for the full attribute layout, the omission rule, and how the
  * `otel4s-oteljava` backend narrows these values on the way out.
  *
@@ -37,7 +34,7 @@ object TracerWeaveCapturingInputsAndOutputs {
  *
  * Also inherited from `TracerInstrumentation`: when a `Throwable` escapes the
  * traced effect, otel4s marks the span as errored on its own — see the
- * README's "Error recording" section. A failed call records no `returnValue`
+ * README's "Error recording" section. A failed call records no return-value
  * attribute, because there is no return value.
  *
  * The format of the attribute values is controlled by the `ToAnyValue`
@@ -61,8 +58,12 @@ object TracerWeaveCapturingInputsAndOutputs {
  * }}}
  *
  * With that instance the span records `"redacted password value"` and never the
- * actual value. Similar functionality can be achieved with the newtype library
- * of your choice.
+ * actual value, wherever the newtype appears: a value is recorded only through
+ * its own `ToAnyValue`, and every container, map and tuple instance encodes
+ * element-wise. The one exception is a type you opt in with
+ * `ToAnyValue.fromEncoder` or `ToAnyValue.fromShow`, which records whatever
+ * that `Encoder` or `Show` reveals, including a field of the newtype. Similar
+ * functionality can be achieved with the newtype library of your choice.
  *
  * Note if you have an algebra `Alg[F]` for which an
  * `Aspect[Alg, ToAnyValue, ToAnyValue]` exists, it can be converted to
@@ -161,7 +162,12 @@ object TracerWeaveCapturingInputsAndOutputs {
  * disappears, with no error and no warning. Pick one. See
  * `com.dwolla.tracing.otel4s.AnyValueAspect` for the full note.
  */
-class TracerWeaveCapturingInputsAndOutputs[F[_]: FlatMap: Tracer]
+object TracerWeaveCapturingInputsAndOutputs {
+  def apply[F[_]: FlatMap: Tracer]: Weave[F, ToAnyValue, ToAnyValue, *] ~> F =
+    new TracerWeaveCapturingInputsAndOutputs[F]
+}
+
+private[otel4s] final class TracerWeaveCapturingInputsAndOutputs[F[_]: FlatMap: Tracer]
   extends (Weave[F, ToAnyValue, ToAnyValue, *] ~> F) {
 
   override def apply[A](fa: Weave[F, ToAnyValue, ToAnyValue, A]): F[A] = {
@@ -172,7 +178,7 @@ class TracerWeaveCapturingInputsAndOutputs[F[_]: FlatMap: Tracer]
       // asAttributes stays *inside* this lambda. Tracer.noop's modifyState
       // never applies the function, so a disabled tracer pays nothing for
       // encoding the parameters — and by-name parameters are never forced.
-      .modifyState(_.addAttributes(fa.asAttributes))
+      .modifyState(_.addAttributes(FunctionCallAttributes.codeFunctionName(name) ++ fa.asAttributes))
       .build
       // `use`, not `surround`: otel4s has no ambient `Tracer[F].put`, so the
       // only way to attach an attribute after the call is to hold the Span.
@@ -185,7 +191,7 @@ class TracerWeaveCapturingInputsAndOutputs[F[_]: FlatMap: Tracer]
           // asAttributes' zero-parameter convention.
           val attributes: Attributes =
             if (returnValue == AnyValue.empty) Attributes.empty
-            else Attributes(Attribute(s"$name.returnValue", returnValue))
+            else Attributes(Attribute(FunctionCallAttributes.ReturnValueKey, returnValue))
 
           // `.backend` deliberately: Span#addAttributes is a macro on Scala 2
           // and inline on Scala 3, and Span.Backend#addAttributes is the

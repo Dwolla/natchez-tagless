@@ -12,8 +12,8 @@ import org.typelevel.otel4s.trace.Tracer
   * are all sealed and their `Unsealed` variants are `private[otel4s]`, so a
   * recording `Tracer` cannot be hand-rolled the way this repo hand-rolls a
   * `natchez.Trace`. Span ''content'' is therefore asserted in `SpanContentSpec`,
-  * which is JVM-only because otel4s's cross-platform SDK testkit has not been
-  * released at 1.0.x.
+  * which is JVM-only: it uses the oteljava testkit, because otel4s's
+  * cross-platform SDK testkit would add an otel4s-sdk backend.
   *
   * Two things make this suite worth having anyway, and neither is the obvious
   * one. Parametricity already forbids an interpreter with signature

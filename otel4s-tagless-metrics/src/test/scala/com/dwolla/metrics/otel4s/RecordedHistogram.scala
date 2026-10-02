@@ -6,7 +6,12 @@ import org.typelevel.otel4s.Attributes
   * backend's types, so `MeasurementContentSuite` can assert on oteljava and
   * otel4s-sdk alike without change.
   */
-final case class RecordedHistogram(name: String, unit: String, description: String, points: List[RecordedPoint])
+final case class RecordedHistogram(name: String,
+                                   unit: String,
+                                   description: String,
+                                   scopeName: String,
+                                   scopeVersion: Option[String],
+                                   points: List[RecordedPoint])
 
 /** One attribute set's aggregated measurements. */
 final case class RecordedPoint(attributes: Attributes, count: Long, sum: Double, boundaries: List[Double])

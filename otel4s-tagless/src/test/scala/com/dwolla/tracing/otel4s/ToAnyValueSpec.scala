@@ -13,6 +13,7 @@ object ToAnyValueSpec {
   final case class Money(cents: Long)
   object Money {
     implicit val moneyShow: Show[Money] = Show.show(m => s"$$${m.cents}")
+    implicit val moneyToAnyValue: ToAnyValue[Money] = ToAnyValue.fromShow[Money]
   }
 }
 
@@ -95,12 +96,12 @@ class ToAnyValueSpec extends DisciplineSuite {
     assertEquals(enc(Map("k" -> 1)), AnyValue.map(Map("k" -> AnyValue.long(1L))))
   }
 
-  test("a type with only a Show instance falls back to its rendering") {
+  test("a type that opts in with fromShow records its rendering, inside containers too") {
     assertEquals(enc(Money(500)), AnyValue.string("$500"))
     assertEquals(enc(Seq(Money(1))), AnyValue.seq(Seq(AnyValue.string("$1"))))
   }
 
-  test("BigDecimal and BigInt resolve via the Encoder fallback, not the Show fallback") {
+  test("BigDecimal and BigInt record exact numbers") {
     // "2.00" is a mathematically whole number despite its trailing zeros, so
     // it folds to AnyValue.long, not AnyValue.double — the fold decides on
     // value, not on scale or textual form.
@@ -110,6 +111,14 @@ class ToAnyValueSpec extends DisciplineSuite {
     // would silently round it, so this falls back to the exact decimal
     // string instead.
     assertEquals(enc(BigInt("123456789012345678901234567890")), AnyValue.string("123456789012345678901234567890"))
+  }
+
+  test("Char, UUID and URI record their string forms, and JsonObject folds to a map") {
+    val uuid = java.util.UUID.fromString("00000000-0000-0000-0000-000000000001")
+    assertEquals(enc('c'), AnyValue.string("c"))
+    assertEquals(enc(uuid), AnyValue.string("00000000-0000-0000-0000-000000000001"))
+    assertEquals(enc(new java.net.URI("https://example.com/a")), AnyValue.string("https://example.com/a"))
+    assertEquals(enc(io.circe.JsonObject("k" -> io.circe.Json.fromInt(1))), AnyValue.map(Map("k" -> AnyValue.long(1L))))
   }
 
   checkAll("SemigroupK[ToAnyValue]", SemigroupKTests[ToAnyValue].semigroupK[MiniInt])

@@ -47,8 +47,8 @@ package com.dwolla.tracing.otel4s
   *   sealed trait ValidationError { def i: Int }
   *   final class TooSmall(val i: Int) extends ValidationError
   *
-  *   // How the error renders into `raise.error.value`. Write the instance you
-  *   // want: the `Show` fallback would otherwise supply one silently.
+  *   // How the error renders into `com.dwolla.raise.error.value`. Every error
+  *   // type needs one; there is no implicit `Encoder` or `Show` fallback.
   *   implicit val validationErrorToAnyValue: ToAnyValue[ValidationError] =
   *     ToAnyValue.instance(e => AnyValue.string("too small: " + e.i.toString))
   *
@@ -96,11 +96,12 @@ package com.dwolla.tracing.otel4s
   *
   * A raise adds '''span attributes''' to the '''method's own span''' — the
   * child span `traceWithInputs`/`traceWithInputsAndOutputs` opened for that
-  * call, alongside its `parameters` and `returnValue` attributes. Not a span
+  * call, alongside its `com.dwolla.code.function.arguments` and
+  * `com.dwolla.code.function.return_value` attributes. Not a span
   * event, and not the caller's span.
   *
-  *   - `raise.error.type` — the error's runtime class name, always recorded.
-  *   - `raise.error.value` — the error's `ToAnyValue` rendering, recorded
+  *   - `com.dwolla.raise.error.type` — the error's runtime class name, always recorded.
+  *   - `com.dwolla.raise.error.value` — the error's `ToAnyValue` rendering, recorded
   *     unless it would encode to `AnyValue.empty`, in which case the attribute
   *     is omitted outright. That is the same omit-when-empty rule
   *     `TracerWeaveCapturingInputs`/`AndOutputs` apply to parameters and return
@@ -124,7 +125,7 @@ package com.dwolla.tracing.otel4s
   * The hook is attached to the `Raise[F, E]` handed into the method, so a
   * method that raises, rescues internally via `Handle.allow`, and raises again
   * fires the hook twice against the same span. The second `addAttributes`
-  * overwrites `raise.error.type`, but overwrites `raise.error.value` only if
+  * overwrites `com.dwolla.raise.error.type`, but overwrites `com.dwolla.raise.error.value` only if
   * the second error renders non-empty — the omit-when-empty rule above means a
   * second error rendering to `AnyValue.empty` writes no value key at all,
   * leaving the ''first'' raise's value standing beside the ''second'' raise's
@@ -216,7 +217,7 @@ package com.dwolla.tracing.otel4s
   *     `Submarine` carries none.
   *
   * The domain error's own name appears nowhere in that report — only in
-  * `raise.error.type`. An enclosing span is unaffected as long as the rescue
+  * `com.dwolla.raise.error.type`. An enclosing span is unaffected as long as the rescue
   * happens inside it: it finishes with status `UNSET` and no events. This
   * means every raise that is not rescued inside the method marks its span
   * `ERROR`, even where the raise is an ordinary, expected domain outcome — see
@@ -225,17 +226,17 @@ package com.dwolla.tracing.otel4s
   *
   * What is ''not'' true is that the domain error is invisible to the trace. By
   * default, every algebra traced via the `RaiseAspect` path records
-  * `raise.error.type` and `raise.error.value` at the moment of the raise, with
+  * `com.dwolla.raise.error.type` and `com.dwolla.raise.error.value` at the moment of the raise, with
   * no action required from the caller: both syntax methods resolve their hook
   * through [[com.dwolla.tagless.mtl.RaiseRecorder]].
   *
   * That default rendering ''is'' redaction-aware, like the rest of this
-  * library: `raise.error.value` is the error's `ToAnyValue[E]` rendering, so
+  * library: `com.dwolla.raise.error.value` is the error's `ToAnyValue[E]` rendering, so
   * the newtype-plus-custom-`ToAnyValue` pattern documented on
   * `TracerWeaveCapturingInputs`/`TracerWeaveCapturingInputsAndOutputs` applies
   * to error values too. An error ADT carrying a token or a card number should
   * declare a `ToAnyValue` that omits or masks it, exactly as a sensitive
-  * parameter type would. Note that `raise.error.type` still records the error's
+  * parameter type would. Note that `com.dwolla.raise.error.type` still records the error's
   * runtime class name unconditionally.
   *
   * ==Overriding the default recording==

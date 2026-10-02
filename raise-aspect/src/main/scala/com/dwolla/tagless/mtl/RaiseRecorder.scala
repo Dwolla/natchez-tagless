@@ -15,8 +15,17 @@ sealed trait RaiseRecorder[F[_], Err[_]] {
 }
 
 object RaiseRecorder extends LowPriorityRaiseRecorder {
-  val ErrorTypeKey: String = "raise.error.type"
-  val ErrorValueKey: String = "raise.error.value"
+  /** The raised error's runtime class name, recorded when `raise` is called.
+    * Deliberately not semconv's `error.type`, which describes how an operation
+    * ''ended'': a raise rescued inside the method must not leave a successful
+    * span claiming failure.
+    */
+  val ErrorTypeKey: String = "com.dwolla.raise.error.type"
+
+  /** The raised error's `ToAnyValue`/`TraceableValue` rendering, recorded when
+    * `raise` is called.
+    */
+  val ErrorValueKey: String = "com.dwolla.raise.error.value"
 
   /** Higher priority: a user-supplied `OnRaise[F, Err]` wins. */
   implicit def fromOnRaise[F[_], Err[_]](implicit or: OnRaise[F, Err]): RaiseRecorder[F, Err] =

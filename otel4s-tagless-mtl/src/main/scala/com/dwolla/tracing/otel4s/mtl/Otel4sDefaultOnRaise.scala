@@ -33,8 +33,8 @@ import org.typelevel.otel4s.trace.Tracer
   * '''Known limitation.''' A method that raises, rescues internally via
   * `Handle.allow`, and raises again fires this hook twice against the same
   * span: there is no accumulation across two raises within one method call.
-  * The second call always overwrites `raise.error.type`, but it overwrites
-  * `raise.error.value` only when the second error renders non-empty — the
+  * The second call always overwrites `com.dwolla.raise.error.type`, but it overwrites
+  * `com.dwolla.raise.error.value` only when the second error renders non-empty — the
   * omit-when-empty rule below means a second error rendering to
   * `AnyValue.empty` writes no value key, leaving the ''first'' raise's value
   * standing beside the ''second'' raise's type.
@@ -50,7 +50,7 @@ trait Otel4sDefaultOnRaise {
         def apply[E](e: E)(implicit ev: ToAnyValue[E]): F[Unit] = {
           val value: AnyValue = ev.toAnyValue(e)
 
-          // raise.error.value is omitted when it would encode to
+          // com.dwolla.raise.error.value is omitted when it would encode to
           // AnyValue.empty, matching the omit-when-empty rule this module
           // already applies to parameters and return values.
           val attributes: Attributes =

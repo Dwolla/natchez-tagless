@@ -1,34 +1,37 @@
 package com.dwolla.metrics.otel4s
 
-import cats.effect.kernel.{MonadCancelThrow, Ref, Resource}
+import cats.effect.kernel.{MonadCancelThrow, Resource}
 import cats.syntax.all._
 import cats.tagless.aop.Instrumentation
 import cats.~>
 import org.typelevel.otel4s.Attribute
-import org.typelevel.otel4s.metrics.{BucketBoundaries, Histogram, Meter}
+import org.typelevel.otel4s.metrics.{Histogram, MeterProvider}
 import org.typelevel.otel4s.semconv.attributes.CodeAttributes
 
 import scala.concurrent.duration.SECONDS
 
 private[otel4s] object MeterInstrumentation {
-  def apply[F[_]: MonadCancelThrow: Ref.Make: Meter](buckets: BucketBoundaries): F[MeterInstrumentation[F]] =
-    Ref.of[F, Option[Histogram[F, Double]]](None).map(new MeterInstrumentation[F](buckets, _))
+  /** One metric for every in-process algebra: OTel's pattern is a fixed name
+    * with the operation in attributes, so the name never varies by algebra.
+    */
+  val MetricName: String = "com.dwolla.code.function.duration"
+  val Description: String = "Measures the duration of calls to instrumented functions."
+
+  /** The name is fixed, so the histogram is created here, once. */
+  def apply[F[_]: MonadCancelThrow: MeterProvider](): F[MeterInstrumentation[F]] =
+    CallDuration.meter[F].flatMap { implicit meter =>
+      CallDuration
+        .histogram[F](MetricName, Description, CallDuration.DefaultBucketBoundaries)
+        .map(new MeterInstrumentation[F](_))
+    }
 }
 
-/** Records each call's duration to `<algebraName>.duration`, in seconds, with
-  * `code.function.name = <algebraName>.<methodName>`; a failed call also
+/** Records each call's duration, in seconds, to `com.dwolla.code.function.duration`
+  * with `code.function.name = <algebraName>.<methodName>`; a failed call also
   * carries `error.type` (the error's class name, or `"canceled"`). Errors and
   * cancellation propagate unchanged.
-  *
-  * The metric name comes from the `Instrumentation`, so the histogram can't be
-  * created until the first call; it is created then and kept in `histogram`.
-  * That single slot is only correct while one instance serves one algebra,
-  * which is why this class is package-private: `withMetrics` builds a fresh
-  * instance for exactly one algebra, and nothing else can obtain one. Racing
-  * first calls may both create it, which is harmless — see `CallDuration`.
   */
-private[otel4s] class MeterInstrumentation[F[_]: MonadCancelThrow: Meter](buckets: BucketBoundaries,
-                                                                           histogram: Ref[F, Option[Histogram[F, Double]]])
+private[otel4s] class MeterInstrumentation[F[_]: MonadCancelThrow](callDuration: Histogram[F, Double])
   extends (Instrumentation[F, *] ~> F) {
 
   override def apply[A](fa: Instrumentation[F, A]): F[A] = {
@@ -36,15 +39,6 @@ private[otel4s] class MeterInstrumentation[F[_]: MonadCancelThrow: Meter](bucket
     val attributesFor: Resource.ExitCase => List[Attribute[_]] =
       exitCase => codeFunctionName :: CallDuration.errorType(exitCase).toList
 
-    histogramFor(fa.algebraName).flatMap(_.recordDuration(SECONDS, attributesFor).surround(fa.value))
+    callDuration.recordDuration(SECONDS, attributesFor).surround(fa.value)
   }
-
-  private def histogramFor(algebraName: String): F[Histogram[F, Double]] =
-    histogram.get.flatMap {
-      case Some(created) => created.pure[F]
-      case None =>
-        CallDuration
-          .histogram[F](s"$algebraName.duration", s"Duration of calls to methods of $algebraName.", buckets)
-          .flatTap(created => histogram.set(created.some))
-    }
 }
