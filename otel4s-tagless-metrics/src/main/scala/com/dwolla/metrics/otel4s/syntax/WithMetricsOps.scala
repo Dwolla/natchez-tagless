@@ -24,7 +24,8 @@ trait ToWithMetricsOps {
   *
   * To also trace, apply tracing ''last'' so each measurement is recorded while
   * its span is active (letting a backend attach the trace as an exemplar) and
-  * the duration excludes the span's own overhead:
+  * the duration excludes the span's own overhead. otel4s-tagless's tracing
+  * syntax also returns `F[Alg[F]]`, so the two compose with `flatMap`:
   *
   * {{{
   *   import cats.effect.IO
@@ -33,15 +34,15 @@ trait ToWithMetricsOps {
   *   import com.dwolla.metrics.otel4s.syntax._
   *   import com.dwolla.tracing.otel4s.syntax._
   *   import org.typelevel.otel4s.metrics.MeterProvider
-  *   import org.typelevel.otel4s.trace.Tracer
+  *   import org.typelevel.otel4s.trace.TracerProvider
   *
-  *   def internal[Alg[_[_]]: Instrument](alg: Alg[IO])(implicit M: MeterProvider[IO], T: Tracer[IO]): IO[Alg[IO]] =
-  *     alg.withMetrics().map(_.instrumentAndTrace)
+  *   def internal[Alg[_[_]]: Instrument](alg: Alg[IO])(implicit M: MeterProvider[IO], T: TracerProvider[IO]): IO[Alg[IO]] =
+  *     alg.withMetrics().flatMap(_.instrumentAndTrace)
   *
-  *   def thriftServer[Alg[_[_]]: Instrument](impl: Alg[IO])(implicit M: MeterProvider[IO], T: Tracer[IO]): IO[Alg[IO]] =
+  *   def thriftServer[Alg[_[_]]: Instrument](impl: Alg[IO])(implicit M: MeterProvider[IO], T: TracerProvider[IO]): IO[Alg[IO]] =
   *     impl
   *       .withMetrics(RpcRole.Server, RpcSystem("thrift"), RpcService("com.example.FooService"))
-  *       .map(_.instrumentAndTrace)
+  *       .flatMap(_.instrumentAndTrace)
   * }}}
   */
 class WithMetricsOps[Alg[_[_]], F[_]](val alg: Alg[F]) extends AnyVal {

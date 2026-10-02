@@ -7,7 +7,7 @@ import io.opentelemetry.sdk.trace.data.SpanData
 import munit.CatsEffectSuite
 import org.typelevel.otel4s.oteljava.AttributeConverters.*
 import org.typelevel.otel4s.oteljava.testkit.trace.TracesTestkit
-import org.typelevel.otel4s.trace.Tracer
+import org.typelevel.otel4s.trace.TracerProvider
 import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
 
 import scala.annotation.experimental
@@ -25,12 +25,9 @@ import scala.annotation.experimental
   */
 @experimental
 class AnyValueAspectTracingSpec extends CatsEffectSuite {
-  private def resultAndSpansFrom[A](f: Tracer[IO] => IO[A]): IO[(A, List[SpanData])] =
+  private def resultAndSpansFrom[A](f: TracerProvider[IO] => IO[A]): IO[(A, List[SpanData])] =
     TracesTestkit.inMemory[IO]().use { testkit =>
-      testkit.tracerProvider
-        .get("otel4s-tagless-test")
-        .flatMap(f)
-        .flatMap(a => testkit.finishedSpans.map((a, _)))
+      f(testkit.tracerProvider).flatMap(a => testkit.finishedSpans.map((a, _)))
     }
 
   private def attributesOf(span: SpanData): Attributes = span.getAttributes.toScala
@@ -46,8 +43,8 @@ class AnyValueAspectTracingSpec extends CatsEffectSuite {
     )
 
   test("an algebra deriving AnyValueAspect captures span, input, and output") {
-    resultAndSpansFrom { implicit tracer =>
-      DerivesLookup[IO].traceWithInputsAndOutputs.get("k")
+    resultAndSpansFrom { implicit tracerProvider =>
+      DerivesLookup[IO].traceWithInputsAndOutputs.flatMap(_.get("k"))
     }.map { case (result, spans) =>
       assertEquals(result, "v:k")
       assertEquals(spans.map(_.getName), List("DerivesLookup.get"))
@@ -58,8 +55,8 @@ class AnyValueAspectTracingSpec extends CatsEffectSuite {
   test("...identically to the same algebra with a hand-written Aspect") {
     implicit val a: Aspect[Lookup, ToAnyValue, ToAnyValue] = HandWrittenLookupAspect.instance
 
-    resultAndSpansFrom { implicit tracer =>
-      Lookup[IO].traceWithInputsAndOutputs.get("k")
+    resultAndSpansFrom { implicit tracerProvider =>
+      Lookup[IO].traceWithInputsAndOutputs.flatMap(_.get("k"))
     }.map { case (result, spans) =>
       assertEquals(result, "v:k")
       assertEquals(spans.map(_.getName), List("Lookup.get"))

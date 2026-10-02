@@ -4,18 +4,19 @@ import cats.effect.IO
 import com.dwolla.tagless.mtl.{OnRaise, RaiseRecorder}
 import com.dwolla.tracing.otel4s.ToAnyValue
 import munit.CatsEffectSuite
-import org.typelevel.otel4s.trace.Tracer
+import org.typelevel.otel4s.trace.TracerProvider
 
 /** When a user-supplied `OnRaise[F, Err]` is in scope alongside an
-  * ambient `Tracer[F]`, `RaiseRecorder[F, Err]` resolution must pick the
-  * user's instance over the `Tracer`-derived default; when no `OnRaise[F,
-  * Err]` is in scope, the `Tracer`-derived default must still be reachable.
+  * ambient `TracerProvider[F]`, `RaiseRecorder[F, Err]` resolution must pick
+  * the user's instance over the `TracerProvider`-derived default; when no
+  * `OnRaise[F, Err]` is in scope, the `TracerProvider`-derived default must
+  * still be reachable.
   * Mirrors `natchez-tagless-mtl`'s `RaiseRecorderPrioritySpec`. Cross-platform
   * — no testkit involved, so this asserts resolution, not span content;
   * `RaiseSpanContentSpec` (JVM-only) covers content.
   */
 class RaiseRecorderPrioritySpec extends CatsEffectSuite {
-  private implicit val tracer: Tracer[IO] = Tracer.noop[IO]
+  private implicit val tracerProvider: TracerProvider[IO] = TracerProvider.noop[IO]
 
   test("the otel4s default is reachable when no OnRaise is in scope") {
     import com.dwolla.tracing.otel4s.mtl.syntax._
@@ -39,7 +40,7 @@ class RaiseRecorderPrioritySpec extends CatsEffectSuite {
     }
   }
 
-  test("resolving with both a user OnRaise and a Tracer in scope reports no ambiguous implicit") {
+  test("resolving with both a user OnRaise and a TracerProvider in scope reports no ambiguous implicit") {
     // The 2.13 shape guard, at the otel4s Err. `raise-aspect`'s
     // `RaiseRecorderSpec` covers the mechanism; this covers this module's
     // actual instantiation of it.
@@ -48,8 +49,8 @@ class RaiseRecorderPrioritySpec extends CatsEffectSuite {
 import com.dwolla.tagless.mtl.{OnRaise, RaiseRecorder}
 import com.dwolla.tracing.otel4s.ToAnyValue
 import com.dwolla.tracing.otel4s.mtl.syntax._
-import org.typelevel.otel4s.trace.Tracer
-implicit val tracer: Tracer[IO] = Tracer.noop[IO]
+import org.typelevel.otel4s.trace.TracerProvider
+implicit val tracerProvider: TracerProvider[IO] = TracerProvider.noop[IO]
 implicit val userOnRaise: OnRaise[IO, ToAnyValue] = new OnRaise[IO, ToAnyValue] {
   def apply[E](e: E)(implicit ev: ToAnyValue[E]): IO[Unit] = IO.unit
 }

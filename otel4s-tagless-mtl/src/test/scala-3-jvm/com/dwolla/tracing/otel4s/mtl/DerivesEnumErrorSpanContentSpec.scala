@@ -10,7 +10,7 @@ import io.opentelemetry.sdk.trace.data.SpanData
 import munit.CatsEffectSuite
 import org.typelevel.otel4s.AnyValue
 import org.typelevel.otel4s.oteljava.testkit.trace.TracesTestkit
-import org.typelevel.otel4s.trace.Tracer
+import org.typelevel.otel4s.trace.TracerProvider
 
 import scala.annotation.experimental
 
@@ -37,9 +37,10 @@ object ColorAlgebra:
 class DerivesEnumErrorSpanContentSpec extends CatsEffectSuite {
   private def raiseErrorType(raiseBlue: Boolean): IO[Option[String]] =
     TracesTestkit.inMemory[IO]().use { testkit =>
-      testkit.tracerProvider.get("otel4s-tagless-mtl-test").flatMap { implicit tracer =>
+      given TracerProvider[IO] = testkit.tracerProvider
+      ColorAlgebra[IO].traceWithInputs.flatMap { traced =>
         Handle.allowF[IO, ColorError] { implicit h =>
-          ColorAlgebra[IO].traceWithInputs.color(raiseBlue)
+          traced.color(raiseBlue)
         }.rescue(_ => "rescued".pure[IO])
       } *> testkit.finishedSpans.map { (spans: List[SpanData]) =>
         spans.headOption.flatMap(s => Option(s.getAttributes.get(io.opentelemetry.api.common.AttributeKey.stringKey("com.dwolla.raise.error.type"))))

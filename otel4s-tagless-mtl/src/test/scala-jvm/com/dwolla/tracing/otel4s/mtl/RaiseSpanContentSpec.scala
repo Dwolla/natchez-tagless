@@ -13,7 +13,7 @@ import io.opentelemetry.sdk.trace.data.SpanData
 import munit.CatsEffectSuite
 import org.typelevel.otel4s.oteljava.AttributeConverters._
 import org.typelevel.otel4s.oteljava.testkit.trace.TracesTestkit
-import org.typelevel.otel4s.trace.Tracer
+import org.typelevel.otel4s.trace.TracerProvider
 import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
 
 import scala.jdk.CollectionConverters._
@@ -22,10 +22,10 @@ import scala.jdk.CollectionConverters._
   *
   * JVM-only for the reason `otel4s-tagless`'s `SpanContentSpec` documents:
   * every otel4s span type is sealed with a `private[otel4s]` `Unsealed`
-  * variant, so a recording `Tracer` cannot be hand-rolled, and the
-  * JVM oteljava testkit is used because the cross-platform
-  * `otel4s-sdk-trace-testkit` would add an otel4s-sdk backend. Transparency is covered on every platform by
-  * `RaiseTracerTransparencySpec`, and resolution by `RaiseRecorderPrioritySpec`.
+  * variant, so a recording `Tracer` cannot be hand-rolled, and span content
+  * beyond the instrumentation scope is asserted on the JVM oteljava testkit.
+  * Transparency is covered on every platform by `RaiseTracerTransparencySpec`,
+  * and resolution by `RaiseRecorderPrioritySpec`.
   */
 class RaiseSpanContentSpec extends CatsEffectSuite {
 
@@ -33,13 +33,17 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
     * than shared: that suite lives in another module's `Test` configuration,
     * and `otel4sTaglessMtl` depends on `otel4sTagless`'s `Compile` only.
     */
-  private def resultAndSpansFrom[A](f: Tracer[IO] => IO[A]): IO[(A, List[SpanData])] =
+  private def resultAndSpansFrom[A](f: TracerProvider[IO] => IO[A]): IO[(A, List[SpanData])] =
     TracesTestkit.inMemory[IO]().use { testkit =>
-      testkit.tracerProvider
-        .get("otel4s-tagless-mtl-test")
-        .flatMap(f)
-        .flatMap(a => testkit.finishedSpans.map((a, _)))
+      f(testkit.tracerProvider).flatMap(a => testkit.finishedSpans.map((a, _)))
     }
+
+  /** Runs `fa` inside a span named `outer`, opened by the application's own
+    * tracer: a different instrumentation scope from this library's, on the
+    * same provider.
+    */
+  private def insideOuterSpan[A](fa: IO[A])(implicit tracerProvider: TracerProvider[IO]): IO[A] =
+    tracerProvider.get("com.example.FooService").flatMap(_.span("outer").surround(fa))
 
   private def attributesOf(span: SpanData): Attributes =
     span.getAttributes.toScala
@@ -58,8 +62,8 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
   private val expectedErrorType: String = classOf[FooError.Negative].getName
 
   test("a raise records com.dwolla.raise.error.type and com.dwolla.raise.error.value on the method's span") {
-    resultAndSpansFrom { implicit tracer =>
-      viaHandle(Foo[IO].traceWithInputsAndOutputs, -1)
+    resultAndSpansFrom { implicit tracerProvider =>
+      Foo[IO].traceWithInputsAndOutputs.flatMap(viaHandle(_, -1))
     }.map { case (result, spans) =>
       assertEquals(result, "rescued:-1")
       assertEquals(spans.map(_.getName), List("Foo.foo"))
@@ -84,18 +88,19 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
     }
   }
 
-  // The hook reaches its span through `Tracer[F].currentSpanOrNoop`, which is only
-  // the method's own span if `SpanOps#use` has made it current for the body. If it
-  // has not, `currentSpanOrNoop` returns whatever *was* current — here the outer
-  // span — and the attributes land one level up.
+  // The hook reaches its span through `currentSpanOrNoop` on this library's
+  // tracer, which is only the method's own span if `SpanOps#use` has made it
+  // current for the body. If it has not, `currentSpanOrNoop` returns whatever
+  // *was* current — here the outer span, opened by the application's own
+  // tracer — and the attributes land one level up.
   //
   // Asserted in both directions on purpose: that the child carries them, and
   // that the parent carries none. Either half alone passes under the failure
   // mode the other catches.
   test("the raise attributes land on the method's own span, not on the parent") {
-    resultAndSpansFrom { implicit tracer =>
-      tracer.span("outer").surround {
-        viaHandle(Foo[IO].traceWithInputsAndOutputs, -1)
+    resultAndSpansFrom { implicit tracerProvider =>
+      insideOuterSpan {
+        Foo[IO].traceWithInputsAndOutputs.flatMap(viaHandle(_, -1))
       }
     }.map { case (result, spans) =>
       assertEquals(result, "rescued:-1")
@@ -107,6 +112,12 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
       // The two really are parent and child, not two roots — otherwise
       // "the parent has no raise attributes" would be trivially true.
       assertEquals(child.getParentSpanId, parent.getSpanId)
+
+      // ...across instrumentation scopes: the parent is the application's,
+      // the child this library's own, versioned.
+      assertEquals(parent.getInstrumentationScopeInfo.getName, "com.example.FooService")
+      assertEquals(child.getInstrumentationScopeInfo.getName, "com.dwolla.tracing.otel4s")
+      assertEquals(Option(child.getInstrumentationScopeInfo.getVersion), Some(com.dwolla.tracing.otel4s.BuildInfo.version))
 
       val childAttributes = attributesOf(child)
       assertEquals(
@@ -126,10 +137,12 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
   }
 
   test("an error rendering to AnyValue.empty records the type and no value") {
-    resultAndSpansFrom { implicit tracer =>
-      Handle.allowF[IO, QuietError] { implicit h =>
-        Quiet[IO].traceWithInputsAndOutputs.hush(-1)
-      }.rescue { case QuietError.Silent => "rescued".pure[IO] }
+    resultAndSpansFrom { implicit tracerProvider =>
+      Quiet[IO].traceWithInputsAndOutputs.flatMap { quiet =>
+        Handle.allowF[IO, QuietError] { implicit h =>
+          quiet.hush(-1)
+        }.rescue { case QuietError.Silent => "rescued".pure[IO] }
+      }
     }.map { case (result, spans) =>
       assertEquals(result, "rescued")
       assertEquals(spans.map(_.getName), List("Quiet.hush"))
@@ -159,9 +172,9 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
   // The raise-time `com.dwolla.raise.error.*` attributes are independent of
   // that and still record every raise, including rescued ones.
   test("a raise crossing the traced wrapper is reported as the domain error, not cats-mtl's Submarine") {
-    resultAndSpansFrom { implicit tracer =>
-      tracer.span("outer").surround {
-        viaHandle(Foo[IO].traceWithInputsAndOutputs, -1)
+    resultAndSpansFrom { implicit tracerProvider =>
+      insideOuterSpan {
+        Foo[IO].traceWithInputsAndOutputs.flatMap(viaHandle(_, -1))
       }
     }.map { case (_, spans) =>
       val child = spanNamed(spans, "Foo.foo")
@@ -186,8 +199,8 @@ class RaiseSpanContentSpec extends CatsEffectSuite {
   }
 
   test("a successful traced call is finalized with no status and no exception event") {
-    resultAndSpansFrom { implicit tracer =>
-      viaHandle(Foo[IO].traceWithInputsAndOutputs, 5)
+    resultAndSpansFrom { implicit tracerProvider =>
+      Foo[IO].traceWithInputsAndOutputs.flatMap(viaHandle(_, 5))
     }.map { case (result, spans) =>
       assertEquals(result, "foo:5")
       val span = spanNamed(spans, "Foo.foo")

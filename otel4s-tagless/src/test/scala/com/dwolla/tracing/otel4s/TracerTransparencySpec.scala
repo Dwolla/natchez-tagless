@@ -4,7 +4,7 @@ import cats.Id
 import cats.effect.{Ref, SyncIO}
 import cats.tagless.aop.Aspect
 import com.dwolla.tracing.otel4s.syntax._
-import org.typelevel.otel4s.trace.Tracer
+import org.typelevel.otel4s.trace.TracerProvider
 
 /** What can be checked without a testkit, on every platform.
   *
@@ -33,13 +33,17 @@ import org.typelevel.otel4s.trace.Tracer
   *     suite written over `IO` would sail through and the extra constraint
   *     would reach users unnoticed.
   *
+  * Under `Id`, `F[Alg[F]]` is `Alg[F]` itself, so each syntax method's result
+  * is used directly. `TracerProvider.noop` hands out `Tracer.noop`, whose
+  * behavior is what the rest of this note describes.
+  *
   * `Tracer.noop`'s `build.use(f)` is `f(span)`, so `surround(fa)` reduces to
   * `fa`, and its `SpanBuilder#modifyState` returns `this` without ever applying
   * the function — which is what makes the "never encoded" assertion below
   * meaningful.
   */
 class TracerTransparencySpec extends munit.CatsEffectSuite {
-  private implicit val tracer: Tracer[Id] = Tracer.noop[Id]
+  private implicit val tracerProvider: TracerProvider[Id] = TracerProvider.noop[Id]
 
   private def underlyingFoo: Foo[Id] = Foo.plain[Id]
 

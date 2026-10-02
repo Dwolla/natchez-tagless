@@ -25,8 +25,8 @@ class InterpreterConstructorVisibilitySpec extends FunSuite {
     """))
     assertEquals(compileErrors("""
       import cats.effect.IO
-      import org.typelevel.otel4s.trace.Tracer
-      implicit val tracer: Tracer[IO] = Tracer.noop[IO]
+      import org.typelevel.otel4s.trace.TracerProvider
+      implicit val tracerProvider: TracerProvider[IO] = TracerProvider.noop[IO]
       com.dwolla.tracing.otel4s.TracerInstrumentation[IO]
     """), "")
   }
@@ -41,9 +41,9 @@ class InterpreterConstructorVisibilitySpec extends FunSuite {
     """))
     assertEquals(compileErrors("""
       import cats.effect.IO
-      import org.typelevel.otel4s.trace.Tracer
+      import org.typelevel.otel4s.trace.TracerProvider
       import com.dwolla.tracing.otel4s.ToAnyValue
-      implicit val tracer: Tracer[IO] = Tracer.noop[IO]
+      implicit val tracerProvider: TracerProvider[IO] = TracerProvider.noop[IO]
       com.dwolla.tracing.otel4s.TracerWeaveCapturingInputs[IO, ToAnyValue]
     """), "")
   }
@@ -57,8 +57,8 @@ class InterpreterConstructorVisibilitySpec extends FunSuite {
     """))
     assertEquals(compileErrors("""
       import cats.effect.IO
-      import org.typelevel.otel4s.trace.Tracer
-      implicit val tracer: Tracer[IO] = Tracer.noop[IO]
+      import org.typelevel.otel4s.trace.TracerProvider
+      implicit val tracerProvider: TracerProvider[IO] = TracerProvider.noop[IO]
       com.dwolla.tracing.otel4s.TracerWeaveCapturingInputsAndOutputs[IO]
     """), "")
   }

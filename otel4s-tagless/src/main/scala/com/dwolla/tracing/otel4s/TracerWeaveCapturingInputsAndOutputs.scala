@@ -6,16 +6,16 @@ import cats.tagless.aop.Aspect.Weave
 import cats.~>
 import com.dwolla.tagless.WeaveNaming._
 import com.dwolla.tracing.otel4s.syntax._
-import org.typelevel.otel4s.trace.Tracer
+import org.typelevel.otel4s.trace.{Tracer, TracerProvider}
 import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
 
 /**
  * Use this `FunctionK` when you have an algebra in
  * `Weave[F, ToAnyValue, ToAnyValue, *]` and you want each method call on the
- * algebra to introduce a new child span, using the ambient `Tracer[F]`. Each
- * child span is named using the algebra name and method name captured in the
- * `Weave`, and both the parameters given to the method call and its return
- * value are attached to the span, as `com.dwolla.code.function.arguments`
+ * algebra to introduce a new child span. Each child span is named using the
+ * algebra name and method name captured in the `Weave`, and both the
+ * parameters given to the method call and its return value are attached to the
+ * span, as `com.dwolla.code.function.arguments`
  * and `com.dwolla.code.function.return_value`, alongside `code.function.name`.
  * `code.function.name` is always recorded; the arguments and return-value
  * attributes are each omitted outright when their value would carry nothing,
@@ -69,7 +69,10 @@ import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
  * `Aspect[Alg, ToAnyValue, ToAnyValue]` exists, it can be converted to
  * `Alg[Weave[F, ToAnyValue, ToAnyValue, *]]` using
  * `Aspect[Alg, ToAnyValue, ToAnyValue].weave`, and turned back into an `Alg[F]`
- * with `.mapK(TracerWeaveCapturingInputsAndOutputs[F])`. Unlike
+ * with `.mapK` and the interpreter `TracerWeaveCapturingInputsAndOutputs[F]`
+ * yields. Running that `F` obtains this library's tracer from the ambient
+ * `TracerProvider[F]`, under the instrumentation scope
+ * `com.dwolla.tracing.otel4s` (versioned); nothing is obtained per call. Unlike
  * `TracerWeaveCapturingInputs`, this interpreter reads the codomain's
  * `ToAnyValue` instance, so `Aspect.Domain[Alg, ToAnyValue]` — which pins the
  * codomain to `Trivial` — is not enough; the algebra needs `ToAnyValue`
@@ -91,7 +94,7 @@ import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
  *   import cats.~>
  *   import com.dwolla.tagless.WeaveKnot
  *   import com.dwolla.tracing.otel4s.{ToAnyValue, TracerWeaveCapturingInputsAndOutputs}
- *   import org.typelevel.otel4s.trace.Tracer
+ *   import org.typelevel.otel4s.trace.TracerProvider
  *
  *   trait Foo[F[_]] {
  *     def greet(name: String): F[String]
@@ -123,22 +126,24 @@ import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
  *     }
  *   }
  *
- *   // A real application summons this from `TracerProvider[F].get(name)`,
- *   // supplied by a backend module. This library never provides one.
- *   implicit val tracer: Tracer[IO] = Tracer.noop[IO]
+ *   // A real application gets this from a backend module (otel4s-oteljava,
+ *   // otel4s-sdk). This library never provides one.
+ *   implicit val tracerProvider: TracerProvider[IO] = TracerProvider.noop[IO]
  *
  *   // `self.value` is the *traced* algebra, so `greetTwice` produces three
  *   // spans: `Foo.greetTwice` and two nested `Foo.greet`s. Constructing the
  *   // implementation directly and calling `.traceWithInputsAndOutputs` on it
  *   // would produce only the outer one.
- *   val traced: Foo[IO] = WeaveKnot.weave[Foo, IO, ToAnyValue, ToAnyValue](
- *     self => new Foo[IO] {
- *       override def greet(name: String): IO[String] = IO.pure("hello " + name)
- *       override def greetTwice(name: String): IO[String] =
- *       self.value.greet(name).flatMap(a => self.value.greet(name).map(b => a + " " + b))
- *     },
- *     TracerWeaveCapturingInputsAndOutputs[IO]
- *   )
+ *   val traced: IO[Foo[IO]] = TracerWeaveCapturingInputsAndOutputs[IO].map { interpreter =>
+ *     WeaveKnot.weave[Foo, IO, ToAnyValue, ToAnyValue](
+ *       self => new Foo[IO] {
+ *         override def greet(name: String): IO[String] = IO.pure("hello " + name)
+ *         override def greetTwice(name: String): IO[String] =
+ *         self.value.greet(name).flatMap(a => self.value.greet(name).map(b => a + " " + b))
+ *       },
+ *       interpreter
+ *     )
+ *   }
  * }}}
  *
  * On Scala 3 the whole instance above collapses to a `derives` clause:
@@ -163,8 +168,11 @@ import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
  * `com.dwolla.tracing.otel4s.AnyValueAspect` for the full note.
  */
 object TracerWeaveCapturingInputsAndOutputs {
-  def apply[F[_]: FlatMap: Tracer]: Weave[F, ToAnyValue, ToAnyValue, *] ~> F =
-    new TracerWeaveCapturingInputsAndOutputs[F]
+  def apply[F[_]: FlatMap: TracerProvider]: F[Weave[F, ToAnyValue, ToAnyValue, *] ~> F] =
+    LibraryTracer[F].map { implicit tracer =>
+      val interpreter: Weave[F, ToAnyValue, ToAnyValue, *] ~> F = new TracerWeaveCapturingInputsAndOutputs[F]
+      interpreter
+    }
 }
 
 private[otel4s] final class TracerWeaveCapturingInputsAndOutputs[F[_]: FlatMap: Tracer]

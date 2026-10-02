@@ -1,13 +1,13 @@
 package com.dwolla.tracing.otel4s
 
-import cats.Id
+import cats.{Functor, Id}
 import cats.tagless.aop.{Aspect, Instrument}
 import com.dwolla.tracing.otel4s.ToAnyValueResolutionSpec._
 import com.dwolla.tracing.otel4s.syntax._
 import io.circe.{Encoder, Json}
 import munit.FunSuite
 import org.typelevel.otel4s.AnyValue
-import org.typelevel.otel4s.trace.Tracer
+import org.typelevel.otel4s.trace.TracerProvider
 
 /** Each `implicitly` here is a compile-time assertion: if resolution were
   * missing or ambiguous, the module would not build and this file is where the error lands.
@@ -68,25 +68,28 @@ class ToAnyValueResolutionSpec extends FunSuite {
     )
   }
 
-  test("traceWithInputs needs nothing but Tracer[F] — a compile-time assertion") {
+  test("traceWithInputs needs nothing but Functor[F] and TracerProvider[F] — a compile-time assertion") {
     // If traceWithInputs required Apply[F] (as the natchez version does), or
     // any other capability, this method would not compile: F is abstract and
-    // Tracer is the only instance in scope.
-    def onlyTracer[Alg[_[_]], F[_], Cod[_]](alg: Alg[F])(implicit
-                                                         T: Tracer[F],
-                                                         A: Aspect[Alg, ToAnyValue, Cod]): Alg[F] =
+    // Functor and TracerProvider are the only instances in scope. Functor is
+    // what mapping over the obtained tracer costs.
+    def onlyTracerProvider[Alg[_[_]], F[_], Cod[_]](alg: Alg[F])(implicit
+                                                                 F: Functor[F],
+                                                                 T: TracerProvider[F],
+                                                                 A: Aspect[Alg, ToAnyValue, Cod]): F[Alg[F]] =
       alg.traceWithInputs[Cod]
 
-    def onlyTracerInstrument[Alg[_[_]], F[_]](alg: Alg[F])(implicit
-                                                           I: Instrument[Alg],
-                                                           T: Tracer[F]): Alg[F] =
+    def onlyTracerProviderInstrument[Alg[_[_]], F[_]](alg: Alg[F])(implicit
+                                                                   I: Instrument[Alg],
+                                                                   F: Functor[F],
+                                                                   T: TracerProvider[F]): F[Alg[F]] =
       alg.instrumentAndTrace
 
-    implicit val tracer: Tracer[Id] = Tracer.noop[Id]
+    implicit val tracerProvider: TracerProvider[Id] = TracerProvider.noop[Id]
     val underlying = Foo.plain[Id]
 
-    assertEquals(onlyTracer[Foo, Id, ToAnyValue](underlying).greet("world", 2), "hello worldhello world")
-    assertEquals(onlyTracerInstrument[Foo, Id](underlying).greet("world", 2), "hello worldhello world")
+    assertEquals(onlyTracerProvider[Foo, Id, ToAnyValue](underlying).greet("world", 2), "hello worldhello world")
+    assertEquals(onlyTracerProviderInstrument[Foo, Id](underlying).greet("world", 2), "hello worldhello world")
   }
 }
 

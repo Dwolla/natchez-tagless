@@ -13,7 +13,7 @@ import munit.CatsEffectSuite
 import org.typelevel.otel4s.oteljava.AttributeConverters._
 import org.typelevel.otel4s.oteljava.testkit.trace.TracesTestkit
 import org.typelevel.otel4s.semconv.attributes.{CodeAttributes, ErrorAttributes}
-import org.typelevel.otel4s.trace.Tracer
+import org.typelevel.otel4s.trace.TracerProvider
 import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
 
 import scala.jdk.CollectionConverters._
@@ -24,9 +24,11 @@ final class NotFound(val id: Int)
 /** Span ''content'', asserted against a real SDK.
   *
   * JVM-only: every otel4s span type is sealed with a `private[otel4s]`
-  * `Unsealed` variant, so a recording `Tracer` cannot be hand-rolled, and the
-  * JVM oteljava testkit is used because the cross-platform
-  * `otel4s-sdk-trace-testkit` would add an otel4s-sdk backend. Transparency is covered on every platform by `TracerTransparencySpec`.
+  * `Unsealed` variant, so a recording `Tracer` cannot be hand-rolled. The
+  * instrumentation scope and parenting are asserted on both oteljava and
+  * otel4s-sdk by `TracerScopeSuite`; the rest of span content is asserted here,
+  * on the JVM oteljava testkit only. Transparency is covered on every platform
+  * by `TracerTransparencySpec`.
   *
   * `TracesTestkit.inMemory[IO]()` needs no extra wiring: its
   * `LocalContextProvider[IO]` — i.e. `LocalProvider[IO, oteljava.Context]` —
@@ -35,7 +37,7 @@ final class NotFound(val id: Int)
   * in oteljava's `Context` companion.
   */
 class SpanContentSpec extends CatsEffectSuite {
-  /** Runs `f` with a recording `Tracer[IO]` and returns both what it produced
+  /** Runs `f` with a recording `TracerProvider[IO]` and returns both what it produced
     * and the spans it finished.
     *
     * The result is returned so a test can name the expected value once and then
@@ -49,20 +51,17 @@ class SpanContentSpec extends CatsEffectSuite {
     * `FooCallCounts` assertions are what catch that, and they only work here,
     * over `IO` — see `FooCallCounts` for why `Id` cannot host them.
     */
-  protected def resultAndSpansFrom[A](f: Tracer[IO] => IO[A]): IO[(A, List[SpanData])] =
+  protected def resultAndSpansFrom[A](f: TracerProvider[IO] => IO[A]): IO[(A, List[SpanData])] =
     TracesTestkit.inMemory[IO]().use { testkit =>
-      testkit.tracerProvider
-        .get("otel4s-tagless-test")
-        .flatMap(f)
-        .flatMap(a => testkit.finishedSpans.map((a, _)))
+      f(testkit.tracerProvider).flatMap(a => testkit.finishedSpans.map((a, _)))
     }
 
-  /** Runs `f` with a recording `Tracer[IO]` and returns the spans it finished.
+  /** Runs `f` with a recording `TracerProvider[IO]` and returns the spans it finished.
     *
     * `IO[Any]`, not `IO[Unit]`, so a call site need not end in `.void` just to
     * fit the signature.
     */
-  protected def spansFrom(f: Tracer[IO] => IO[Any]): IO[List[SpanData]] =
+  protected def spansFrom(f: TracerProvider[IO] => IO[Any]): IO[List[SpanData]] =
     resultAndSpansFrom(f).map(_._2)
 
   /** Decodes a span's attributes back into the otel4s model.
@@ -87,16 +86,18 @@ class SpanContentSpec extends CatsEffectSuite {
     * calling `.traceWithInputsAndOutputs` on it would produce only the outer
     * span.
     */
-  protected def tracedNested(implicit tracer: Tracer[IO]): Nested[IO] =
-    WeaveKnot.weave[Nested, IO, ToAnyValue, ToAnyValue](
-      self => new Nested[IO] {
-        override def inner(name: String): IO[String] = IO.pure("hello " + name)
+  protected def tracedNested(implicit tracerProvider: TracerProvider[IO]): IO[Nested[IO]] =
+    TracerWeaveCapturingInputsAndOutputs[IO].map { interpreter =>
+      WeaveKnot.weave[Nested, IO, ToAnyValue, ToAnyValue](
+        self => new Nested[IO] {
+          override def inner(name: String): IO[String] = IO.pure("hello " + name)
 
-        override def outer(name: String): IO[String] =
-          self.value.inner(name).flatMap(a => self.value.inner(name).map(b => a + " " + b))
-      },
-      TracerWeaveCapturingInputsAndOutputs[IO]
-    )
+          override def outer(name: String): IO[String] =
+            self.value.inner(name).flatMap(a => self.value.inner(name).map(b => a + " " + b))
+        },
+        interpreter
+      )
+    }
 
   private def codeFunctionNames(spans: List[SpanData]): List[Option[String]] =
     spans.map(attributesOf(_).get(CodeAttributes.CodeFunctionName).map(_.value))
@@ -122,30 +123,30 @@ class SpanContentSpec extends CatsEffectSuite {
   }
 
   test("instrumentAndTrace reports an escaped raise as the domain error, not cats-mtl's Submarine") {
-    resultAndSpansFrom { implicit tracer =>
-      Handle.allowF[IO, NotFound](h => raisingFoo(h).instrumentAndTrace.greet("world", 1)).attempt
+    resultAndSpansFrom { implicit tracerProvider =>
+      Handle.allowF[IO, NotFound](h => raisingFoo(h).instrumentAndTrace.flatMap(_.greet("world", 1))).attempt
     }.map { case (result, spans) => assertReportedAsDomainError(result, spans) }
   }
 
   test("traceWithInputs reports an escaped raise as the domain error, not cats-mtl's Submarine") {
-    resultAndSpansFrom { implicit tracer =>
-      Handle.allowF[IO, NotFound](h => raisingFoo(h).traceWithInputs[ToAnyValue].greet("world", 1)).attempt
+    resultAndSpansFrom { implicit tracerProvider =>
+      Handle.allowF[IO, NotFound](h => raisingFoo(h).traceWithInputs[ToAnyValue].flatMap(_.greet("world", 1))).attempt
     }.map { case (result, spans) => assertReportedAsDomainError(result, spans) }
   }
 
   test("traceWithInputsAndOutputs reports an escaped raise as the domain error, not cats-mtl's Submarine") {
-    resultAndSpansFrom { implicit tracer =>
-      Handle.allowF[IO, NotFound](h => raisingFoo(h).traceWithInputsAndOutputs.greet("world", 1)).attempt
+    resultAndSpansFrom { implicit tracerProvider =>
+      Handle.allowF[IO, NotFound](h => raisingFoo(h).traceWithInputsAndOutputs.flatMap(_.greet("world", 1))).attempt
     }.map { case (result, spans) => assertReportedAsDomainError(result, spans) }
   }
 
   test("an escaped raise of null is still rescued by the caller and ends the span with error.type = null") {
-    resultAndSpansFrom { implicit tracer =>
+    resultAndSpansFrom { implicit tracerProvider =>
       Handle.allowF[IO, NotFound] { h =>
         new Foo[IO] {
           override def greet(name: String, times: Int): IO[String] = h.raise[NotFound, String](null)
           override def ping(): IO[Unit] = IO.unit
-        }.instrumentAndTrace.greet("world", 1).as(false)
+        }.instrumentAndTrace.flatMap(_.greet("world", 1)).as(false)
       }.rescue(e => (e == null).pure[IO])
     }.map { case (rescuedNull, spans) =>
       assert(rescuedNull, "expected the raised null back from rescue")
@@ -156,11 +157,11 @@ class SpanContentSpec extends CatsEffectSuite {
   }
 
   test("a canceled call keeps otel4s's reportAbnormal: status ERROR described as canceled, with no error.type") {
-    resultAndSpansFrom { implicit tracer =>
+    resultAndSpansFrom { implicit tracerProvider =>
       new Foo[IO] {
         override def greet(name: String, times: Int): IO[String] = IO.canceled.as("unreachable")
         override def ping(): IO[Unit] = IO.unit
-      }.instrumentAndTrace.greet("world", 1).start.flatMap(_.join)
+      }.instrumentAndTrace.flatMap(_.greet("world", 1)).start.flatMap(_.join)
     }.map { case (outcome, spans) =>
       assert(outcome.isCanceled, s"expected a canceled outcome, got $outcome")
       val span = onlySpan(spans)
@@ -171,14 +172,14 @@ class SpanContentSpec extends CatsEffectSuite {
   }
 
   test("a raise rescued inside the method leaves the span OK, with no error.type") {
-    resultAndSpansFrom { implicit tracer =>
+    resultAndSpansFrom { implicit tracerProvider =>
       Handle.allowF[IO, NotFound] { h =>
         val rescuing = new Foo[IO] {
           override def greet(name: String, times: Int): IO[String] =
             h.handleWith(h.raise[NotFound, String](new NotFound(1)))(_ => "recovered".pure[IO])
           override def ping(): IO[Unit] = IO.unit
         }
-        rescuing.traceWithInputsAndOutputs.greet("world", 1)
+        rescuing.traceWithInputsAndOutputs.flatMap(_.greet("world", 1))
       }.attempt
     }.map { case (result, spans) =>
       assertEquals(result, Right("recovered"))
@@ -190,11 +191,11 @@ class SpanContentSpec extends CatsEffectSuite {
 
   test("an ordinary thrown exception is still recorded by otel4s as an exception event with status ERROR") {
     val boom = new IllegalStateException("boom")
-    resultAndSpansFrom { implicit tracer =>
+    resultAndSpansFrom { implicit tracerProvider =>
       new Foo[IO] {
         override def greet(name: String, times: Int): IO[String] = IO.raiseError(boom)
         override def ping(): IO[Unit] = IO.unit
-      }.instrumentAndTrace.greet("world", 1).attempt
+      }.instrumentAndTrace.flatMap(_.greet("world", 1)).attempt
     }.map { case (result, spans) =>
       assertEquals(result, Left(boom))
       val span = onlySpan(spans)
@@ -204,22 +205,22 @@ class SpanContentSpec extends CatsEffectSuite {
   }
 
   test("instrumentAndTrace records code.function.name = <Algebra>.<method>, even for a zero-parameter method") {
-    spansFrom { implicit tracer => Foo.plain[IO].instrumentAndTrace.ping() }
+    spansFrom { implicit tracerProvider => Foo.plain[IO].instrumentAndTrace.flatMap(_.ping()) }
       .map(spans => assertEquals(codeFunctionNames(spans), List(Some("Foo.ping"))))
   }
 
   test("traceWithInputs records code.function.name = <Algebra>.<method>, even for a zero-parameter method") {
-    spansFrom { implicit tracer => Foo.plain[IO].traceWithInputs[ToAnyValue].ping() }
+    spansFrom { implicit tracerProvider => Foo.plain[IO].traceWithInputs[ToAnyValue].flatMap(_.ping()) }
       .map(spans => assertEquals(codeFunctionNames(spans), List(Some("Foo.ping"))))
   }
 
   test("traceWithInputsAndOutputs records code.function.name = <Algebra>.<method>, even for a zero-parameter method") {
-    spansFrom { implicit tracer => Foo.plain[IO].traceWithInputsAndOutputs.ping() }
+    spansFrom { implicit tracerProvider => Foo.plain[IO].traceWithInputsAndOutputs.flatMap(_.ping()) }
       .map(spans => assertEquals(codeFunctionNames(spans), List(Some("Foo.ping"))))
   }
 
   test("parameters and the return value are recorded under fixed, OTel-style keys") {
-    spansFrom { implicit tracer => Foo.plain[IO].traceWithInputsAndOutputs.greet("world", 2) }
+    spansFrom { implicit tracerProvider => Foo.plain[IO].traceWithInputsAndOutputs.flatMap(_.greet("world", 2)) }
       .map { spans =>
         val keys = spans.flatMap(attributesOf(_).map(_.key.name)).toSet
         assertEquals(keys, Set("code.function.name", "com.dwolla.code.function.arguments", "com.dwolla.code.function.return_value"))
@@ -229,8 +230,8 @@ class SpanContentSpec extends CatsEffectSuite {
   test("each method call opens one span named algebraName.methodName") {
     for {
       counts <- FooCallCounts.of[IO]
-      result <- resultAndSpansFrom { implicit tracer =>
-        underlyingFoo(counts).instrumentAndTrace.greet("world", 2)
+      result <- resultAndSpansFrom { implicit tracerProvider =>
+        underlyingFoo(counts).instrumentAndTrace.flatMap(_.greet("world", 2))
       }
       (greeting, spans) = result
       _ = assertEquals(greeting, "hello worldhello world")
@@ -243,8 +244,8 @@ class SpanContentSpec extends CatsEffectSuite {
   test("TracerInstrumentation records only code.function.name") {
     for {
       counts <- FooCallCounts.of[IO]
-      spans <- spansFrom { implicit tracer =>
-        underlyingFoo(counts).instrumentAndTrace.greet("world", 2)
+      spans <- spansFrom { implicit tracerProvider =>
+        underlyingFoo(counts).instrumentAndTrace.flatMap(_.greet("world", 2))
       }
       _ = assertEquals(spans.map(attributesOf), List(Attributes(Attribute("code.function.name", "Foo.greet"))))
     } yield ()
@@ -257,8 +258,8 @@ class SpanContentSpec extends CatsEffectSuite {
   test("a zero-parameter, Unit-returning method is spanned like any other") {
     for {
       counts <- FooCallCounts.of[IO]
-      result <- resultAndSpansFrom { implicit tracer =>
-        underlyingFoo(counts).instrumentAndTrace.ping()
+      result <- resultAndSpansFrom { implicit tracerProvider =>
+        underlyingFoo(counts).instrumentAndTrace.flatMap(_.ping())
       }
       (pong, spans) = result
       _ = assertEquals(pong, ())
@@ -272,8 +273,8 @@ class SpanContentSpec extends CatsEffectSuite {
   test("TracerWeaveCapturingInputs records every parameter as one structured attribute") {
     for {
       counts <- FooCallCounts.of[IO]
-      result <- resultAndSpansFrom { implicit tracer =>
-        underlyingFoo(counts).traceWithInputs[ToAnyValue].greet("world", 2)
+      result <- resultAndSpansFrom { implicit tracerProvider =>
+        underlyingFoo(counts).traceWithInputs[ToAnyValue].flatMap(_.greet("world", 2))
       }
       (greeting, spans) = result
       _ = assertEquals(greeting, "hello worldhello world")
@@ -301,8 +302,8 @@ class SpanContentSpec extends CatsEffectSuite {
   test("TracerWeaveCapturingInputs records only code.function.name for a method with no parameters") {
     for {
       counts <- FooCallCounts.of[IO]
-      result <- resultAndSpansFrom { implicit tracer =>
-        underlyingFoo(counts).traceWithInputs[ToAnyValue].ping()
+      result <- resultAndSpansFrom { implicit tracerProvider =>
+        underlyingFoo(counts).traceWithInputs[ToAnyValue].flatMap(_.ping())
       }
       (pong, spans) = result
       _ = assertEquals(pong, ())
@@ -316,8 +317,8 @@ class SpanContentSpec extends CatsEffectSuite {
   test("TracerWeaveCapturingInputsAndOutputs records the parameters and the return value") {
     for {
       counts <- FooCallCounts.of[IO]
-      result <- resultAndSpansFrom { implicit tracer =>
-        underlyingFoo(counts).traceWithInputsAndOutputs.greet("world", 2)
+      result <- resultAndSpansFrom { implicit tracerProvider =>
+        underlyingFoo(counts).traceWithInputsAndOutputs.flatMap(_.greet("world", 2))
       }
       (greeting, spans) = result
       _ = assertEquals(greeting, "hello worldhello world")
@@ -365,8 +366,8 @@ class SpanContentSpec extends CatsEffectSuite {
   test("TracerWeaveCapturingInputsAndOutputs records only code.function.name for ping()") {
     for {
       counts <- FooCallCounts.of[IO]
-      result <- resultAndSpansFrom { implicit tracer =>
-        underlyingFoo(counts).traceWithInputsAndOutputs.ping()
+      result <- resultAndSpansFrom { implicit tracerProvider =>
+        underlyingFoo(counts).traceWithInputsAndOutputs.flatMap(_.ping())
       }
       (pong, spans) = result
       _ = assertEquals(pong, ())
@@ -378,8 +379,8 @@ class SpanContentSpec extends CatsEffectSuite {
   }
 
   test("WeaveKnot nests each inner call inside the outer call's span") {
-    resultAndSpansFrom { implicit tracer =>
-      tracedNested.outer("world")
+    resultAndSpansFrom { implicit tracerProvider =>
+      tracedNested.flatMap(_.outer("world"))
     }.map { case (greeting, spans) =>
       assertEquals(greeting, "hello world hello world")
       assertEquals(spans.size, 3)
