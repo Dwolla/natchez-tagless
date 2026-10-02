@@ -4,21 +4,30 @@ import cats.FlatMap
 import cats.syntax.all._
 import com.dwolla.tagless.ErrorTypeName
 import com.dwolla.tagless.mtl.{DefaultOnRaise, OnRaise, RaiseRecorder}
-import com.dwolla.tracing.otel4s.ToAnyValue
+import com.dwolla.tracing.otel4s.{LibraryTracer, ToAnyValue}
 import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
-import org.typelevel.otel4s.trace.Tracer
+import org.typelevel.otel4s.trace.TracerProvider
 
 /** otel4s's fallback [[com.dwolla.tagless.mtl.DefaultOnRaise]]: records the
   * typed error's type name (computed by `ErrorTypeName`) and its `ToAnyValue` rendering as
   * attributes on the ''current'' span, the direct analogue of natchez's
   * `Trace[F].put`.
   *
-  * '''Why `Tracer[F].currentSpanOrNoop` rather than being handed the span.'''
+  * '''Why `currentSpanOrNoop` rather than being handed the span.'''
   * `OnRaise` resolves independently of the interpreter and fires
   * inside the method body — inside `fa.codomain.target`, which the
   * interpreter does not wrap — so the hook cannot be handed the `Span` the
   * interpreter is holding. `currentSpanOrNoop` is not a shortcut here; it is
   * the only route.
+  *
+  * '''Why a `TracerProvider[F]`.''' The hook resolves at the tracing call site,
+  * where the syntax asks for a `TracerProvider[F]` and no `Tracer[F]`, and
+  * its `apply` runs per raise with no effect to obtain a tracer up front. So
+  * each raise obtains this library's tracer from the provider and asks it for
+  * the current span. The current span lives in the provider's context, which
+  * every tracer from that provider shares, so this finds the method's span.
+  * Obtaining the tracer does no I/O: otel4s-sdk allocates a small tracer
+  * value, and oteljava wraps the Java SDK's registered tracer for the scope.
   *
   * '''Why that finds the right span.''' `TracerWeaveCapturingInputs`/
   * `AndOutputs` build the span with `.use`, and `SpanOps#use` makes the span
@@ -40,12 +49,13 @@ import org.typelevel.otel4s.trace.Tracer
   * `AnyValue.empty` writes no value key, leaving the ''first'' raise's value
   * standing beside the ''second'' raise's type.
   *
-  * The instance requires `Tracer[F]` and `FlatMap[F]`; under `Tracer.noop`,
+  * The instance requires `TracerProvider[F]` and `FlatMap[F]`; under
+  * `TracerProvider.noop`, the tracer is `Tracer.noop`, whose
   * `currentSpanOrNoop` yields a noop span whose `addAttributes` does nothing,
-  * so a disabled tracer costs nothing.
+  * so disabled tracing costs nothing beyond rendering the error.
   */
 trait Otel4sDefaultOnRaise {
-  implicit def otel4sDefaultOnRaise[F[_] : FlatMap : Tracer]: DefaultOnRaise[F, ToAnyValue] =
+  implicit def otel4sDefaultOnRaise[F[_] : FlatMap : TracerProvider]: DefaultOnRaise[F, ToAnyValue] =
     new DefaultOnRaise[F, ToAnyValue] {
       def onRaise: OnRaise[F, ToAnyValue] = new OnRaise[F, ToAnyValue] {
         def apply[E](e: E)(implicit ev: ToAnyValue[E]): F[Unit] = {
@@ -60,7 +70,9 @@ trait Otel4sDefaultOnRaise {
               else Attributes(Attribute(RaiseRecorder.ErrorValueKey, value))
             )
 
-          Tracer[F].currentSpanOrNoop.flatMap(_.backend.addAttributes(attributes))
+          LibraryTracer[F]
+            .flatMap(_.currentSpanOrNoop)
+            .flatMap(_.backend.addAttributes(attributes))
         }
       }
     }

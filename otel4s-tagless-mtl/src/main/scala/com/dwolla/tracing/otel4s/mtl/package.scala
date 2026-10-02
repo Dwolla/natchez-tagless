@@ -36,7 +36,7 @@ package com.dwolla.tracing.otel4s
   *   import com.dwolla.tracing.otel4s.ToAnyValue
   *   import com.dwolla.tracing.otel4s.mtl.syntax._
   *   import org.typelevel.otel4s.AnyValue
-  *   import org.typelevel.otel4s.trace.Tracer
+  *   import org.typelevel.otel4s.trace.TracerProvider
   *
   *   // A real error ADT is case classes matched by the ToAnyValue instance —
   *   // `case TooSmall(i) => ...`, as `AnyValueRaiseAspect` shows. A *compiled doc
@@ -72,24 +72,23 @@ package com.dwolla.tracing.otel4s
   *     // per call. The exact declaration is version-specific — see above.
   *   }
   *
-  *   // A real application gets its Tracer from `TracerProvider[F].get(name)`,
-  *   // supplied by a backend module (otel4s-oteljava, otel4s-sdk). This library
-  *   // never provides one.
+  *   // A real application gets its TracerProvider from a backend module
+  *   // (otel4s-oteljava, otel4s-sdk). This library never provides one; it
+  *   // obtains its own tracer from the provider when the traced algebra is built.
   *   def run(implicit
-  *           tracer: Tracer[IO],
-  *           RA: RaiseAspect[Validator, ToAnyValue, ToAnyValue, ToAnyValue]): IO[String] = {
-  *     val traced: Validator[IO] = Validator[IO].traceWithInputsAndOutputs
-  *
-  *     // Raise[IO, ValidationError] doesn't exist on its own — Handle.allowF
-  *     // constructs one ad hoc, scoped to this block, and .rescue recovers it,
-  *     // handing back the domain error (here just re-rendered as a string; a
-  *     // real handler would match on the ADT, e.g. `case TooSmall(i) => ...`).
-  *     Handle.allowF[IO, ValidationError] { implicit h =>
-  *       traced.validate(-1)
-  *     }.rescue { e =>
-  *       IO.pure("rejected: " + e.i.toString)
+  *           tracerProvider: TracerProvider[IO],
+  *           RA: RaiseAspect[Validator, ToAnyValue, ToAnyValue, ToAnyValue]): IO[String] =
+  *     Validator[IO].traceWithInputsAndOutputs.flatMap { traced =>
+  *       // Raise[IO, ValidationError] doesn't exist on its own — Handle.allowF
+  *       // constructs one ad hoc, scoped to this block, and .rescue recovers it,
+  *       // handing back the domain error (here just re-rendered as a string; a
+  *       // real handler would match on the ADT, e.g. `case TooSmall(i) => ...`).
+  *       Handle.allowF[IO, ValidationError] { implicit h =>
+  *         traced.validate(-1)
+  *       }.rescue { e =>
+  *         IO.pure("rejected: " + e.i.toString)
+  *       }
   *     }
-  *   }
   * }}}
   *
   * ==What is recorded, and where==
@@ -135,13 +134,14 @@ package com.dwolla.tracing.otel4s
   * the fact that every backend can filter and aggregate on span attributes,
   * whereas events get flattened into pseudo-spans or rendered as logs.
   *
-  * The default hook reaches the span through `Tracer[F].currentSpanOrNoop`,
-  * which yields the method's own span rather than its caller's;
+  * The default hook reaches the span through `currentSpanOrNoop` on this
+  * library's tracer, obtained from the ambient `TracerProvider[F]`, which
+  * yields the method's own span rather than its caller's;
   * [[Otel4sDefaultOnRaise]] explains why that is the only route and why it
   * finds the right span. `RaiseSpanContentSpec` asserts exactly that against a
-  * real SDK, on the child and on the parent. Under `Tracer.noop` the same call
-  * yields a noop span whose `addAttributes` does nothing, so a disabled tracer
-  * costs nothing.
+  * real SDK, on the child and on the parent. Under `TracerProvider.noop` the
+  * same call yields a noop span whose `addAttributes` does nothing, so
+  * disabled tracing records nothing.
   *
   * ==Design constraints==
   *
@@ -156,14 +156,15 @@ package com.dwolla.tracing.otel4s
   *   - '''Switching an import is free for `traceWithInputsAndOutputs`, not
   *     for `traceWithInputs`.''' `traceWithInputsAndOutputs` demands exactly
   *     what its non-mtl counterpart in `com.dwolla.tracing.otel4s.syntax`
-  *     demands — both declare `FlatMap[F]`. `traceWithInputs` does not: the
-  *     non-mtl one declares no effect constraint, while this one resolves a
+  *     demands — both declare `FlatMap[F]` and `TracerProvider[F]`.
+  *     `traceWithInputs` does not: both declare `Functor[F]` and
+  *     `TracerProvider[F]`, but this one also resolves a
   *     `RaiseRecorder[F, ToAnyValue]`, and absent a user-supplied `OnRaise`
   *     that resolves through [[Otel4sDefaultOnRaise]], declared
-  *     `[F[_] : FlatMap : Tracer]`. A caller taking the default recorder
-  *     therefore has to supply `FlatMap[F]`; a caller supplying its own
-  *     `OnRaise[F, ToAnyValue]` needs only what that hook needs.
-  *     `RaiseTracerConstraintSpec` pins both directions.
+  *     `[F[_] : FlatMap : TracerProvider]`. A caller taking the default
+  *     recorder therefore has to supply `FlatMap[F]`; a caller supplying its
+  *     own `OnRaise[F, ToAnyValue]` needs only `Functor[F]` plus what that hook
+  *     needs. `RaiseTracerConstraintSpec` pins both directions.
   *   - `Handle[F, E]` parameters are rejected at derivation time, with a
   *     message pointing at this design: `Handle` ''consumes'' `F`
   *     (`handleWith` takes an `F[A]`), so — unlike `Raise`, which only ever
@@ -239,7 +240,7 @@ package com.dwolla.tracing.otel4s
   *
   * `RaiseRecorder` resolution is just implicit priority: a user-supplied
   * `OnRaise[F, ToAnyValue]` (`com.dwolla.tagless.mtl.OnRaise`) outranks the
-  * `Tracer`-based default ([[Otel4sDefaultOnRaise]]) ''if the compiler's
+  * `TracerProvider`-based default ([[Otel4sDefaultOnRaise]]) ''if the compiler's
   * implicit search actually finds it'' — and that depends on where it is
   * declared. Implicit scope for `OnRaise[F, ToAnyValue]` reaches the companions
   * of `OnRaise`, `F`, and `ToAnyValue`; a user's own error ADT appears in none
@@ -248,12 +249,33 @@ package com.dwolla.tracing.otel4s
   * there, because `ToAnyValue[MyError]` mentions `MyError` and the hook's type
   * does not. The hook must instead live somewhere ordinary lexical scoping
   * reaches it: a local `implicit val`/`given` in scope at the call site, or an
-  * import. A hook the compiler does not find is not an error — resolution
-  * quietly falls back to the `Tracer`-based default above, which still renders
-  * through `ToAnyValue`, so a missed override degrades to a redaction-aware
-  * default rather than to raw `toString`.
+  * import.
   *
-  * The `Tracer`-based default itself is reached the same lexical way, not
+  * '''A hook whose own implicit parameters cannot be resolved at the call site
+  * counts as absent.''' Implicit search treats a candidate it cannot complete
+  * as not applicable, so a hook declared `[F[_] : FlatMap : Tracer]` at a call
+  * site that has only the `TracerProvider[F]` the syntax asks for is skipped,
+  * exactly like a hook that is not in scope at all. Neither is an error and
+  * neither warns: resolution quietly falls back to the
+  * `TracerProvider`-based default above. Three remedies:
+  *
+  *   - have the hook ask for `TracerProvider[F]` rather than `Tracer[F]`, and
+  *     obtain a tracer from it inside `apply`, as the example below does;
+  *   - or bind an implicit `Tracer[F]` before calling the syntax:
+  *     `tracerProvider.get("com.example.FooService").flatMap { implicit tracer => alg.traceWithInputs }`;
+  *   - and, to turn a miss into a compile error, summon
+  *     `implicitly[OnRaise[F, ToAnyValue]]` at the call site (or pass the hook
+  *     explicitly), so a hook that does not resolve fails the build instead of
+  *     being replaced.
+  *
+  * The fallback still renders through `ToAnyValue`, never through raw
+  * `toString`, so it is exactly as redaction-aware as the error's
+  * `ToAnyValue[E]` instance — no more. A hook written to record ''less'' than
+  * that instance renders (say, because the instance is full-fidelity for the
+  * error's appearances as a return value) loses that when it is skipped: the
+  * default records the full rendering.
+  *
+  * The `TracerProvider`-based default itself is reached the same lexical way, not
   * automatically: `RaiseRecorder`'s mechanism lives in `raise-aspect`,
   * which cannot name otel4s, so the otel4s default is a `DefaultOnRaise`
   * instance declared in [[Otel4sDefaultOnRaise]] and mixed into
@@ -278,24 +300,32 @@ package com.dwolla.tracing.otel4s
   *   import com.dwolla.tagless.mtl.{OnRaise, RaiseRecorder}
   *   import com.dwolla.tracing.otel4s.ToAnyValue
   *   import org.typelevel.otel4s.{Attribute, Attributes}
-  *   import org.typelevel.otel4s.trace.Tracer
+  *   import org.typelevel.otel4s.trace.TracerProvider
   *
   *   // Just having this implicit in lexical scope is the entire override:
-  *   // RaiseRecorder's fromOnRaise instance outranks the Tracer-based default
-  *   // used above — but only because this is a local implicit def, not a
-  *   // member of ValidationError's own companion object, which implicit
+  *   // RaiseRecorder's fromOnRaise instance outranks the TracerProvider-based
+  *   // default used above — but only because this is a local implicit def, not
+  *   // a member of ValidationError's own companion object, which implicit
   *   // search for OnRaise[F, ToAnyValue] would never look inside.
-  *   implicit def onRaiseUnderCustomKey[F[_] : FlatMap](implicit T: Tracer[F]): OnRaise[F, ToAnyValue] =
+  *   //
+  *   // It asks for the same TracerProvider[F] the tracing syntax does: a hook
+  *   // that needed an implicit Tracer[F] would not resolve at a call site that
+  *   // has only the provider, and resolution would quietly fall back to the
+  *   // default.
+  *   implicit def onRaiseUnderCustomKey[F[_] : FlatMap](implicit TP: TracerProvider[F]): OnRaise[F, ToAnyValue] =
   *     new OnRaise[F, ToAnyValue] {
   *       // `ev` is the per-error-type evidence the hook receives. Rendering
   *       // through it, rather than through `e.toString`, is what makes a hook
   *       // honor the same redaction a `ToAnyValue` instance declares.
   *       //
+  *       // The application's own tracer finds the method's span: every tracer
+  *       // from one provider shares its current-span context.
+  *       //
   *       // `.backend` deliberately: `Span#addAttributes` is a macro on Scala 2
   *       // and inline on Scala 3, and `Span.Backend#addAttributes` is the
   *       // sealed method underneath it.
   *       def apply[E](e: E)(implicit ev: ToAnyValue[E]): F[Unit] =
-  *         Tracer[F].currentSpanOrNoop.flatMap {
+  *         TracerProvider[F].get("com.example.FooService").flatMap(_.currentSpanOrNoop).flatMap {
   *           _.backend.addAttributes(Attributes(Attribute("validation.error", ev.toAnyValue(e))))
   *         }
   *     }
@@ -304,7 +334,7 @@ package com.dwolla.tracing.otel4s
   *   // no other change is needed at any tracing call site. Note there is no
   *   // syntax import here: fromOnRaise lives in RaiseRecorder's own companion,
   *   // so it is in implicit scope. It is the *default* that needs the import.
-  *   def recorderResolvesViaOnRaise[F[_] : FlatMap](implicit T: Tracer[F]): RaiseRecorder[F, ToAnyValue] =
+  *   def recorderResolvesViaOnRaise[F[_] : FlatMap](implicit TP: TracerProvider[F]): RaiseRecorder[F, ToAnyValue] =
   *     implicitly[RaiseRecorder[F, ToAnyValue]]
   * }}}
   */

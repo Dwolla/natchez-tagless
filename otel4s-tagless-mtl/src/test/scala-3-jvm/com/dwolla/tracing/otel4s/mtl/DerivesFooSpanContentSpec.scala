@@ -8,7 +8,7 @@ import io.opentelemetry.sdk.trace.data.SpanData
 import munit.CatsEffectSuite
 import org.typelevel.otel4s.oteljava.AttributeConverters.*
 import org.typelevel.otel4s.oteljava.testkit.trace.TracesTestkit
-import org.typelevel.otel4s.trace.Tracer
+import org.typelevel.otel4s.trace.TracerProvider
 import org.typelevel.otel4s.{AnyValue, Attribute, Attributes}
 
 import scala.annotation.experimental
@@ -29,19 +29,18 @@ import scala.annotation.experimental
 @experimental
 class DerivesFooSpanContentSpec extends CatsEffectSuite {
 
-  private def resultAndSpansFrom[A](f: Tracer[IO] => IO[A]): IO[(A, List[SpanData])] =
+  private def resultAndSpansFrom[A](f: TracerProvider[IO] => IO[A]): IO[(A, List[SpanData])] =
     TracesTestkit.inMemory[IO]().use { testkit =>
-      testkit.tracerProvider
-        .get("otel4s-tagless-mtl-test")
-        .flatMap(f)
-        .flatMap(a => testkit.finishedSpans.map((a, _)))
+      f(testkit.tracerProvider).flatMap(a => testkit.finishedSpans.map((a, _)))
     }
 
   test("a derived instance traces its raise onto its own span") {
-    resultAndSpansFrom { implicit tracer =>
-      Handle.allowF[IO, FooError] { implicit h =>
-        DerivesFoo[IO].traceWithInputsAndOutputs.foo(-1)
-      }.rescue { case FooError.Negative(n) => s"rescued:$n".pure[IO] }
+    resultAndSpansFrom { implicit tracerProvider =>
+      DerivesFoo[IO].traceWithInputsAndOutputs.flatMap { traced =>
+        Handle.allowF[IO, FooError] { implicit h =>
+          traced.foo(-1)
+        }.rescue { case FooError.Negative(n) => s"rescued:$n".pure[IO] }
+      }
     }.map { (result, spans) =>
       assertEquals(result, "rescued:-1")
       // The span name comes from the derivation, not from a hand-written
@@ -64,10 +63,12 @@ class DerivesFooSpanContentSpec extends CatsEffectSuite {
   }
 
   test("a derived instance records the return value and no raise attributes on success") {
-    resultAndSpansFrom { implicit tracer =>
-      Handle.allowF[IO, FooError] { implicit h =>
-        DerivesFoo[IO].traceWithInputsAndOutputs.foo(5)
-      }.rescue(e => IO.raiseError(new AssertionError(s"unexpected raise: $e")))
+    resultAndSpansFrom { implicit tracerProvider =>
+      DerivesFoo[IO].traceWithInputsAndOutputs.flatMap { traced =>
+        Handle.allowF[IO, FooError] { implicit h =>
+          traced.foo(5)
+        }.rescue(e => IO.raiseError(new AssertionError(s"unexpected raise: $e")))
+      }
     }.map { (result, spans) =>
       assertEquals(result, "foo:5")
       assertEquals(spans.map(_.getName), List("DerivesFoo.foo"))

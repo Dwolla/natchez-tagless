@@ -4,16 +4,17 @@ import cats.Id
 import cats.effect.{Ref, SyncIO}
 import cats.tagless.aop.Aspect
 import com.dwolla.tracing.otel4s.syntax._
-import org.typelevel.otel4s.trace.Tracer
+import org.typelevel.otel4s.trace.TracerProvider
 
 /** What can be checked without a testkit, on every platform.
   *
   * `Tracer[F]`, `Span[F]`, `SpanOps[F]`, `SpanBuilder[F]` and `Span.Backend[F]`
   * are all sealed and their `Unsealed` variants are `private[otel4s]`, so a
   * recording `Tracer` cannot be hand-rolled the way this repo hand-rolls a
-  * `natchez.Trace`. Span ''content'' is therefore asserted in `SpanContentSpec`,
-  * which is JVM-only: it uses the oteljava testkit, because otel4s's
-  * cross-platform SDK testkit would add an otel4s-sdk backend.
+  * `natchez.Trace`. Span ''content'' therefore needs a testkit: the
+  * instrumentation scope and parenting are asserted on both oteljava and
+  * otel4s-sdk by `TracerScopeSuite` (so on Scala.js too), and the rest of span
+  * content in `SpanContentSpec`, on the JVM oteljava testkit only.
   *
   * Two things make this suite worth having anyway, and neither is the obvious
   * one. Parametricity already forbids an interpreter with signature
@@ -24,14 +25,19 @@ import org.typelevel.otel4s.trace.Tracer
   * once, which for a deterministic algebra yields the same value again. What
   * is not tautological:
   *
-  *  1. It is the only place the interpreters' return values are checked
-  *     anywhere but the JVM — `SpanContentSpec` covers the JVM and nothing
-  *     covers Scala.js but this file.
+  *  1. It is the only place every interpreter's return value is checked
+  *     off the JVM — `SpanContentSpec` covers the JVM, and on Scala.js
+  *     `TracerScopeSuite` checks the result of just one
+  *     `traceWithInputsAndOutputs` call.
   *  1. It pins the '''constraint set''' at compile time. `Id` has no
   *     `MonadError[Id, Throwable]`, so the moment an interpreter picks up a
   *     `MonadCancelThrow` or `Async` bound, this file stops compiling — where a
   *     suite written over `IO` would sail through and the extra constraint
   *     would reach users unnoticed.
+  *
+  * Under `Id`, `F[Alg[F]]` is `Alg[F]` itself, so each syntax method's result
+  * is used directly. `TracerProvider.noop` hands out `Tracer.noop`, whose
+  * behavior is what the rest of this note describes.
   *
   * `Tracer.noop`'s `build.use(f)` is `f(span)`, so `surround(fa)` reduces to
   * `fa`, and its `SpanBuilder#modifyState` returns `this` without ever applying
@@ -39,7 +45,7 @@ import org.typelevel.otel4s.trace.Tracer
   * meaningful.
   */
 class TracerTransparencySpec extends munit.CatsEffectSuite {
-  private implicit val tracer: Tracer[Id] = Tracer.noop[Id]
+  private implicit val tracerProvider: TracerProvider[Id] = TracerProvider.noop[Id]
 
   private def underlyingFoo: Foo[Id] = Foo.plain[Id]
 

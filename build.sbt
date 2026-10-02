@@ -256,8 +256,8 @@ lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform)
 // crossScalaVersions := Seq("2.13.18", "3.3.8"), and Maven Central 404s for
 // otel4s-core-trace_2.12), so on 2.12 the otel4s dependency is dropped, both
 // source directories are emptied, and publishing is skipped: the project
-// cross-builds along with everything else, but it compiles nothing, tests
-// nothing and ships nothing.
+// cross-builds along with everything else, but it compiles only the generated
+// BuildInfo, tests nothing and ships nothing.
 //
 // `crossScalaVersions := Seq(Scala213, "3.3.8")` is the obvious alternative and
 // it does not work. sbt's `++` excludes such a project from the version switch
@@ -281,8 +281,14 @@ lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform)
 lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("otel4s-tagless"))
+  .enablePlugins(BuildInfoPlugin)
   .settings(
     name := "otel4s-tagless",
+    // The library names its own instrumentation scope and version (see
+    // LibraryTracer); BuildInfo supplies the version and isn't published API.
+    buildInfoKeys := Seq[BuildInfoKey](version),
+    buildInfoPackage := "com.dwolla.tracing.otel4s",
+    buildInfoOptions += BuildInfoOption.PackagePrivate,
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % catsVersion,
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
@@ -304,6 +310,10 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
           "org.typelevel" %%% "otel4s-core-trace" % otel4sVersion,
           // stable semconv (depends only on otel4s-core-common): code.function.name
           "org.typelevel" %%% "otel4s-semconv" % otel4sVersion,
+          // otel4s-sdk is pre-1.0 and versioned separately: 0.19.4 is the
+          // release built against otel4s-core 1.1.0. Move it together with
+          // `otel4sVersion`.
+          "org.typelevel" %%% "otel4s-sdk-trace-testkit" % "0.19.4" % Test,
         )
       else Seq.empty
     },
@@ -322,13 +332,14 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
   )
   // Span *content* can only be asserted with a testkit: every otel4s span type
   // is sealed and its Unsealed variant is private[otel4s], so a recording
-  // Tracer cannot be hand-rolled. A cross-platform testkit exists
-  // (otel4s-sdk-trace-testkit; otel4s-sdk is pre-1.0 and versioned separately,
-  // and 0.19.4 is built against otel4s-core-trace 1.1.0), but using it would add
-  // an otel4s-sdk backend, so these modules assert span content with the JVM
-  // oteljava testkit instead; adopting the sdk testkit is a possible follow-up.
-  // Cross-platform coverage lives in TracerTransparencySpec, which needs no
-  // testkit.
+  // Tracer cannot be hand-rolled. The instrumentation-scope and parenting
+  // properties live in the backend-agnostic TracerScopeSuite, which runs
+  // against otel4s-sdk on every platform (OtelSdkTracerScopeSpec, hence the
+  // shared `%%%` testkit above) and against oteljava on the JVM
+  // (OtelJavaTracerScopeSpec). The rest of span content is asserted with the
+  // JVM oteljava testkit only; moving it onto the shared suite is a possible
+  // follow-up. Cross-platform transparency lives in TracerTransparencySpec,
+  // which needs no testkit.
   //
   // `%%` is correct for both coordinates below: neither `otel4s-oteljava-*`
   // artifact is published for JS, so `.jvmSettings` is the only place they can
@@ -339,7 +350,7 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
   // Both the dependencies and the source directory are gated on
   // `isOtel4sScalaVersion` for the same reason the shared block is: otel4s
   // publishes no _2.12 artifact, so an ungated coordinate here 404s at
-  // `update` under `++ 2.12` even though this module compiles nothing there.
+  // `update` under `++ 2.12` even though this module compiles only BuildInfo there.
   // The source directory needs the gate independently — `.jvmSettings` are
   // appended after the shared block, so an unconditional `+=` would put
   // scala-jvm back onto the 2.12 source path that the shared `:=` just
@@ -402,7 +413,14 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
     ),
     libraryDependencies ++= {
-      if (isOtel4sScalaVersion.value) Seq("org.typelevel" %%% "otel4s-core-trace" % otel4sVersion)
+      if (isOtel4sScalaVersion.value)
+        Seq(
+          "org.typelevel" %%% "otel4s-core-trace" % otel4sVersion,
+          // RaiseScopeSuite runs against otel4s-sdk on every platform, as
+          // otel4s-tagless's TracerScopeSuite does; move it together with
+          // `otel4sVersion`.
+          "org.typelevel" %%% "otel4s-sdk-trace-testkit" % "0.19.4" % Test,
+        )
       else Seq.empty
     },
     Compile / unmanagedSourceDirectories := {

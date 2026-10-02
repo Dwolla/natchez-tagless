@@ -1,17 +1,24 @@
 package com.dwolla.tracing.otel4s
 
+import cats.Functor
+import cats.syntax.all._
 import cats.tagless.aop.Aspect.Weave
 import cats.~>
 import com.dwolla.tagless.WeaveNaming._
 import com.dwolla.tracing.otel4s.syntax._
-import org.typelevel.otel4s.trace.Tracer
+import org.typelevel.otel4s.trace.{Tracer, TracerProvider}
 
 /**
  * Use this `FunctionK` when you have an algebra in
  * `Weave[F, ToAnyValue, Cod, *]` and you want each method call on the algebra
- * to introduce a new child span, using the ambient `Tracer[F]`. Each child span
- * is named using the algebra name and method name captured in the `Weave`, and
- * the parameters given to the method call are attached to the span.
+ * to introduce a new child span. Each child span is named using the algebra
+ * name and method name captured in the `Weave`, and the parameters given to the
+ * method call are attached to the span.
+ *
+ * Running the returned `F` obtains this library's tracer from the ambient
+ * `TracerProvider[F]`, under the instrumentation scope
+ * `com.dwolla.tracing.otel4s` (versioned), and yields the interpreter; nothing
+ * is obtained per call.
  *
  * The format of the attribute values is controlled by the `ToAnyValue`
  * typeclass. If a parameter is sensitive, one way to keep the sensitive value
@@ -42,8 +49,11 @@ import org.typelevel.otel4s.trace.Tracer
  *
  */
 object TracerWeaveCapturingInputs {
-  def apply[F[_]: Tracer, Cod[_]]: Weave[F, ToAnyValue, Cod, *] ~> F =
-    new TracerWeaveCapturingInputs[F, Cod]
+  def apply[F[_]: Functor: TracerProvider, Cod[_]]: F[Weave[F, ToAnyValue, Cod, *] ~> F] =
+    LibraryTracer[F].map { implicit tracer =>
+      val interpreter: Weave[F, ToAnyValue, Cod, *] ~> F = new TracerWeaveCapturingInputs[F, Cod]
+      interpreter
+    }
 }
 
 private[otel4s] final class TracerWeaveCapturingInputs[F[_]: Tracer, Cod[_]] extends (Weave[F, ToAnyValue, Cod, *] ~> F) {

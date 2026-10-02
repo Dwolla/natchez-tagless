@@ -20,13 +20,37 @@ cats-tagless, circe-core and `tagless-core` — it must never depend on natchez.
   only, so a user who does not take `Raise` parameters pays for neither
   cats-mtl nor `raise-aspect`.
 
-## Where a `Tracer[F]` comes from
+## Where the tracer comes from
 
-Not from here. An application gets one from `TracerProvider[F].get(name)`,
-supplied by a backend module — `otel4s-oteljava` on the JVM, `otel4s-sdk`
-cross-platform. This module depends on `otel4s-core-trace` and `otel4s-semconv`
-(for the stable `code.function.name` key), neither of which is a backend, and
-the one `Tracer` it can construct itself is `Tracer.noop`, which the tests use.
+The syntax — `instrumentAndTrace`, `traceWithInputs` and
+`traceWithInputsAndOutputs` — takes an implicit `TracerProvider[F]` and returns
+`F[Alg[F]]`. Running that `F` obtains this library's own tracer, under the
+instrumentation scope `com.dwolla.tracing.otel4s` with the library's version,
+and yields the traced algebra; nothing is obtained per call. The interpreters'
+companions (`TracerInstrumentation[F]` and the rest) have the same shape. This
+follows the OpenTelemetry guidance that an instrumentation library owns its
+scope, so a backend can tell this library's spans apart, and filter or sample
+them, by scope name and version.
+
+```scala
+import cats.effect.IO
+import com.dwolla.tracing.otel4s.syntax._
+import org.typelevel.otel4s.trace.TracerProvider
+
+def traced(implicit tracerProvider: TracerProvider[IO]): IO[Foo[IO]] =
+  Foo[IO].traceWithInputsAndOutputs
+```
+
+The `TracerProvider[F]` itself is not from here. An application gets one from a
+backend module — `otel4s-oteljava` on the JVM, `otel4s-sdk` cross-platform —
+and should pass this library the same provider its own tracer comes from:
+tracers from one provider share the current-span context, so a span the
+application opens through its own tracer parents the spans this library opens
+(`TracerScopeSuite` asserts this on both backends). This module depends on
+`otel4s-core-trace` and `otel4s-semconv` (for the stable `code.function.name`
+key), neither of which is a backend; the one provider it can construct itself
+is `TracerProvider.noop`, which the tests use, and under which tracing records
+nothing.
 
 ## The attribute layout
 
@@ -313,26 +337,29 @@ hatch is `SpanBuilder.State.withFinalizationStrategy` reached through
 name is a macro. This module exposes no knob for it; a user who needs one writes
 their own `Weave ~> F`, which is four lines.
 
-## Coverage asymmetry: span content is not asserted on Scala.js
+## Coverage asymmetry: most span content is not asserted on Scala.js
 
 Encoding (`ToAnyValue`, `asAttributes`) and interpreter transparency are tested
-on **both** the JVM and Scala.js. Span *content* — that the right attributes end
-up on the right span — is asserted on the **JVM only**, in `SpanContentSpec`,
-against a real SDK through `otel4s-oteljava-trace-testkit`.
+on **both** the JVM and Scala.js, and so are the spans' instrumentation scope
+and their parenting under an application's own tracer, in `TracerScopeSuite`:
+it runs against `otel4s-sdk-trace-testkit` on every platform and against
+`otel4s-oteljava-trace-testkit` on the JVM. The rest of span *content* — that
+the right attributes end up on the right span — is asserted on the **JVM
+only**, in `SpanContentSpec`, through the oteljava testkit.
 
-The reason is availability, not preference. Every otel4s span type is sealed
-with a `private[otel4s]` `Unsealed` variant, so a recording `Tracer` cannot be
-hand-rolled the way this repo hand-rolls a `natchez.Trace`; a testkit is
-required. `otel4s-oteljava-trace-testkit` publishes no `_sjs1_` artifact at any
-version, but a cross-platform testkit does exist: `otel4s-sdk-trace-testkit`
-(otel4s-sdk is pre-1.0 and versioned separately; 0.19.4 is built against
-otel4s-core 1.1.0). Using it would add an otel4s-sdk backend, so these modules
-assert span content with the JVM oteljava testkit instead; adopting the sdk
-testkit is a possible follow-up.
+A testkit is required because every otel4s span type is sealed with a
+`private[otel4s]` `Unsealed` variant, so a recording `Tracer` cannot be
+hand-rolled the way this repo hand-rolls a `natchez.Trace`.
+`otel4s-oteljava-trace-testkit` publishes no `_sjs1_` artifact at any version;
+`otel4s-sdk-trace-testkit` is cross-platform (otel4s-sdk is pre-1.0 and
+versioned separately; 0.19.4 is built against otel4s-core 1.1.0), and is a
+test-only dependency. Moving the rest of `SpanContentSpec` onto the shared,
+backend-agnostic suite is a possible follow-up.
 
 ## Scala 2.12
 
-**This module compiles nothing and ships nothing on 2.12.** No
+**This module ships nothing on 2.12, and compiles only its generated
+`BuildInfo` there.** No
 `otel4s-tagless_2.12` or `otel4s-tagless_sjs1_2.12` artifact is published, and
 none ever will be, because otel4s itself publishes none.
 
@@ -347,8 +374,9 @@ One new module simply never gains 2.12.
 Mechanically, the project still *appears* in the 2.12 cross-build (dropping it
 from `crossScalaVersions` does not remove it from sbt's root aggregate, which
 then fails resolving `tagless-core_2.13`). Instead, on 2.12 the otel4s
-coordinate is not declared, both source directories are emptied, and
-`publish / skip` is true. Nothing observable claims 2.12 support.
+coordinate is not declared, both source directories are emptied (leaving only
+the generated, package-private `BuildInfo` to compile), and `publish / skip` is
+true. Nothing observable claims 2.12 support.
 
 ## `derives AnyValueAspect` (Scala 3 only)
 
@@ -379,17 +407,20 @@ counterpart of `natchez-tagless-mtl`, file for file.
 | --- | --- |
 | `com.dwolla.tracing.otel4s.syntax._` | `com.dwolla.tracing.otel4s.mtl.syntax._` |
 | `traceWithInputsAndOutputs` | same name, same signature |
-| `traceWithInputs` | same name; the default recorder adds a `FlatMap[F]` |
+| `traceWithInputs` | same name; the default recorder needs `FlatMap[F]`, not just `Functor[F]` |
 | `instrumentAndTrace` | — (`Instrument` is a plain-`Aspect` notion) |
 
+Both modules' syntax takes a `TracerProvider[F]` and returns `F[Alg[F]]`, and
+the mtl module's spans carry the same `com.dwolla.tracing.otel4s` scope.
 Switching a call site is one import line for `traceWithInputsAndOutputs`, whose
 signature matches exactly — both versions declare `FlatMap[F]`. It is not quite
-free for `traceWithInputs`: this module's declares no effect constraint at all,
-while the mtl one resolves a `RaiseRecorder[F, ToAnyValue]`, and with no
+free for `traceWithInputs`: this module's declares only `Functor[F]`, while the
+mtl one also resolves a `RaiseRecorder[F, ToAnyValue]`, and with no
 user-supplied `OnRaise[F, ToAnyValue]` in scope that resolves through
-`Otel4sDefaultOnRaise`, declared `[F[_] : FlatMap : Tracer]`. So a caller on the
-default recorder must supply a `FlatMap[F]` it did not need here; a caller
-supplying its own `OnRaise` needs only what that hook needs. (`natchez-tagless`
+`Otel4sDefaultOnRaise`, declared `[F[_] : FlatMap : TracerProvider]`. So a
+caller on the default recorder must supply a `FlatMap[F]` it did not need here;
+a caller supplying its own `OnRaise` needs only `Functor[F]` plus what that hook
+needs. (`natchez-tagless`
 and `natchez-tagless-mtl` *are* an exact match on both methods — their default
 recorder needs only `Trace[F]`.)
 
@@ -421,6 +452,18 @@ Recording happens with no action from the caller: both syntax methods resolve a
 own `com.dwolla.tagless.mtl.OnRaise[F, ToAnyValue]` in *lexical* scope to
 override it — not in your error type's companion, which implicit search for that
 type never looks inside.
+
+**A hook whose own implicit parameters can't be resolved at the call site counts
+as absent, and the default takes over silently.** A hook declared
+`[F[_] : FlatMap : Tracer]` is skipped at a call site that has only the
+`TracerProvider[F]` the syntax asks for — no error, no warning. Either have the
+hook ask for `TracerProvider[F]` and obtain a tracer inside `apply`, or bind an
+implicit `Tracer[F]` before calling the syntax
+(`tracerProvider.get("com.example.FooService").flatMap { implicit tracer => alg.traceWithInputs }`).
+To turn a miss into a compile error, summon `implicitly[OnRaise[F, ToAnyValue]]`
+at the call site. The default renders through `ToAnyValue[E]`, so a skipped hook
+that existed to record *less* than that instance renders gets the full
+rendering instead.
 
 One lossy case: a method that raises, rescues internally, and raises again fires
 the hook twice against one span, and the second write **overwrites** the first.

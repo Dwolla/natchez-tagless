@@ -6,11 +6,11 @@ import com.dwolla.tracing.otel4s.ToAnyValue
 import com.dwolla.tracing.otel4s.mtl.FooError.Negative
 import com.dwolla.tracing.otel4s.mtl.syntax._
 import munit.CatsEffectSuite
-import org.typelevel.otel4s.trace.Tracer
+import org.typelevel.otel4s.trace.TracerProvider
 
 /** Proves `RaiseTracerWeaveOps`'s two methods are reachable via
   * `com.dwolla.tracing.otel4s.mtl.syntax._`, and that weaving `Foo` with
-  * either one is transparent under `Tracer.noop`: the traced algebra returns
+  * either one is transparent under `TracerProvider.noop`: the traced algebra returns
   * exactly what the untraced algebra returns, both for a call that succeeds
   * and for one that raises and is rescued.
   *
@@ -25,11 +25,11 @@ import org.typelevel.otel4s.trace.Tracer
   * `Foo`'s own implementation changes.
   */
 class RaiseTracerTransparencySpec extends CatsEffectSuite {
-  private implicit val tracer: Tracer[IO] = Tracer.noop[IO]
+  private implicit val tracerProvider: TracerProvider[IO] = TracerProvider.noop[IO]
 
   private val untraced: Foo[IO] = Foo[IO]
-  private val tracedInputs: Foo[IO] = Foo[IO].traceWithInputs[ToAnyValue]
-  private val tracedInputsAndOutputs: Foo[IO] = Foo[IO].traceWithInputsAndOutputs
+  private val tracedInputs: IO[Foo[IO]] = Foo[IO].traceWithInputs[ToAnyValue]
+  private val tracedInputsAndOutputs: IO[Foo[IO]] = Foo[IO].traceWithInputsAndOutputs
 
   /** Runs `alg.foo(i)` under a fresh `Handle[IO, FooError]`, recovering any
     * raise with `recover` — mirrors `RaiseTraceValueSuite`'s
@@ -47,9 +47,9 @@ class RaiseTracerTransparencySpec extends CatsEffectSuite {
     * Pinning `expected` makes a regression in the fixture itself, not only in
     * the tracing machinery, fail this test.
     */
-  private def assertTransparent(traced: Foo[IO], i: Int, expected: String)(recover: FooError => IO[String]): IO[Unit] =
+  private def assertTransparent(traced: IO[Foo[IO]], i: Int, expected: String)(recover: FooError => IO[String]): IO[Unit] =
     for {
-      tracedResult <- viaHandle(traced, i)(recover)
+      tracedResult <- traced.flatMap(viaHandle(_, i)(recover))
       untracedResult <- viaHandle(untraced, i)(recover)
     } yield {
       assertEquals(tracedResult, expected)
