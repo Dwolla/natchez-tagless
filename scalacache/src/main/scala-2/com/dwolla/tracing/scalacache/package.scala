@@ -104,8 +104,14 @@ package scalacache {
                              ): Cache[Aspect.Weave[F, Dom, Cod, *], K, V] =
       weaveCache(cache)
 
-    def weaveTracing(implicit F: FlatMap[F], T: Trace[F], K: TraceableValue[K], V: TraceableValue[V]): Cache[F, K, V] =
+    def weaveTracing(implicit F: FlatMap[F], T: Trace[F], K: TraceableValue[K], V: TraceableValue[V]): Cache[F, K, V] = {
+      // ScalaCache's own Flags and ttl carry no user data, so they opt in to
+      // recording their JSON and Show renderings
+      implicit val flagsTraceableValue: TraceableValue[Flags] = fromEncoder[Flags]
+      implicit val durationTraceableValue: TraceableValue[Duration] = fromShow[Duration]
+
       InvariantK[Cache[*[_], K, V]].imapK(cache.weave)(new TraceWeaveCapturingInputsAndOutputs)(new CacheWeaveFunctionK[F])
+    }
   }
 
   private class CacheWeaveFunctionK[F[_]] extends (F ~> Aspect.Weave[F, TraceableValue, TraceableValue, *]) {

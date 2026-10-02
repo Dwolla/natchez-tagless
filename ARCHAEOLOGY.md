@@ -104,6 +104,89 @@ law is trusted rather than type-checked everywhere else in this ecosystem.
 Every shipped hook already satisfies it trivially: none of them ever raises
 through the capability they're observing.
 
+## Migrating to `natchez-tagless` 0.2.7: no implicit `Encoder`/`Show` fallback
+
+Through 0.2.6, `import com.dwolla.tracing.LowPriorityTraceableValueInstances._`
+brought in `traceValueViaJson` and `traceValueViaShow`, which gave any type
+with a circe `Encoder` or a cats `Show` a `TraceableValue`. That bypassed redaction. A type with a
+redacting `TraceableValue` in its companion and a revealing `Encoder` or `Show`
+was recorded in full:
+
+- as a bare value, because the import's lexical scope outranks the companion's
+  implicit scope;
+- inside an `Option`, collection, map (as key or value), or tuple, because the
+  fallback encoded the whole container with its `Encoder`, never consulting the
+  element's `TraceableValue`.
+
+In 0.2.7 both fallbacks are no longer implicit (they remain, package-private
+and deprecated, for binary compatibility). The import instead provides
+element-wise instances for `Unit`, `Option`, `List`, `Seq`, `Vector`, `Set`,
+`Chain`, `NonEmptyList`, `NonEmptyVector`, `NonEmptySet`, `NonEmptyChain`,
+`Map`, and tuples of two to five elements. Each records every element through
+its own `TraceableValue`, so redaction holds everywhere.
+
+**Keep importing the instances.** The element-wise instances live only in
+`LowPriorityTraceableValueInstances`; they aren't in implicit scope for
+`Vector[Int]` and the like, so tracing a container still needs the import
+where the `Aspect` is derived. A by-name import of `traceValueViaShow` or
+`traceValueViaJson` no longer compiles. Replace it rather than deleting it:
+with the wildcard import, or by naming the instances the compiler asks for
+(for example `vectorTraceableValue`).
+
+**What now needs code.** Any type traced through its `Encoder` or `Show` is
+now a compile error naming the missing `TraceableValue`, as is any container
+not in the list above (`SortedSet`, `NonEmptyMap`, `Either`, `Array`, tuples
+of six or more, and so on). Types commonly hit here: `UUID`, `Instant` and
+the other `java.time` types, `BigDecimal`, `BigInt`, `Char`, `Short`, `Byte`,
+enums and other ADTs, case classes with a derived `Encoder`, and
+third-party types that only had a `Show` (a library's URL or identifier
+type, say), which traced silently through the `Show` fallback before. For each
+type the compiler names, either write a `TraceableValue`, or opt in to the
+old rendering explicitly:
+
+```scala
+implicit val fooTraceableValue: TraceableValue[Foo] =
+  LowPriorityTraceableValueInstances.fromEncoder[Foo] // compact JSON, as before
+
+implicit val barTraceableValue: TraceableValue[Bar] =
+  LowPriorityTraceableValueInstances.fromShow[Bar] // its Show, as before
+```
+
+Opting in records whatever the `Encoder` or `Show` reveals, including fields
+whose own `TraceableValue` would redact them, so don't opt in for a type that
+contains anything sensitive; write a `TraceableValue` instead. For a container
+outside the list, write an instance or convert it at the call site. For a
+third-party type you can't add a companion instance to, put the instance in
+an object you import where the `Aspect` is derived, and choose its rendering
+deliberately: a URL type's `Show` may include credentials, so record a masked
+form instead.
+
+**What records the same.** Primitives, and `List`, `Seq`, `Vector`, `Set`,
+`Chain`, the four non-empty types, `Map`, and tuples of primitives or of types
+opted in with `fromEncoder`, nested to any depth, record exactly the JSON the
+`Encoder` fallback did.
+
+**What records differently.**
+- A redacting element is now redacted: `List(secret)` records
+  `["redacted"]` rather than the secret.
+- Map keys that record the same string, as every key does under a redacting
+  instance, collapse to one entry rather than appearing as duplicate keys.
+- An `Option` *inside* a container records through `optionalTraceValue`, so
+  `None` becomes the string `"None"` rather than JSON `null`, and `Some(x)`
+  records `x`'s `TraceValue`: the same JSON for a primitive, but a JSON
+  string, not nested JSON, when `x` is itself a container or a `fromEncoder`
+  type.
+- A type opted in with `fromShow`, or any other non-JSON `TraceableValue`
+  that records a string, nests inside a container as a JSON string.
+- `Unit` inside a container records the string `"()"`, as it already did at
+  the top level, rather than circe's `{}`: `List(())` records `["()"]`, not
+  `[{}]`.
+- The import's container instances outrank a container instance in the
+  element's companion: a `TraceableValue[List[Foo]]` in `Foo`'s companion
+  loses to the imported `listTraceableValue`. Each element still records
+  through `Foo`'s own instance, so redaction holds; to use a custom container
+  instance, define it locally or import it explicitly.
+
 ## Migrating from `natchez-tagless` to the otel4s modules
 
 `otel4s-tagless` and `otel4s-tagless-mtl` are otel4s counterparts of
@@ -175,16 +258,13 @@ package scaladoc, or the `otel4s-tagless` README.
 
 ### What needs new code
 
-**`ToAnyValue` has no implicit fallback; `TraceableValue` does.**
-`natchez-tagless`'s `nonPrimitiveTraceValueViaJson` (declared in
-`LowPriorityTraceableValueInstances`, which *extends* the trait holding the
-`Show` fallback) gives any type with a circe `Encoder` or a cats `Show` a
-`TraceableValue` implicitly, preferring the `Encoder` —
-`ImplicitPrioritizationSpec` pins exactly that. Under otel4s such a type is a
-compile error until it gets a `ToAnyValue`: a value is recorded only through
-its own instance, so a redacting instance cannot be bypassed by a container
-or case class that encodes the whole value with its `Encoder` or `Show`. Write
-an instance, or opt in explicitly with `ToAnyValue.fromEncoder` or
+**Neither backend has an implicit `Encoder`/`Show` fallback.** As of 0.2.7,
+`natchez-tagless` doesn't either (see the 0.2.7 section above), so a type
+that compiles with a `TraceableValue` needs its own `ToAnyValue` too: a value
+is recorded only through its own instance, so a redacting instance cannot be
+bypassed by a container or case class that encodes the whole value with its
+`Encoder` or `Show`. Write an instance, or opt in explicitly with
+`ToAnyValue.fromEncoder` or
 `ToAnyValue.fromShow`. This applies to raised error types recorded by
 `otel4s-tagless-mtl` too.
 
@@ -203,7 +283,8 @@ error:
   identical in both.
 
 - **An `Encoder`-backed type records structured data, not a JSON string.**
-  natchez traces a type through its circe `Encoder` as the *string*
+  natchez traces a type opted in with
+  `LowPriorityTraceableValueInstances.fromEncoder` as the *string*
   `{"cents":150}`. A type opted in here with `ToAnyValue.fromEncoder` folds
   the same `Json` into a structured `AnyValue` tree:
   `AnyValue.map(Map("cents" -> AnyValue.long(150)))`, not
@@ -234,7 +315,8 @@ error:
   value-changing rendering.
 - `BigDecimal` and `BigInt` have built-in instances that record
   `AnyValue.long` or `AnyValue.double` when that is exact, and the exact
-  decimal string otherwise, rather than a string via `Show`.
+  decimal string otherwise. natchez-tagless has no instance for either; opt
+  in there with `fromEncoder` or `fromShow`.
 - `()` and `None` both encode to `AnyValue.empty` (natchez records the
   strings `"()"` and `"None"`), and a top-level attribute whose value would
   be entirely empty is omitted rather than recorded empty — see the

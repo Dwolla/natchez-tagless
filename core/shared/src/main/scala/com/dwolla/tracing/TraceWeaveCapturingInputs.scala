@@ -22,10 +22,27 @@ object TraceWeaveCapturingInputs {
  * as attributes.
  *
  * The format of the attributes is controlled via the implementation
- * of the `TraceableValue` typeclass. There are provided implementations
- * for `String`, `Int`, `Boolean`, and `Unit`, as well as `Option[A]`
- * where `TraceableValue[A]` exists. Other types that have `Show` or
- * Circe `Encoder` instances will also be converted.
+ * of the `TraceableValue` typeclass. natchez provides instances for
+ * `String`, `Boolean`, `Int`, `Long`, `Float`, and `Double`, and
+ * `import com.dwolla.tracing.LowPriorityTraceableValueInstances._` adds
+ * `Unit`, `Option`, common collections, `Map`, and tuples of two to five
+ * elements, each recording its elements through their own
+ * `TraceableValue`. Any other type needs an instance of its own: there is
+ * no implicit fallback to a type's `Show` or Circe `Encoder`, because that
+ * would bypass a redacting instance like the one below. To record a type
+ * through its `Encoder` or `Show`, opt in explicitly with
+ * `LowPriorityTraceableValueInstances.fromEncoder` or `fromShow`:
+ *
+ * {{{
+ *   import io.circe.Encoder, natchez._
+ *
+ *   case class Point(x: Int, y: Int)
+ *
+ *   object Point {
+ *     implicit val PointEncoder: Encoder[Point] = Encoder.forProduct2("x", "y")(p => (p.x, p.y))
+ *     implicit val PointTraceableValue: TraceableValue[Point] = LowPriorityTraceableValueInstances.fromEncoder[Point]
+ *   }
+ * }}}
  *
  * If a parameter is sensitive, one way to ensure the sensitive value
  * is not included in the trace is to use a newtype for the parameter
@@ -47,7 +64,10 @@ object TraceWeaveCapturingInputs {
  * With that implementation of `TraceableValue[Password]`, the span will
  * record "redacted password value" as an attribute, but the actual value
  * will not be recorded. Similar functionality can be achieved using the
- * newtype library of your choice.
+ * newtype library of your choice. Because the provided container
+ * instances record each element through its own `TraceableValue`, the
+ * redaction also holds for an `Option[Password]`, a `List[Password]`, a
+ * `Map` keyed or valued by `Password`, and so on.
  *
  * `TraceWeaveCapturingInputs` ignores the codomain (i.e. output) type,
  * so your algebra could have an `Aspect.Domain[Alg, TraceableValue]`
