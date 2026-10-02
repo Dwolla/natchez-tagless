@@ -118,7 +118,7 @@ lazy val taglessCore = crossProject(JVMPlatform, JSPlatform)
       "org.scalameta" %%% "munit-scalacheck" % munitScalacheckVersion % Test,
       "org.typelevel" %%% "cats-mtl" % catsMtlVersion % Test,
       "org.typelevel" %%% "cats-effect" % catsEffectVersion % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.1" % Test,
     ),
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
@@ -136,7 +136,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "log4cats-noop" % "2.8.0",
       "io.circe" %%% "circe-core" % "0.14.16",
       "org.tpolecat" %%% "natchez-testkit" % "0.3.10" % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.1" % Test,
       "org.typelevel" %%% "scalacheck-effect" % "2.1.0" % Test,
       "org.typelevel" %%% "scalacheck-effect-munit" % "2.1.0" % Test,
       "io.circe" %%% "circe-generic" % "0.14.16" % Test,
@@ -159,7 +159,7 @@ lazy val scalacache = crossProject(JVMPlatform)
       "com.github.cb372" %%% "scalacache-core" % "1.0.0-M6",
       "io.circe" %%% "circe-generic" % "0.14.16",
       "org.tpolecat" %%% "natchez-testkit" % "0.3.10" % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.1" % Test,
     ),
     libraryDependencies ++= {
       if (scalaBinaryVersion.value.startsWith("2")) Seq("org.typelevel" %%% "cats-tagless-macros" % catsTaglessVersion)
@@ -180,7 +180,7 @@ lazy val raiseAspect = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
       "org.typelevel" %%% "cats-effect" % catsEffectVersion % Test,
       "org.typelevel" %%% "cats-effect-testkit" % catsEffectVersion % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.1" % Test,
       "org.scalameta" %%% "munit" % munitVersion % Test,
       "org.scalameta" %%% "munit-scalacheck" % munitScalacheckVersion % Test,
     ),
@@ -218,7 +218,7 @@ lazy val raiseAspectLaws = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "discipline-munit" % disciplineMunitVersion % Test,
       "org.typelevel" %%% "cats-effect" % catsEffectVersion % Test,
       "org.typelevel" %%% "cats-effect-testkit" % catsEffectVersion % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.1" % Test,
     ),
     // law L9 compares our derivation against upstream's on capability-free
     // algebras. On Scala 2 that lives in cats-tagless-macros; on Scala 3 it is
@@ -239,7 +239,7 @@ lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform)
     name := "natchez-tagless-mtl",
     libraryDependencies ++= Seq(
       "org.scalameta" %%% "munit" % munitVersion % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.1" % Test,
     ),
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
@@ -297,7 +297,7 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
       "io.circe" %%% "circe-core" % "0.14.16",
       "org.scalameta" %%% "munit" % munitVersion % Test,
       "org.scalameta" %%% "munit-scalacheck" % munitScalacheckVersion % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.1" % Test,
       "org.typelevel" %%% "cats-laws" % catsVersion % Test,
       "org.typelevel" %%% "discipline-munit" % disciplineMunitVersion % Test,
       "io.circe" %%% "circe-testing" % "0.14.16" % Test,
@@ -412,7 +412,7 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
     name := "otel4s-tagless-mtl",
     libraryDependencies ++= Seq(
       "org.scalameta" %%% "munit" % munitVersion % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.1" % Test,
     ),
     libraryDependencies ++= {
       if (isOtel4sScalaVersion.value)
@@ -496,7 +496,7 @@ lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
       "org.scalameta" %%% "munit" % munitVersion % Test,
       "org.scalameta" %%% "munit-scalacheck" % munitScalacheckVersion % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.1" % Test,
       "org.typelevel" %%% "scalacheck-effect-munit" % "2.1.0" % Test,
       "org.typelevel" %%% "cats-effect-testkit" % catsEffectVersion % Test,
     ),
