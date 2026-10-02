@@ -73,6 +73,7 @@ val catsTaglessVersion = "0.16.5"
 val disciplineCoreVersion = "1.7.0"
 val disciplineMunitVersion = "2.0.0"
 val munitVersion = "1.3.1"
+val munitScalacheckVersion = "1.3.1"
 val otel4sVersion = "1.1.0"
 
 lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
@@ -114,7 +115,7 @@ lazy val taglessCore = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-core" % catsVersion,
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
       "org.scalameta" %%% "munit" % munitVersion % Test,
-      "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
+      "org.scalameta" %%% "munit-scalacheck" % munitScalacheckVersion % Test,
       "org.typelevel" %%% "cats-mtl" % catsMtlVersion % Test,
       "org.typelevel" %%% "cats-effect" % catsEffectVersion % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
@@ -180,7 +181,7 @@ lazy val raiseAspect = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-effect-testkit" % catsEffectVersion % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
       "org.scalameta" %%% "munit" % munitVersion % Test,
-      "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
+      "org.scalameta" %%% "munit-scalacheck" % munitScalacheckVersion % Test,
     ),
     // The Scala 2 def-macro implementation needs the compiler APIs at compile
     // time only; `Provided` keeps them off downstream classpaths.
@@ -294,7 +295,7 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
       "io.circe" %%% "circe-core" % "0.14.16",
       "org.scalameta" %%% "munit" % munitVersion % Test,
-      "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
+      "org.scalameta" %%% "munit-scalacheck" % munitScalacheckVersion % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
       "org.typelevel" %%% "cats-laws" % catsVersion % Test,
       "org.typelevel" %%% "discipline-munit" % disciplineMunitVersion % Test,
@@ -493,7 +494,7 @@ lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-core" % catsVersion,
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
       "org.scalameta" %%% "munit" % munitVersion % Test,
-      "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
+      "org.scalameta" %%% "munit-scalacheck" % munitScalacheckVersion % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
       "org.typelevel" %%% "scalacheck-effect-munit" % "2.1.0" % Test,
       "org.typelevel" %%% "cats-effect-testkit" % catsEffectVersion % Test,
