@@ -358,7 +358,8 @@ backend-agnostic suite is a possible follow-up.
 
 ## Scala 2.12
 
-**This module compiles nothing and ships nothing on 2.12.** No
+**This module ships nothing on 2.12, and compiles only its generated
+`BuildInfo` there.** No
 `otel4s-tagless_2.12` or `otel4s-tagless_sjs1_2.12` artifact is published, and
 none ever will be, because otel4s itself publishes none.
 
@@ -373,8 +374,9 @@ One new module simply never gains 2.12.
 Mechanically, the project still *appears* in the 2.12 cross-build (dropping it
 from `crossScalaVersions` does not remove it from sbt's root aggregate, which
 then fails resolving `tagless-core_2.13`). Instead, on 2.12 the otel4s
-coordinate is not declared, both source directories are emptied, and
-`publish / skip` is true. Nothing observable claims 2.12 support.
+coordinate is not declared, both source directories are emptied (leaving only
+the generated, package-private `BuildInfo` to compile), and `publish / skip` is
+true. Nothing observable claims 2.12 support.
 
 ## `derives AnyValueAspect` (Scala 3 only)
 
@@ -450,6 +452,18 @@ Recording happens with no action from the caller: both syntax methods resolve a
 own `com.dwolla.tagless.mtl.OnRaise[F, ToAnyValue]` in *lexical* scope to
 override it — not in your error type's companion, which implicit search for that
 type never looks inside.
+
+**A hook whose own implicit parameters can't be resolved at the call site counts
+as absent, and the default takes over silently.** A hook declared
+`[F[_] : FlatMap : Tracer]` is skipped at a call site that has only the
+`TracerProvider[F]` the syntax asks for — no error, no warning. Either have the
+hook ask for `TracerProvider[F]` and obtain a tracer inside `apply`, or bind an
+implicit `Tracer[F]` before calling the syntax
+(`tracerProvider.get("com.example.FooService").flatMap { implicit tracer => alg.traceWithInputs }`).
+To turn a miss into a compile error, summon `implicitly[OnRaise[F, ToAnyValue]]`
+at the call site. The default renders through `ToAnyValue[E]`, so a skipped hook
+that existed to record *less* than that instance renders gets the full
+rendering instead.
 
 One lossy case: a method that raises, rescues internally, and raises again fires
 the hook twice against one span, and the second write **overwrites** the first.

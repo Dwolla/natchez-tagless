@@ -164,7 +164,7 @@ package com.dwolla.tracing.otel4s
   *     `[F[_] : FlatMap : TracerProvider]`. A caller taking the default
   *     recorder therefore has to supply `FlatMap[F]`; a caller supplying its
   *     own `OnRaise[F, ToAnyValue]` needs only `Functor[F]` plus what that hook
-  *     needs.
+  *     needs. `RaiseTracerConstraintSpec` pins both directions.
   *   - `Handle[F, E]` parameters are rejected at derivation time, with a
   *     message pointing at this design: `Handle` ''consumes'' `F`
   *     (`handleWith` takes an `F[A]`), so — unlike `Raise`, which only ever
@@ -249,10 +249,31 @@ package com.dwolla.tracing.otel4s
   * there, because `ToAnyValue[MyError]` mentions `MyError` and the hook's type
   * does not. The hook must instead live somewhere ordinary lexical scoping
   * reaches it: a local `implicit val`/`given` in scope at the call site, or an
-  * import. A hook the compiler does not find is not an error — resolution
-  * quietly falls back to the `TracerProvider`-based default above, which still renders
-  * through `ToAnyValue`, so a missed override degrades to a redaction-aware
-  * default rather than to raw `toString`.
+  * import.
+  *
+  * '''A hook whose own implicit parameters cannot be resolved at the call site
+  * counts as absent.''' Implicit search treats a candidate it cannot complete
+  * as not applicable, so a hook declared `[F[_] : FlatMap : Tracer]` at a call
+  * site that has only the `TracerProvider[F]` the syntax asks for is skipped,
+  * exactly like a hook that is not in scope at all. Neither is an error and
+  * neither warns: resolution quietly falls back to the
+  * `TracerProvider`-based default above. Three remedies:
+  *
+  *   - have the hook ask for `TracerProvider[F]` rather than `Tracer[F]`, and
+  *     obtain a tracer from it inside `apply`, as the example below does;
+  *   - or bind an implicit `Tracer[F]` before calling the syntax:
+  *     `tracerProvider.get("com.example.FooService").flatMap { implicit tracer => alg.traceWithInputs }`;
+  *   - and, to turn a miss into a compile error, summon
+  *     `implicitly[OnRaise[F, ToAnyValue]]` at the call site (or pass the hook
+  *     explicitly), so a hook that does not resolve fails the build instead of
+  *     being replaced.
+  *
+  * The fallback still renders through `ToAnyValue`, never through raw
+  * `toString`, so it is exactly as redaction-aware as the error's
+  * `ToAnyValue[E]` instance — no more. A hook written to record ''less'' than
+  * that instance renders (say, because the instance is full-fidelity for the
+  * error's appearances as a return value) loses that when it is skipped: the
+  * default records the full rendering.
   *
   * The `TracerProvider`-based default itself is reached the same lexical way, not
   * automatically: `RaiseRecorder`'s mechanism lives in `raise-aspect`,

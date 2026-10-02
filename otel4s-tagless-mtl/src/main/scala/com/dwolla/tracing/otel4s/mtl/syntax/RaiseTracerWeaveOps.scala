@@ -55,6 +55,7 @@ class RaiseTracerWeaveOps[Alg[_[_]], F[_]](val alg: Alg[F]) extends AnyVal {
     * The requirement is conditional on that resolution, not on this
     * signature: a caller with its own `OnRaise[F, ToAnyValue]` in scope
     * needs only `Functor[F]` plus whatever that hook needs.
+    * `RaiseTracerConstraintSpec` pins both directions.
     * `traceWithInputsAndOutputs` is unaffected: it declares `FlatMap[F]` in
     * both packages, so the default recorder adds nothing there.
     *

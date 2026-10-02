@@ -166,6 +166,13 @@ tracer.
 `withMetrics` from `otel4s-tagless-metrics` has the same shape, so the two
 compose with `flatMap`: `alg.withMetrics().flatMap(_.instrumentAndTrace)`.
 
+A custom `OnRaise[F, TraceableValue]` hook that asks for `Trace[F]` should be
+ported to an `OnRaise[F, ToAnyValue]` that asks for `TracerProvider[F]`, not
+`Tracer[F]`. The call site has no `Tracer[F]`, so a hook that needs one counts
+as absent, and the default hook silently records in its place. See
+"Overriding the default recording" in the `com.dwolla.tracing.otel4s.mtl`
+package scaladoc, or the `otel4s-tagless` README.
+
 ### What needs new code
 
 **`ToAnyValue` has no implicit fallback; `TraceableValue` does.**
