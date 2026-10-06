@@ -134,12 +134,12 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
       "org.typelevel" %%% "cats-mtl" % catsMtlVersion,
       "org.typelevel" %%% "log4cats-noop" % "2.8.0",
-      "io.circe" %%% "circe-core" % "0.14.16",
+      "io.circe" %%% "circe-core" % "0.14.17",
       "org.tpolecat" %%% "natchez-testkit" % "0.3.10" % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
       "org.typelevel" %%% "scalacheck-effect" % "2.1.0" % Test,
       "org.typelevel" %%% "scalacheck-effect-munit" % "2.1.0" % Test,
-      "io.circe" %%% "circe-generic" % "0.14.16" % Test,
+      "io.circe" %%% "circe-generic" % "0.14.17" % Test,
     ),
   )
   .jvmSettings(
@@ -157,7 +157,7 @@ lazy val scalacache = crossProject(JVMPlatform)
     name := "natchez-tagless-scalacache",
     libraryDependencies ++= Seq(
       "com.github.cb372" %%% "scalacache-core" % "1.0.0-M6",
-      "io.circe" %%% "circe-generic" % "0.14.16",
+      "io.circe" %%% "circe-generic" % "0.14.17",
       "org.tpolecat" %%% "natchez-testkit" % "0.3.10" % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
     ),
@@ -294,13 +294,13 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % catsVersion,
       "org.typelevel" %%% "cats-tagless-core" % catsTaglessVersion,
-      "io.circe" %%% "circe-core" % "0.14.16",
+      "io.circe" %%% "circe-core" % "0.14.17",
       "org.scalameta" %%% "munit" % munitVersion % Test,
       "org.scalameta" %%% "munit-scalacheck" % munitScalacheckVersion % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
       "org.typelevel" %%% "cats-laws" % catsVersion % Test,
       "org.typelevel" %%% "discipline-munit" % disciplineMunitVersion % Test,
-      "io.circe" %%% "circe-testing" % "0.14.16" % Test,
+      "io.circe" %%% "circe-testing" % "0.14.17" % Test,
     ),
     libraryDependencies ++= {
       // core-trace dependsOn core-common, which carries AnyValue, Attribute,
