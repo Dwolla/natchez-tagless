@@ -8,7 +8,7 @@ ThisBuild / developers := List(
   tlGitHubDev("bpholt", "Brian Holt")
 )
 
-val Scala213 = "2.13.18"
+val Scala213 = "3.10.0"
 ThisBuild / crossScalaVersions := Seq(Scala213, "2.12.21", "3.3.8")
 ThisBuild / scalaVersion := Scala213 // the default Scala
 ThisBuild / githubWorkflowScalaVersions := Seq("2.13", "2.12", "3")
@@ -255,7 +255,7 @@ lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform)
 // The module has no content on 2.12, and that is arranged by emptying it
 // rather than by narrowing `crossScalaVersions`. otel4s has never published a
 // _2.12 artifact at any version (otel4s's own build.sbt sets
-// crossScalaVersions := Seq("2.13.18", "3.3.8"), and Maven Central 404s for
+// crossScalaVersions := Seq("3.10.0", "3.3.8"), and Maven Central 404s for
 // otel4s-core-trace_2.12), so on 2.12 the otel4s dependency is dropped, both
 // source directories are emptied, and publishing is skipped: the project
 // cross-builds along with everything else, but it compiles only the generated
