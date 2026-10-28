@@ -9,7 +9,7 @@ ThisBuild / developers := List(
 )
 
 val Scala213 = "2.13.18"
-ThisBuild / crossScalaVersions := Seq(Scala213, "2.12.21", "3.3.8")
+ThisBuild / crossScalaVersions := Seq(Scala213, "2.12.21", "3.3.9")
 ThisBuild / scalaVersion := Scala213 // the default Scala
 ThisBuild / githubWorkflowScalaVersions := Seq("2.13", "2.12", "3")
 ThisBuild / tlVersionIntroduced := Map("3" -> "0.2.4")
@@ -255,13 +255,13 @@ lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform)
 // The module has no content on 2.12, and that is arranged by emptying it
 // rather than by narrowing `crossScalaVersions`. otel4s has never published a
 // _2.12 artifact at any version (otel4s's own build.sbt sets
-// crossScalaVersions := Seq("2.13.18", "3.3.8"), and Maven Central 404s for
+// crossScalaVersions := Seq("2.13.18", "3.3.9"), and Maven Central 404s for
 // otel4s-core-trace_2.12), so on 2.12 the otel4s dependency is dropped, both
 // source directories are emptied, and publishing is skipped: the project
 // cross-builds along with everything else, but it compiles only the generated
 // BuildInfo, tests nothing and ships nothing.
 //
-// `crossScalaVersions := Seq(Scala213, "3.3.8")` is the obvious alternative and
+// `crossScalaVersions := Seq(Scala213, "3.3.9")` is the obvious alternative and
 // it does not work. sbt's `++` excludes such a project from the version switch
 // but does *not* drop it from the root aggregate — sbt.Cross.switchScalaVersion
 // only touches the included projects — so `natchez-tagless-rootJVM/test` under
