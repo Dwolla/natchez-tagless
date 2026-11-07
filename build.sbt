@@ -74,7 +74,7 @@ val disciplineCoreVersion = "1.7.0"
 val disciplineMunitVersion = "2.0.0"
 val munitVersion = "1.3.6"
 val munitScalacheckVersion = "1.3.1"
-val otel4sVersion = "1.1.0"
+val otel4sVersion = "1.2.0"
 
 lazy val `natchez-tagless-root` = tlCrossRootProject.aggregate(
   taglessCore,
