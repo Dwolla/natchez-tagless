@@ -598,5 +598,4 @@ lazy val buildInfoForTests = crossProject(JVMPlatform, JSPlatform, NativePlatfor
     buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion),
     buildInfoPackage := "com.dwolla.buildinfo",
   )
-  .nativeSettings(dropCompilerPluginsFromScala3Doc *)
   .enablePlugins(NoPublishPlugin, BuildInfoPlugin)
