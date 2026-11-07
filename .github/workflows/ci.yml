@@ -27,10 +27,10 @@ jobs:
     name: Test
     strategy:
       matrix:
-        os: [ubuntu-22.04]
+        os: [ubuntu-24.04]
         scala: [2.13, 2.12, 3]
         java: [temurin@8]
-        project: [natchez-tagless-rootJVM, natchez-tagless-rootJS]
+        project: [natchez-tagless-rootNative, natchez-tagless-rootJVM, natchez-tagless-rootJS]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
@@ -58,6 +58,10 @@ jobs:
       - name: Check that workflows are up to date
         run: sbt githubWorkflowCheck
 
+      - name: nativeLink
+        if: matrix.project == 'natchez-tagless-rootNative'
+        run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' Test/nativeLink
+
       - name: scalaJSLink
         if: matrix.project == 'natchez-tagless-rootJS'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' Test/scalaJSLinkerResult
@@ -66,20 +70,20 @@ jobs:
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' test
 
       - name: Check binary compatibility
-        if: matrix.java == 'temurin@8' && matrix.os == 'ubuntu-22.04'
+        if: matrix.java == 'temurin@8' && matrix.os == 'ubuntu-24.04'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' mimaReportBinaryIssues
 
       - name: Generate API documentation
-        if: matrix.java == 'temurin@8' && matrix.os == 'ubuntu-22.04'
+        if: matrix.java == 'temurin@8' && matrix.os == 'ubuntu-24.04'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' doc
 
       - name: Make target directories
         if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
-        run: mkdir -p otel4s-tagless/.jvm/target otel4s-tagless-metrics/.jvm/target scalacache/.jvm/target otel4s-tagless-mtl/.jvm/target raise-aspect-laws/.jvm/target raise-aspect/.js/target tagless-core/.js/target core/js/target tagless-core/.jvm/target core/jvm/target otel4s-tagless/.js/target otel4s-tagless-metrics/.js/target natchez-tagless-mtl/.jvm/target raise-aspect-laws/.js/target raise-aspect/.jvm/target otel4s-tagless-mtl/.js/target natchez-tagless-mtl/.js/target project/target
+        run: mkdir -p otel4s-tagless/.jvm/target otel4s-tagless-metrics/.jvm/target scalacache/.jvm/target otel4s-tagless-mtl/.jvm/target core/native/target raise-aspect-laws/.jvm/target raise-aspect/.js/target tagless-core/.js/target raise-aspect-laws/.native/target tagless-core/.native/target core/js/target tagless-core/.jvm/target core/jvm/target otel4s-tagless/.js/target otel4s-tagless-metrics/.js/target raise-aspect/.native/target otel4s-tagless-mtl/.native/target natchez-tagless-mtl/.jvm/target raise-aspect-laws/.js/target otel4s-tagless/.native/target raise-aspect/.jvm/target otel4s-tagless-mtl/.js/target natchez-tagless-mtl/.js/target otel4s-tagless-metrics/.native/target natchez-tagless-mtl/.native/target project/target
 
       - name: Compress target directories
         if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
-        run: tar cf targets.tar otel4s-tagless/.jvm/target otel4s-tagless-metrics/.jvm/target scalacache/.jvm/target otel4s-tagless-mtl/.jvm/target raise-aspect-laws/.jvm/target raise-aspect/.js/target tagless-core/.js/target core/js/target tagless-core/.jvm/target core/jvm/target otel4s-tagless/.js/target otel4s-tagless-metrics/.js/target natchez-tagless-mtl/.jvm/target raise-aspect-laws/.js/target raise-aspect/.jvm/target otel4s-tagless-mtl/.js/target natchez-tagless-mtl/.js/target project/target
+        run: tar cf targets.tar otel4s-tagless/.jvm/target otel4s-tagless-metrics/.jvm/target scalacache/.jvm/target otel4s-tagless-mtl/.jvm/target core/native/target raise-aspect-laws/.jvm/target raise-aspect/.js/target tagless-core/.js/target raise-aspect-laws/.native/target tagless-core/.native/target core/js/target tagless-core/.jvm/target core/jvm/target otel4s-tagless/.js/target otel4s-tagless-metrics/.js/target raise-aspect/.native/target otel4s-tagless-mtl/.native/target natchez-tagless-mtl/.jvm/target raise-aspect-laws/.js/target otel4s-tagless/.native/target raise-aspect/.jvm/target otel4s-tagless-mtl/.js/target natchez-tagless-mtl/.js/target otel4s-tagless-metrics/.native/target natchez-tagless-mtl/.native/target project/target
 
       - name: Upload target directories
         if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
@@ -94,7 +98,7 @@ jobs:
     if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
     strategy:
       matrix:
-        os: [ubuntu-22.04]
+        os: [ubuntu-24.04]
         java: [temurin@8]
     runs-on: ${{ matrix.os }}
     steps:
@@ -119,6 +123,16 @@ jobs:
         if: matrix.java == 'temurin@8' && steps.setup-java-temurin-8.outputs.cache-hit == 'false'
         run: sbt +update
 
+      - name: Download target directories (2.13, natchez-tagless-rootNative)
+        uses: actions/download-artifact@v6
+        with:
+          name: target-${{ matrix.os }}-${{ matrix.java }}-2.13-natchez-tagless-rootNative
+
+      - name: Inflate target directories (2.13, natchez-tagless-rootNative)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
       - name: Download target directories (2.13, natchez-tagless-rootJVM)
         uses: actions/download-artifact@v6
         with:
@@ -139,6 +153,16 @@ jobs:
           tar xf targets.tar
           rm targets.tar
 
+      - name: Download target directories (2.12, natchez-tagless-rootNative)
+        uses: actions/download-artifact@v6
+        with:
+          name: target-${{ matrix.os }}-${{ matrix.java }}-2.12-natchez-tagless-rootNative
+
+      - name: Inflate target directories (2.12, natchez-tagless-rootNative)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
       - name: Download target directories (2.12, natchez-tagless-rootJVM)
         uses: actions/download-artifact@v6
         with:
@@ -155,6 +179,16 @@ jobs:
           name: target-${{ matrix.os }}-${{ matrix.java }}-2.12-natchez-tagless-rootJS
 
       - name: Inflate target directories (2.12, natchez-tagless-rootJS)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
+      - name: Download target directories (3, natchez-tagless-rootNative)
+        uses: actions/download-artifact@v6
+        with:
+          name: target-${{ matrix.os }}-${{ matrix.java }}-3-natchez-tagless-rootNative
+
+      - name: Inflate target directories (3, natchez-tagless-rootNative)
         run: |
           tar xf targets.tar
           rm targets.tar
@@ -236,5 +270,5 @@ jobs:
       - name: Submit Dependencies
         uses: scalacenter/sbt-dependency-submission@v2
         with:
-          modules-ignore: natchez-tagless-rootnative_2.13 natchez-tagless-rootnative_2.12 natchez-tagless-rootnative_3 natchez-tagless-rootjvm_2.13 natchez-tagless-rootjvm_2.12 natchez-tagless-rootjvm_3 natchez-tagless-rootjs_2.13 natchez-tagless-rootjs_2.12 natchez-tagless-rootjs_3 buildinfofortests_sjs1_2.13 buildinfofortests_sjs1_2.12 buildinfofortests_sjs1_3 buildinfofortests_2.13 buildinfofortests_2.12 buildinfofortests_3
+          modules-ignore: natchez-tagless-rootnative_2.13 natchez-tagless-rootnative_2.12 natchez-tagless-rootnative_3 natchez-tagless-rootjvm_2.13 natchez-tagless-rootjvm_2.12 natchez-tagless-rootjvm_3 natchez-tagless-rootjs_2.13 natchez-tagless-rootjs_2.12 natchez-tagless-rootjs_3 buildinfofortests_native0.5_2.13 buildinfofortests_native0.5_2.12 buildinfofortests_native0.5_3 buildinfofortests_sjs1_2.13 buildinfofortests_sjs1_2.12 buildinfofortests_sjs1_3 buildinfofortests_2.13 buildinfofortests_2.12 buildinfofortests_3
           configs-ignore: test scala-tool scala-doc-tool test-internal

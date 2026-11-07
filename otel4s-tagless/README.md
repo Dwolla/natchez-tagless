@@ -226,8 +226,8 @@ implicit val distanceToAnyValue: ToAnyValue[Distance] = ToAnyValue.fromShow[Dist
 on — not a JSON string; `fromShow` records the rendering as a string. The
 same opt-in is the way to record `java.time` types, which have no built-in
 instance here: `ToAnyValue.fromEncoder[java.time.Instant]` uses circe's
-ISO-8601 encoding (on Scala.js that needs `scala-java-time`, as circe's
-`java.time` encoders always do).
+ISO-8601 encoding (on Scala.js and Scala Native that needs `scala-java-time`, as
+circe's `java.time` encoders always do).
 
 The `Float` widening (`ToAnyValue[Float]`) is exact in the IEEE-754 sense and
 inexact-looking in print — `0.1f` records as `0.10000000149011612`. The
@@ -337,11 +337,12 @@ hatch is `SpanBuilder.State.withFinalizationStrategy` reached through
 name is a macro. This module exposes no knob for it; a user who needs one writes
 their own `Weave ~> F`, which is four lines.
 
-## Coverage asymmetry: most span content is not asserted on Scala.js
+## Coverage asymmetry: most span content is not asserted on Scala.js or Scala Native
 
 Encoding (`ToAnyValue`, `asAttributes`) and interpreter transparency are tested
-on **both** the JVM and Scala.js, and so are the spans' instrumentation scope
-and their parenting under an application's own tracer, in `TracerScopeSuite`:
+on **every** platform (the JVM, Scala.js, and Scala Native), and so are the
+spans' instrumentation scope and their parenting under an application's own
+tracer, in `TracerScopeSuite`:
 it runs against `otel4s-sdk-trace-testkit` on every platform and against
 `otel4s-oteljava-trace-testkit` on the JVM. The rest of span *content* — that
 the right attributes end up on the right span — is asserted on the **JVM
@@ -350,7 +351,8 @@ only**, in `SpanContentSpec`, through the oteljava testkit.
 A testkit is required because every otel4s span type is sealed with a
 `private[otel4s]` `Unsealed` variant, so a recording `Tracer` cannot be
 hand-rolled the way this repo hand-rolls a `natchez.Trace`.
-`otel4s-oteljava-trace-testkit` publishes no `_sjs1_` artifact at any version;
+`otel4s-oteljava-trace-testkit` publishes no `_sjs1_` or `_native0.5_` artifact
+at any version;
 `otel4s-sdk-trace-testkit` is cross-platform (otel4s-sdk is pre-1.0 and
 versioned separately; 0.19.4 is built against otel4s-core 1.1.0), and is a
 test-only dependency. Moving the rest of `SpanContentSpec` onto the shared,
@@ -360,12 +362,14 @@ backend-agnostic suite is a possible follow-up.
 
 **This module ships nothing on 2.12, and compiles only its generated
 `BuildInfo` there.** No
-`otel4s-tagless_2.12` or `otel4s-tagless_sjs1_2.12` artifact is published, and
+`otel4s-tagless_2.12`, `otel4s-tagless_sjs1_2.12`, or
+`otel4s-tagless_native0.5_2.12` artifact is published, and
 none ever will be, because otel4s itself publishes none.
 
 otel4s has never published a `_2.12` artifact, at any version — its own build
 sets `crossScalaVersions := Seq("2.13.18", "3.3.8")`, and Maven Central 404s for
-`otel4s-core-trace_2.12` and `otel4s-core-trace_sjs1_2.12`. So this is not a
+`otel4s-core-trace_2.12`, `otel4s-core-trace_sjs1_2.12`, and
+`otel4s-core-trace_native0.5_2.12`. So this is not a
 2.12 drop: every other module in this build — `natchez-tagless`,
 `natchez-tagless-scalacache`, `natchez-tagless-mtl`, `tagless-core` and the
 three `raise-aspect-*` modules — keeps publishing `_2.12` artifacts, unchanged.
