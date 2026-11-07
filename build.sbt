@@ -315,7 +315,7 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
           // otel4s-sdk is pre-1.0 and versioned separately: 0.19.4 is the
           // release built against otel4s-core 1.1.0. Move it together with
           // `otel4sVersion`.
-          "org.typelevel" %%% "otel4s-sdk-trace-testkit" % "0.19.4" % Test,
+          "org.typelevel" %%% "otel4s-sdk-trace-testkit" % "0.19.5" % Test,
         )
       else Seq.empty
     },
@@ -421,7 +421,7 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
           // RaiseScopeSuite runs against otel4s-sdk on every platform, as
           // otel4s-tagless's TracerScopeSuite does; move it together with
           // `otel4sVersion`.
-          "org.typelevel" %%% "otel4s-sdk-trace-testkit" % "0.19.4" % Test,
+          "org.typelevel" %%% "otel4s-sdk-trace-testkit" % "0.19.5" % Test,
         )
       else Seq.empty
     },
@@ -512,7 +512,7 @@ lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
           // otel4s-sdk is pre-1.0 and versioned separately: 0.19.4 is the
           // release built against otel4s-core 1.1.0. Move it together with
           // `otel4sVersion`.
-          "org.typelevel" %%% "otel4s-sdk-metrics-testkit" % "0.19.4" % Test,
+          "org.typelevel" %%% "otel4s-sdk-metrics-testkit" % "0.19.5" % Test,
         )
       else Seq.empty
     },
