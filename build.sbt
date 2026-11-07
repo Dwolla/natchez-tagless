@@ -12,6 +12,9 @@ val Scala213 = "2.13.18"
 ThisBuild / crossScalaVersions := Seq(Scala213, "2.12.21", "3.3.8")
 ThisBuild / scalaVersion := Scala213 // the default Scala
 ThisBuild / githubWorkflowScalaVersions := Seq("2.13", "2.12", "3")
+// Scala Native warns when it links with clang older than 16. The ubuntu-22.04 runner image tops out at
+// clang 15, and every clang on the ubuntu-24.04 image is 16 or newer.
+ThisBuild / githubWorkflowOSes := Seq("ubuntu-24.04")
 ThisBuild / tlVersionIntroduced := Map("3" -> "0.2.4")
 ThisBuild / tlJdkRelease := Some(8)
 ThisBuild / libraryDependencySchemes += "io.circe" %% "circe-core" % "always"
@@ -32,7 +35,7 @@ ThisBuild / tlFatalWarnings := githubIsWorkflowBuild.value
 // are read from `githubWorkflowBuild`, the same setting that generates
 // .github/workflows/ci.yml, so the commands stay close to CI's — but the
 // alias skips `githubWorkflowBuildPreamble`/`Postamble` and any step that
-// isn't a `WorkflowStep.Sbt`, and `stepsFor` below recognizes only the two
+// isn't a `WorkflowStep.Sbt`, and `stepsFor` below recognizes only the three
 // exact command lists it filters on, so it's not a byte-for-byte guarantee.
 // One deliberate difference: Scala.js tests are linked but not run, because
 // running them needs Node, which CI provides and developer machines may not.
@@ -44,13 +47,16 @@ Global / tlCommandAliases += {
   val rootProjects = (ThisBuild / githubWorkflowBuildMatrixAdditions).value.getOrElse("project", Nil)
   val buildSteps = (ThisBuild / githubWorkflowBuild).value.toList.collect { case step: WorkflowStep.Sbt => step.commands }
 
-  // `Test/scalaJSLinkerResult` only resolves on the JS root (CI itself gates
-  // that step on `matrix.project == 'natchez-tagless-rootJS'`, a condition
-  // lost once WorkflowStep.Sbt is collapsed to its bare commands above), and
-  // `test` on the JS root needs Node, which local machines may not have.
+  // `Test/scalaJSLinkerResult` only resolves on the JS root and
+  // `Test/nativeLink` only on the Native root (CI itself gates those steps on
+  // `matrix.project == 'natchez-tagless-rootJS'` and `...-rootNative`,
+  // conditions lost once WorkflowStep.Sbt is collapsed to its bare commands
+  // above), and `test` on the JS root needs Node, which local machines may
+  // not have.
   def stepsFor(project: String): List[String] =
     buildSteps.filterNot { commands =>
       (commands == List("Test/scalaJSLinkerResult") && !project.endsWith("JS")) ||
+        (commands == List("Test/nativeLink") && !project.endsWith("Native")) ||
         (commands == List("test") && project.endsWith("JS"))
     }.flatten
 
@@ -95,10 +101,30 @@ lazy val isOtel4sScalaVersion: Def.Initialize[Boolean] = Def.setting {
   scalaBinaryVersion.value != "2.12"
 }
 
+// Scala Native artifacts are first published in 0.2.8, so MiMa must not look
+// for earlier ones.
+lazy val nativePlatformSettings: Seq[Def.Setting[?]] = Seq(
+  tlVersionIntroduced := Map("2.12" -> "0.2.8", "2.13" -> "0.2.8", "3" -> "0.2.8"),
+) ++ dropCompilerPluginsFromScala3Doc
+
+// Scala Native adds its compiler plugin with -Xplugin, which Scala 3's scaladoc ignores but warns about.
+// Scala 2's scaladoc typechecks with the compiler plugins (e.g. kind-projector), so they stay there.
+// Test is included because the otel4s modules publish their test artifacts, docs included.
+lazy val dropCompilerPluginsFromScala3Doc: Seq[Def.Setting[?]] =
+  Seq(Compile, Test).map { config =>
+    config / doc / scalacOptions := {
+      val options = (config / doc / scalacOptions).value
+      if (scalaBinaryVersion.value == "3") options.filterNot(_.startsWith("-Xplugin")) else options
+    }
+  }
+
 lazy val doctestSettings: Seq[Def.Setting[?]] = Seq(
   libraryDependencies ++= Seq(
     "org.scalacheck" %%% "scalacheck" % "1.19.0" % Test,
-    "io.monix" %%% "newtypes-core" % "0.2.3" % Test,
+    // newtypes-core is early-semver; its first Scala Native release is 0.3.0.
+    // The JVM and JS builds stay on 0.2.x so their test classpaths don't
+    // change, and the Native builds, which are new, use the current version.
+    "io.monix" %%% "newtypes-core" % (if (crossProjectPlatform.value == NativePlatform) "1.0.0" else "0.2.3") % Test,
   ),
   doctestOnlyCodeBlocksMode := true,
   Test / scalacOptions ~= {
@@ -106,7 +132,7 @@ lazy val doctestSettings: Seq[Def.Setting[?]] = Seq(
   },
 )
 
-lazy val taglessCore = crossProject(JVMPlatform, JSPlatform)
+lazy val taglessCore = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("tagless-core"))
   .settings(
@@ -122,8 +148,9 @@ lazy val taglessCore = crossProject(JVMPlatform, JSPlatform)
     ),
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
+  .nativeSettings(nativePlatformSettings *)
 
-lazy val core = crossProject(JVMPlatform, JSPlatform)
+lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("core"))
   .settings(
@@ -147,6 +174,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "com.dwolla" %% "dwolla-otel-natchez" % "0.2.8" % Test,
     ),
   )
+  .nativeSettings(nativePlatformSettings *)
   .settings(doctestSettings *)
   .dependsOn(taglessCore, buildInfoForTests % Test)
 
@@ -169,7 +197,7 @@ lazy val scalacache = crossProject(JVMPlatform)
   .settings(doctestSettings *)
   .dependsOn(core)
 
-lazy val raiseAspect = crossProject(JVMPlatform, JSPlatform)
+lazy val raiseAspect = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("raise-aspect"))
   .settings(
@@ -194,18 +222,20 @@ lazy val raiseAspect = crossProject(JVMPlatform, JSPlatform)
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
   // Test-only, additive split so a `Platform.isJvm` compile-time constant
-  // (see OnRaiseSpec/ObservingCapabilitySpec) can differ between the JVM and
-  // JS builds without moving raiseAspect to CrossType.Full. Mirrors this
-  // project's existing scala-2/scala-3 source-directory convention, and the
-  // `cats-kernel-laws` Platform.isJvm pattern it's modeled on.
+  // (see OnRaiseSpec/ObservingCapabilitySpec) can differ between the JVM
+  // build and the JS and Native builds without moving raiseAspect to
+  // CrossType.Full. Mirrors this project's existing scala-2/scala-3
+  // source-directory convention, and the `cats-kernel-laws` Platform.isJvm
+  // pattern it's modeled on.
   .jvmSettings(
     Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
   )
-  .jsSettings(
-    Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-js",
+  .platformsSettings(JSPlatform, NativePlatform)(
+    Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-js-native",
   )
+  .nativeSettings(nativePlatformSettings *)
 
-lazy val raiseAspectLaws = crossProject(JVMPlatform, JSPlatform)
+lazy val raiseAspectLaws = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("raise-aspect-laws"))
   .settings(
@@ -230,9 +260,10 @@ lazy val raiseAspectLaws = crossProject(JVMPlatform, JSPlatform)
     },
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
+  .nativeSettings(nativePlatformSettings *)
   .dependsOn(raiseAspect % "compile->compile;test->test")
 
-lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform)
+lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("natchez-tagless-mtl"))
   .settings(
@@ -243,6 +274,7 @@ lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform)
     ),
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
+  .nativeSettings(nativePlatformSettings *)
   .settings(doctestSettings *)
   // test->test reuses core's InMemorySuite harness (Kleisli/IOLocal Trace wiring)
   // for the integration test, rather than re-deriving it.
@@ -280,7 +312,7 @@ lazy val natchezTaglessMtl = crossProject(JVMPlatform, JSPlatform)
 // So `crossScalaVersions` still lists 2.12, but nothing observable claims 2.12
 // support: `publish / skip` means no `otel4s-tagless_2.12` artifact is ever
 // produced, and the published artifact list is the only thing users can see.
-lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
+lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("otel4s-tagless"))
   .enablePlugins(BuildInfoPlugin)
@@ -332,6 +364,7 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
     publishArtifact := isOtel4sScalaVersion.value,
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
+  .nativeSettings(nativePlatformSettings *)
   // Span *content* can only be asserted with a testkit: every otel4s span type
   // is sealed and its Unsealed variant is private[otel4s], so a recording
   // Tracer cannot be hand-rolled. The instrumentation-scope and parenting
@@ -405,7 +438,7 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform)
 // testkit coordinates and the .jvmSettings scala-jvm test-source directory.
 // The seventh gate below, on scala-3-jvm, tests `== "3"` instead; that already
 // excludes 2.12, so it needs no `isOtel4sScalaVersion` of its own.
-lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
+lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("otel4s-tagless-mtl"))
   .settings(
@@ -438,6 +471,7 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
     publishArtifact := isOtel4sScalaVersion.value,
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
+  .nativeSettings(nativePlatformSettings *)
   .jvmSettings(
     libraryDependencies ++= {
       if (isOtel4sScalaVersion.value)
@@ -480,7 +514,7 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform)
 // 2.12 is contained exactly as in otel4sTagless, for the identical reason — see
 // the comment on that project. Every `isOtel4sScalaVersion` gate below is
 // required, as there.
-lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
+lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("otel4s-tagless-metrics"))
   .enablePlugins(BuildInfoPlugin)
@@ -529,6 +563,7 @@ lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
     publishArtifact := isOtel4sScalaVersion.value,
     tlVersionIntroduced := Map("2.12" -> "0.2.7", "2.13" -> "0.2.7", "3" -> "0.2.7"),
   )
+  .nativeSettings(nativePlatformSettings *)
   // Metric *content* needs an SDK. The content properties live in the shared,
   // backend-agnostic MeasurementContentSuite, which runs against otel4s-sdk on
   // every platform (OtelSdkMeasurementContentSpec) and against oteljava on the
@@ -556,11 +591,12 @@ lazy val otel4sTaglessMetrics = crossProject(JVMPlatform, JSPlatform)
   .dependsOn(taglessCore, otel4sTagless % Test)
 
 // sbt-buildinfo can't be enabled only for the test scope, so this is the workaround to use it only in tests
-lazy val buildInfoForTests = crossProject(JVMPlatform, JSPlatform)
+lazy val buildInfoForTests = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("buildInfoForTests"))
   .settings(
     buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion),
     buildInfoPackage := "com.dwolla.buildinfo",
   )
+  .nativeSettings(dropCompilerPluginsFromScala3Doc *)
   .enablePlugins(NoPublishPlugin, BuildInfoPlugin)
