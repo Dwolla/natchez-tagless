@@ -120,7 +120,7 @@ lazy val dropCompilerPluginsFromScala3Doc: Seq[Def.Setting[?]] =
 
 lazy val doctestSettings: Seq[Def.Setting[?]] = Seq(
   libraryDependencies ++= Seq(
-    "org.scalacheck" %%% "scalacheck" % "1.19.0" % Test,
+    "org.scalacheck" %%% "scalacheck" % "1.20.0" % Test,
     // newtypes-core is early-semver; its first Scala Native release is 0.3.0.
     // The JVM and JS builds stay on 0.2.x so their test classpaths don't
     // change, and the Native builds, which are new, use the current version.
