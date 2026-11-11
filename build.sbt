@@ -9,7 +9,7 @@ ThisBuild / developers := List(
 )
 
 val Scala213 = "2.13.18"
-ThisBuild / crossScalaVersions := Seq(Scala213, "2.12.21", "3.3.8")
+ThisBuild / crossScalaVersions := Seq(Scala213, "2.12.21", "3.9.0")
 ThisBuild / scalaVersion := Scala213 // the default Scala
 ThisBuild / githubWorkflowScalaVersions := Seq("2.13", "2.12", "3")
 // Scala Native warns when it links with clang older than 16. The ubuntu-22.04 runner image tops out at
