@@ -77,7 +77,7 @@ Global / tlCommandAliases += {
 val catsVersion = "2.13.0"
 val catsEffectVersion = "3.7.1"
 val catsMtlVersion = "1.7.0"
-val catsTaglessVersion = "0.16.5"
+val catsTaglessVersion = "0.16.6"
 // Must track discipline-munit's discipline-core dependency; bump them together.
 val disciplineCoreVersion = "1.7.0"
 val disciplineMunitVersion = "2.0.0"
