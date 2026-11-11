@@ -17,6 +17,9 @@ ThisBuild / githubWorkflowScalaVersions := Seq("2.13", "2.12", "3")
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-24.04")
 ThisBuild / tlVersionIntroduced := Map("3" -> "0.2.4")
 ThisBuild / tlJdkRelease := Some(8)
+// Scala Native 0.5 warns that running it on a JDK older than 17 is deprecated. The published bytecode
+// still targets Java 8 through tlJdkRelease.
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 ThisBuild / libraryDependencySchemes += "io.circe" %% "circe-core" % "always"
 ThisBuild / tlCiReleaseBranches := Seq("main")
 ThisBuild / mergifyStewardConfig ~= { _.map {
