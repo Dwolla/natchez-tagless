@@ -127,7 +127,7 @@ lazy val doctestSettings: Seq[Def.Setting[?]] = Seq(
     // newtypes-core is early-semver; its first Scala Native release is 0.3.0.
     // The JVM and JS builds stay on 0.2.x so their test classpaths don't
     // change, and the Native builds, which are new, use the current version.
-    "io.monix" %%% "newtypes-core" % (if (crossProjectPlatform.value == NativePlatform) "1.0.0" else "0.2.3") % Test,
+    "io.monix" %%% "newtypes-core" % (if (crossProjectPlatform.value == NativePlatform) "1.0.0" else "0.4.1") % Test,
   ),
   doctestOnlyCodeBlocksMode := true,
   Test / scalacOptions ~= {
