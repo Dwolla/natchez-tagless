@@ -22,6 +22,12 @@ ThisBuild / tlJdkRelease := Some(8)
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 ThisBuild / libraryDependencySchemes += "io.circe" %% "circe-core" % "always"
 ThisBuild / tlCiReleaseBranches := Seq("main")
+// Maven Central rate-limits publishing by egress IP, and Sonatype support can only investigate an
+// HTTP 429 when given the IP that was blocked. The lookup must never fail the publish.
+ThisBuild / githubWorkflowPublishPreamble += WorkflowStep.Run(
+  List("echo \"Runner egress IP: $(curl --silent --show-error --max-time 10 https://checkip.amazonaws.com || echo unknown)\""),
+  name = Some("Log runner egress IP"),
+)
 ThisBuild / mergifyStewardConfig ~= { _.map {
   _.withAuthor("dwolla-oss-scala-steward[bot]")
     .withMergeMinors(true)
