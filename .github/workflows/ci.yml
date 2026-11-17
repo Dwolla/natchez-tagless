@@ -9,9 +9,9 @@ name: Continuous Integration
 
 on:
   pull_request:
-    branches: ['**', '!update/**', '!pr/**']
+    branches: [main]
   push:
-    branches: ['**', '!update/**', '!pr/**']
+    branches: [main]
     tags: [v*]
 
 env:
@@ -49,10 +49,20 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-          cache: sbt
+
+      - name: Cache sbt dependencies
+        id: sbt-dependency-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/coursier
+            ~/.ivy2/cache
+            ~/.sbt
+          key: ${{ runner.os }}-sbt-dependencies-${{ hashFiles('**/*.sbt', 'project/build.properties') }}
+          restore-keys: ${{ runner.os }}-sbt-dependencies-
 
       - name: sbt update
-        if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
+        if: steps.sbt-dependency-cache.outputs.cache-hit != 'true'
         run: sbt +update
 
       - name: Check that workflows are up to date
@@ -117,10 +127,20 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-          cache: sbt
+
+      - name: Cache sbt dependencies
+        id: sbt-dependency-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/coursier
+            ~/.ivy2/cache
+            ~/.sbt
+          key: ${{ runner.os }}-sbt-dependencies-${{ hashFiles('**/*.sbt', 'project/build.properties') }}
+          restore-keys: ${{ runner.os }}-sbt-dependencies-
 
       - name: sbt update
-        if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
+        if: steps.sbt-dependency-cache.outputs.cache-hit != 'true'
         run: sbt +update
 
       - name: Download target directories (2.13, natchez-tagless-rootNative)
@@ -261,10 +281,20 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-          cache: sbt
+
+      - name: Cache sbt dependencies
+        id: sbt-dependency-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/coursier
+            ~/.ivy2/cache
+            ~/.sbt
+          key: ${{ runner.os }}-sbt-dependencies-${{ hashFiles('**/*.sbt', 'project/build.properties') }}
+          restore-keys: ${{ runner.os }}-sbt-dependencies-
 
       - name: sbt update
-        if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
+        if: steps.sbt-dependency-cache.outputs.cache-hit != 'true'
         run: sbt +update
 
       - name: Submit Dependencies
