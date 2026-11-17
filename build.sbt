@@ -430,7 +430,8 @@ lazy val otel4sTagless = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .dependsOn(taglessCore)
 
 // The mtl counterpart of otel4s-tagless: traces algebras whose methods take
-// cats.mtl.Raise capability parameters, which plain Aspect cannot weave.
+// cats.mtl.Raise capability parameters, which plain Aspect cannot weave. It also
+// meters such algebras, through otel4sTaglessMetrics.
 //
 // 2.12 containment is identical to otel4sTagless's, for the identical reason —
 // see that project's comment above for why this is done by emptying the module
@@ -504,12 +505,18 @@ lazy val otel4sTaglessMtl = crossProject(JVMPlatform, JSPlatform, NativePlatform
     },
   )
   .settings(doctestSettings *)
-  .dependsOn(otel4sTagless, raiseAspect)
+  // Compile: `com.dwolla.metrics.otel4s.mtl.syntax` meters Raise algebras with
+  // otel4s-tagless-metrics's interpreters. Test: its metric-content suites run
+  // on that module's backend seam (OtelSdkHistograms, OtelJavaHistograms) and
+  // reuse its fixtures.
+  .dependsOn(otel4sTagless, raiseAspect, otel4sTaglessMetrics % "compile->compile;test->test")
 
 // Duration metrics for any cats-tagless `Instrument` algebra, recorded through
 // an otel4s `Meter`. A sibling of otel4sTagless rather than part of it, so an
 // application that only traces never pulls in otel4s-core-metrics and one that
-// only measures never pulls in otel4s-core-trace. Main scope is
+// only measures never pulls in otel4s-core-trace. (That holds for otel4sTagless;
+// otel4sTaglessMtl does meter Raise algebras, so it brings otel4s-core-metrics.)
+// Main scope is
 // otel4s-core-metrics plus the stable otel4s-semconv (which depends only on
 // otel4s-core-common): no backend, no experimental semconv, and of our modules
 // only tagless-core (cats + cats-tagless-core).

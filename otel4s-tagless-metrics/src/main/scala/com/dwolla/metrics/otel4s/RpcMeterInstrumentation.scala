@@ -9,6 +9,10 @@ import org.typelevel.otel4s.metrics.{Histogram, MeterProvider}
 
 import scala.concurrent.duration.SECONDS
 
+// `apply` is called from the otel4s-tagless-mtl artifact
+// (com.dwolla.metrics.otel4s.mtl.syntax), so its signature is a cross-artifact
+// binary contract that MiMa doesn't check for `private[otel4s]` members:
+// change it only additively.
 private[otel4s] object RpcMeterInstrumentation {
   /** The RPC metric's name is fixed by `role`, so its histogram is created here,
     * once, and every call only records into it.
