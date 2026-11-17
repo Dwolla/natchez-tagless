@@ -16,6 +16,9 @@ package com.dwolla.tracing.otel4s
   * `ToAnyValue` here, `natchez.TraceableValue` there — see ARCHAEOLOGY.md if
   * you're moving an algebra between the two.
   *
+  * Call-duration metrics for the same algebras come from
+  * `com.dwolla.metrics.otel4s.mtl.syntax`'s `withMetrics`.
+  *
   * ==Worked example==
   *
   * The algebra, its implementation, and how it is traced. Declaring the

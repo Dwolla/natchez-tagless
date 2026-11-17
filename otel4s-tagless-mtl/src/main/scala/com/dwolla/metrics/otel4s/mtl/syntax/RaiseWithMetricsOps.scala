@@ -18,9 +18,11 @@ trait ToRaiseWithMetricsOps {
   * `RaiseAspect[Alg, ToAnyValue, ToAnyValue, ToAnyValue]`. Either way it
   * records exactly what `WithMetricsOps` records, to the same metrics, through
   * the same interpreters; see that class for the metric names, attributes,
-  * and when the histogram is created. A raise that escapes a call records the
-  * raised value's type as `error.type`; one the method rescues itself is a
-  * success.
+  * and when the histogram is created. A raise carried as a failure of `F`
+  * (`Handle.allowF` over a `MonadThrow`, say) that escapes a call records the
+  * raised value's type as `error.type`. A raise carried in `F`'s success
+  * channel (`EitherT`, say), or one the method rescues itself, is a success
+  * with no `error.type`, as with `WithMetricsOps`.
   *
   * Import `com.dwolla.metrics.otel4s.mtl.syntax._` ''in place of''
   * `com.dwolla.metrics.otel4s.syntax._`, never beside it: both provide
@@ -30,6 +32,26 @@ trait ToRaiseWithMetricsOps {
   * Overloads rather than default arguments, with an explicit `()` on the
   * zero-argument form, for the binary-compatibility reasons given on
   * `WithMetricsOps`.
+  *
+  * As with `WithMetricsOps`, apply tracing ''last'', here with
+  * `com.dwolla.tracing.otel4s.mtl.syntax`, which can be imported alongside
+  * this one:
+  *
+  * {{{
+  *   import cats.effect.IO
+  *   import com.dwolla.metrics.otel4s.mtl.syntax._
+  *   import com.dwolla.tagless.mtl.RaiseAspect
+  *   import com.dwolla.tracing.otel4s.ToAnyValue
+  *   import com.dwolla.tracing.otel4s.mtl.syntax._
+  *   import org.typelevel.otel4s.metrics.MeterProvider
+  *   import org.typelevel.otel4s.trace.TracerProvider
+  *
+  *   def meteredAndTraced[Alg[_[_]]](alg: Alg[IO])
+  *                                  (implicit A: RaiseAspect[Alg, ToAnyValue, ToAnyValue, ToAnyValue],
+  *                                   M: MeterProvider[IO],
+  *                                   T: TracerProvider[IO]): IO[Alg[IO]] =
+  *     alg.withMetrics().flatMap(_.traceWithInputs[ToAnyValue])
+  * }}}
   */
 class RaiseWithMetricsOps[Alg[_[_]], F[_]](val alg: Alg[F]) extends AnyVal {
   /** For in-process calls: records to `com.dwolla.code.function.duration`

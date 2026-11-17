@@ -47,8 +47,10 @@ trait LowPriorityMeterable {
   /** Lower priority: used only when no `Instrument` is available. Each call's
     * `Aspect.Weave` is reduced to the `Instrumentation` (algebra and method
     * name) the metrics interpreter reads. A raise needs no hook, so
-    * `OnRaise.noop` is passed: one that escapes the call fails the call's `F`,
-    * which the interpreter already records as `error.type`.
+    * `OnRaise.noop` is passed: one carried as a failure of `F` (`Handle.allowF`, say)
+    * fails the call's `F`, which the interpreter already records as
+    * `error.type`. One carried in `F`'s success channel (`EitherT`, say) ends
+    * the call as a success and is recorded without `error.type`.
     *
     * `Dom`, `Cod`, and `Err` are pinned to `ToAnyValue`, the shape the tracing
     * syntax and `AnyValueRaiseAspect` use. A future instance accepting a more
