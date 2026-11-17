@@ -10,6 +10,10 @@ import org.typelevel.otel4s.semconv.attributes.CodeAttributes
 
 import scala.concurrent.duration.SECONDS
 
+// `apply` is called from the otel4s-tagless-mtl artifact
+// (com.dwolla.metrics.otel4s.mtl.syntax), so its signature is a cross-artifact
+// binary contract that MiMa doesn't check for `private[otel4s]` members:
+// change it only additively.
 private[otel4s] object MeterInstrumentation {
   /** One metric for every in-process algebra: OTel's pattern is a fixed name
     * with the operation in attributes, so the name never varies by algebra.

@@ -54,6 +54,28 @@ Each measurement is then recorded while its span is active, so a backend that
 supports exemplars can link a slow measurement to its trace, and the duration
 excludes the span's own overhead.
 
+### Algebras whose methods take `Raise`
+
+An algebra with `cats.mtl.Raise` parameters has no cats-tagless `Instrument`,
+so the plain `withMetrics` can't meter it. The `withMetrics` overloads in
+`otel4s-tagless-mtl` cover it, with no extra artifact. They need a
+`RaiseAspect[Alg, ToAnyValue, ToAnyValue, ToAnyValue]` and record the same
+metrics. A raise carried as a failure of `F` (`Handle.allowF` over a
+`MonadThrow`, say) that escapes a call is recorded as `error.type`; one in
+`F`'s success channel (`EitherT`, say) is recorded as a success, as with the
+plain `withMetrics`. Import `com.dwolla.metrics.otel4s.mtl.syntax._`
+*instead of* this module's syntax, not beside it: both put `withMetrics` on
+every `Alg[F]`, so importing both makes the call ambiguous. The `mtl` one also
+covers algebras that have an `Instrument`.
+
+```scala
+import com.dwolla.metrics.otel4s.mtl.syntax._
+import com.dwolla.tracing.otel4s.ToAnyValue
+import com.dwolla.tracing.otel4s.mtl.syntax._
+
+alg.withMetrics().flatMap(_.traceWithInputs[ToAnyValue])
+```
+
 ## Things to know
 
 - **Every in-process algebra shares one metric.** `withMetrics()` records to
