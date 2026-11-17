@@ -1,18 +1,16 @@
 package com.dwolla.metrics.otel4s.mtl
 
 import cats.effect.IO
-import cats.effect.testkit.TestControl
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all._
 import cats.tagless.aop.{Aspect, Instrument, Instrumentation}
 import cats.{Apply, ~>}
-import com.dwolla.metrics.otel4s.{FooFailure, RecordedHistogram, RecordedPoint, RpcRole, RpcService, RpcSystem, Foo => PlainFoo}
+import com.dwolla.metrics.otel4s.{FooFailure, HistogramAssertions, RecordedPoint, RpcRole, RpcService, RpcSystem, Foo => PlainFoo}
 import com.dwolla.metrics.otel4s.mtl.syntax._
 import com.dwolla.tagless.mtl.{OnRaise, RaiseAspect}
 import com.dwolla.tracing.otel4s.ToAnyValue
 import com.dwolla.tracing.otel4s.mtl.{Foo, FooError}
 import munit.CatsEffectSuite
-import org.typelevel.otel4s.AttributeKey
 import org.typelevel.otel4s.metrics.MeterProvider
 import org.typelevel.otel4s.semconv.attributes.{CodeAttributes, ErrorAttributes}
 import org.typelevel.otel4s.semconv.experimental.attributes.RpcExperimentalAttributes
@@ -30,32 +28,7 @@ import scala.concurrent.duration._
   * (`OtelSdkRaiseMeasurementContentSpec`, every platform) or oteljava
   * (`OtelJavaRaiseMeasurementContentSpec`, JVM).
   */
-abstract class RaiseMeasurementContentSuite extends CatsEffectSuite {
-
-  /** Runs `f` with a `MeterProvider[IO]` backed by a real SDK and returns what `f`
-    * produced plus every histogram recorded. `measured` calls this inside
-    * `TestControl`, so an implementation must allocate its SDK inside the
-    * returned `IO`, never eagerly.
-    */
-  protected def histogramsFrom[A](f: MeterProvider[IO] => IO[A]): IO[(A, List[RecordedHistogram])]
-
-  /** `histogramsFrom` on virtual time: `IO.sleep` inside `f` advances the
-    * clock `recordDuration` reads, instantly and exactly.
-    */
-  protected def measured[A](f: MeterProvider[IO] => IO[A]): IO[(A, List[RecordedHistogram])] =
-    TestControl.executeEmbed(histogramsFrom(f))
-
-  protected def histogramNamed(name: String, histograms: List[RecordedHistogram]): RecordedHistogram =
-    histograms.filter(_.name == name) match {
-      case List(histogram) => histogram
-      case other => fail(s"expected exactly one histogram named $name, found ${other.size} among ${histograms.map(_.name)}")
-    }
-
-  protected def pointFor(key: AttributeKey[String], value: String, histogram: RecordedHistogram): RecordedPoint =
-    histogram.points.filter(_.attributes.get(key).map(_.value).contains(value)) match {
-      case List(point) => point
-      case other => fail(s"expected exactly one point with $key=$value in ${histogram.name}, found ${other.size}: ${histogram.points}")
-    }
+abstract class RaiseMeasurementContentSuite extends CatsEffectSuite with HistogramAssertions {
 
   private def attributeKeys(point: RecordedPoint): Set[String] =
     point.attributes.map(_.key.name).toSet
