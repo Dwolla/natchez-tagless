@@ -63,7 +63,7 @@ jobs:
 
       - name: sbt update
         if: steps.sbt-dependency-cache.outputs.cache-hit != 'true'
-        run: sbt +update
+        run: sbt +update +mimaPreviousClassfiles
 
       - name: Check that workflows are up to date
         run: sbt githubWorkflowCheck
@@ -151,7 +151,7 @@ jobs:
 
       - name: sbt update
         if: steps.sbt-dependency-cache.outputs.cache-hit != 'true'
-        run: sbt +update
+        run: sbt +update +mimaPreviousClassfiles
 
       - name: Download target directories (2.13, natchez-tagless-rootNative)
         uses: actions/download-artifact@v6
@@ -305,7 +305,7 @@ jobs:
 
       - name: sbt update
         if: steps.sbt-dependency-cache.outputs.cache-hit != 'true'
-        run: sbt +update
+        run: sbt +update +mimaPreviousClassfiles
 
       - name: Submit Dependencies
         uses: scalacenter/sbt-dependency-submission@v2

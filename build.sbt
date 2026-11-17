@@ -50,8 +50,10 @@ ThisBuild / githubWorkflowGeneratedCacheSteps := Seq(
       "restore-keys" -> sbtDependencyCacheKeyPrefix,
     ),
   ),
+  // MiMa resolves the previous release's artifacts itself, outside `update`, so they're fetched here too and
+  // land in the cache with everything else.
   WorkflowStep.Sbt(
-    List("+update"),
+    List("+update", "+mimaPreviousClassfiles"),
     name = Some("sbt update"),
     cond = Some("steps.sbt-dependency-cache.outputs.cache-hit != 'true'"),
     preamble = false,
