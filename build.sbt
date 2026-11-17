@@ -30,28 +30,44 @@ ThisBuild / githubWorkflowTargetBranches := Seq("main")
 // setup-java's sbt cache restores only an exact match on the build files' hash. This cache falls back to the
 // newest one with the same prefix (normally main's), so after a change to the build files `sbt update` fetches
 // only what changed.
-ThisBuild / githubWorkflowGeneratedCacheSteps := {
-  val dependencyFiles = githubWorkflowDependencyPatterns.value.map(pattern => s"'$pattern'").mkString(", ")
-  val keyPrefix = "${{ runner.os }}-sbt-dependencies-"
-  Seq(
-    WorkflowStep.Use(
-      UseRef.Public("actions", "cache", "v6"),
-      name = Some("Cache sbt dependencies"),
-      id = Some("sbt-dependency-cache"),
-      params = Map(
-        "path" -> List("~/.cache/coursier", "~/.ivy2/cache", "~/.sbt").mkString("\n"),
-        "key" -> s"$keyPrefix$${{ hashFiles($dependencyFiles) }}",
-        "restore-keys" -> keyPrefix,
-      ),
-    ),
-    WorkflowStep.Sbt(
-      List("+update"),
-      name = Some("sbt update"),
-      cond = Some("steps.sbt-dependency-cache.outputs.cache-hit != 'true'"),
-      preamble = false,
-    ),
-  )
+//
+// Only pushes to main save it: a pull request's cache is visible to that pull request alone, and each is about
+// as large as main's, so saving them would fill the repository's cache quota and evict main's.
+val sbtDependencyCachePaths: String = List("~/.cache/coursier", "~/.ivy2/cache", "~/.sbt").mkString("\n")
+val sbtDependencyCacheKeyPrefix: String = "${{ runner.os }}-sbt-dependencies-"
+def sbtDependencyCacheKey(dependencyPatterns: Seq[String]): String = {
+  val dependencyFiles = dependencyPatterns.map(pattern => s"'$pattern'").mkString(", ")
+  s"$sbtDependencyCacheKeyPrefix$${{ hashFiles($dependencyFiles) }}"
 }
+ThisBuild / githubWorkflowGeneratedCacheSteps := Seq(
+  WorkflowStep.Use(
+    UseRef.Public("actions", "cache/restore", "v6"),
+    name = Some("Restore sbt dependencies"),
+    id = Some("sbt-dependency-cache"),
+    params = Map(
+      "path" -> sbtDependencyCachePaths,
+      "key" -> sbtDependencyCacheKey(githubWorkflowDependencyPatterns.value),
+      "restore-keys" -> sbtDependencyCacheKeyPrefix,
+    ),
+  ),
+  WorkflowStep.Sbt(
+    List("+update"),
+    name = Some("sbt update"),
+    cond = Some("steps.sbt-dependency-cache.outputs.cache-hit != 'true'"),
+    preamble = false,
+  ),
+)
+ThisBuild / githubWorkflowBuildPostamble += WorkflowStep.Use(
+  UseRef.Public("actions", "cache/save", "v6"),
+  name = Some("Save sbt dependencies"),
+  cond = Some(
+    "github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.sbt-dependency-cache.outputs.cache-hit != 'true'"
+  ),
+  params = Map(
+    "path" -> sbtDependencyCachePaths,
+    "key" -> sbtDependencyCacheKey(githubWorkflowDependencyPatterns.value),
+  ),
+)
 ThisBuild / githubWorkflowJobSetup := List(WorkflowStep.CheckoutFull, WorkflowStep.SetupSbt) ++
   WorkflowStep.SetupJava(githubWorkflowJavaVersions.value.toList, enableCaching = false) ++
   githubWorkflowGeneratedCacheSteps.value
