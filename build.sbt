@@ -20,6 +20,59 @@ ThisBuild / tlJdkRelease := Some(8)
 // Scala Native 0.5 warns that running it on a JDK older than 17 is deprecated. The published bytecode
 // still targets Java 8 through tlJdkRelease.
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
+
+// Maven Central rate-limits downloads by network egress, and GitHub-hosted runners share theirs, so CI
+// keeps its Central traffic down (https://central.sonatype.org/faq/429-error/).
+//
+// Run CI for pull requests into main and for pushes to main and release tags. A push to a pull request's
+// branch is covered by its pull_request run, so each change builds once.
+ThisBuild / githubWorkflowTargetBranches := Seq("main")
+// setup-java's sbt cache restores only an exact match on the build files' hash. This cache falls back to the
+// newest one with the same prefix (normally main's), so after a change to the build files `sbt update` fetches
+// only what changed.
+//
+// Only pushes to main save it: a pull request's cache is visible to that pull request alone, and each is about
+// as large as main's, so saving them would fill the repository's cache quota and evict main's.
+val sbtDependencyCachePaths: String = List("~/.cache/coursier", "~/.ivy2/cache", "~/.sbt").mkString("\n")
+val sbtDependencyCacheKeyPrefix: String = "${{ runner.os }}-sbt-dependencies-"
+def sbtDependencyCacheKey(dependencyPatterns: Seq[String]): String = {
+  val dependencyFiles = dependencyPatterns.map(pattern => s"'$pattern'").mkString(", ")
+  s"$sbtDependencyCacheKeyPrefix$${{ hashFiles($dependencyFiles) }}"
+}
+ThisBuild / githubWorkflowGeneratedCacheSteps := Seq(
+  WorkflowStep.Use(
+    UseRef.Public("actions", "cache/restore", "v6"),
+    name = Some("Restore sbt dependencies"),
+    id = Some("sbt-dependency-cache"),
+    params = Map(
+      "path" -> sbtDependencyCachePaths,
+      "key" -> sbtDependencyCacheKey(githubWorkflowDependencyPatterns.value),
+      "restore-keys" -> sbtDependencyCacheKeyPrefix,
+    ),
+  ),
+  // MiMa resolves the previous release's artifacts itself, outside `update`, so they're fetched here too and
+  // land in the cache with everything else.
+  WorkflowStep.Sbt(
+    List("+update", "+mimaPreviousClassfiles"),
+    name = Some("sbt update"),
+    cond = Some("steps.sbt-dependency-cache.outputs.cache-hit != 'true'"),
+    preamble = false,
+  ),
+)
+ThisBuild / githubWorkflowBuildPostamble += WorkflowStep.Use(
+  UseRef.Public("actions", "cache/save", "v6"),
+  name = Some("Save sbt dependencies"),
+  cond = Some(
+    "github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.sbt-dependency-cache.outputs.cache-hit != 'true'"
+  ),
+  params = Map(
+    "path" -> sbtDependencyCachePaths,
+    "key" -> sbtDependencyCacheKey(githubWorkflowDependencyPatterns.value),
+  ),
+)
+ThisBuild / githubWorkflowJobSetup := List(WorkflowStep.CheckoutFull, WorkflowStep.SetupSbt) ++
+  WorkflowStep.SetupJava(githubWorkflowJavaVersions.value.toList, enableCaching = false) ++
+  githubWorkflowGeneratedCacheSteps.value
 ThisBuild / libraryDependencySchemes += "io.circe" %% "circe-core" % "always"
 ThisBuild / tlCiReleaseBranches := Seq("main")
 ThisBuild / mergifyStewardConfig ~= { _.map {
